@@ -9,7 +9,7 @@ from app.models.medrecon import Medrecon
 
 router = APIRouter()
 
-@router.get('/medrecons')
+@router.get('/')
 def get_medrecons(db: Session = Depends(get_db)):
     """Get all medrecons """
     stmt = select(Medrecon)
@@ -18,7 +18,7 @@ def get_medrecons(db: Session = Depends(get_db)):
     return medrecons
 
 
-@router.get("/medrecons/subject/{subject_id}")
+@router.get("/subject/{subject_id}")
 def get_medrecons_by_subject(
     subject_id: int,
     charttime_start: Optional[datetime] = Query(

@@ -9,6 +9,7 @@ from typing import Iterable, List, Optional
 
 from sqlalchemy import create_engine, insert, text
 from sqlalchemy.engine import Engine
+from sqlalchemy.engine.url import make_url
 from sqlalchemy.exc import SQLAlchemyError
 
 
@@ -73,6 +74,31 @@ def _make_engine(database_url: str) -> Engine:
     if database_url.startswith("sqlite"):
         connect_args = {"check_same_thread": False}
     return create_engine(database_url, connect_args=connect_args, future=True)
+
+
+def _resolve_database_url(database_url: str) -> str:
+    """
+    Ensure SQLite relative paths always point at the repo root.
+
+    Without this, running the script from `scripts/` would create/use `scripts/app.db`
+    for a URL like `sqlite:///app.db`.
+    """
+    try:
+        url = make_url(database_url)
+    except Exception:  # noqa: BLE001
+        return database_url
+
+    if not url.drivername.startswith("sqlite"):
+        return database_url
+    if not url.database or url.database == ":memory:":
+        return database_url
+
+    db_path = Path(url.database)
+    if db_path.is_absolute():
+        return database_url
+
+    abs_db_path = (_repo_root() / db_path).resolve()
+    return str(url.set(database=str(abs_db_path)))
 
 
 def _apply_sqlite_pragmas(engine: Engine, fast: bool) -> None:
@@ -198,7 +224,10 @@ def main(argv: List[str]) -> int:
         print(f"CSV not found: {csv_path}", file=sys.stderr)
         return 2
 
-    database_url = args.database_url or settings.DATABASE_URL
+    database_url_raw = args.database_url or settings.DATABASE_URL
+    database_url = _resolve_database_url(database_url_raw)
+    if database_url != database_url_raw:
+        print(f"Resolved DATABASE_URL to: {database_url}")
     engine = _make_engine(database_url)
 
     try:
