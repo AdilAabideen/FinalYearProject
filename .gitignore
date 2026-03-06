@@ -6,3 +6,9 @@ env/
 .env
 .DS_Store
 
+datasets/
+
+app.db
+app.db-journal
+app.db-shm
+app.db-wal
