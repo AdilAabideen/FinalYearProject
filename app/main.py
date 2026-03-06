@@ -4,9 +4,6 @@ from app.config import settings
 from app.database import engine, Base
 from app.api.api import api_router
 
-# Ensure models are imported so Base.metadata is populated before create_all.
-import app.models  # noqa: F401
-
 # Create database tables
 Base.metadata.create_all(bind=engine)
 
@@ -36,3 +33,4 @@ def root():
 @app.get("/health")
 def health_check():
     return {"status": "healthy"}
+
