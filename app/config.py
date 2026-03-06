@@ -56,13 +56,13 @@ class Settings(BaseSettings):
             return v.lower() in ('true', '1', 'yes', 'on')
         return False
 
-    @field_validator('LANGCHAIN_TRACING_V2', mode='before')
-    @classmethod
-    def parse_langchain_tracing(cls, v):
-        if isinstance(v, bool):
-            return v
-        if isinstance(v, str):
-            return v.lower() in ('true', '1', 'yes', 'on')
-        return False
+    # @field_validator('LANGCHAIN_TRACING_V2', mode='before')
+    # @classmethod
+    # def parse_langchain_tracing(cls, v):
+    #     if isinstance(v, bool):
+    #         return v
+    #     if isinstance(v, str):
+    #         return v.lower() in ('true', '1', 'yes', 'on')
+    #     return False
 
 settings = Settings()

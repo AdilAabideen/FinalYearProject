@@ -1,19 +1,20 @@
 from typing import Any, Dict, List, Optional
-from neo4j import GraphDatabase
 import json
 from pydantic import BaseModel, Field
 from app.api.endpoints.medrecon import get_medrecons_by_subject
+from app.neo4j_db import get_neo4j_driver
 from datetime import datetime
 
 from langchain.tools import tool
 
 class GetVitalsConfoundersInput(BaseModel):
     subject_id: int = Field(description="The subject ID of the patient")
-    in_time: [datetime] = Field(description="The time in which the vital signs were taken")
+    in_time: datetime = Field(description="The time in which the vital signs were taken")
 
-@tool("Get Vitals Confounders from Neo4j", args_schema=GetVitalsConfoundersInput)
+@tool("get_vitals_confounders", args_schema=GetVitalsConfoundersInput)
 def get_vitals_confounders(
-    input: GetVitalsConfoundersInput
+    subject_id: int,
+    in_time: datetime
 ) -> Dict[str, Any]:
     """
 
@@ -39,38 +40,46 @@ def get_vitals_confounders(
     Output: {"ok": True, "confounders": [{"confounder_name": "Confounder 1", "mechanism": "Mechanism 1", "direction": "Direction 1", "reliability": "Reliability 1", "use_rule": "Use Rule 1"}], "Medication Evidence": "The Patient is on Medication 1 and Medication 2", "Confounder Summary": "The Patient has Confounder 1 and Confounder 2"}
     """
 
-    subject_id = input.subject_id
-    in_time = input.in_time
 
-    medrecons = get_medrecons_by_subject(subject_id, in_time)
+    medrecons = get_medrecons_by_subject(
+        subject_id=subject_id,
+        charttime_start=None,
+        charttime_end=in_time,
+        limit=1000,
+        offset=0,
+        order="asc",
+        db=__import__("app.database", fromlist=["SessionLocal"]).SessionLocal(),
+    )
 
     etccodes = list(dict.fromkeys([medrecon.etccode for medrecon in medrecons if medrecon.etccode is not None]))
 
-    cypher = """
-    WITH [code IN $etccodes WHERE code IS NOT NULL | toFloat(code)] AS codes
-    MATCH (c:ETCCategories)
-    WHERE c.etccode IN codes
-    OPTIONAL MATCH (c)-[r:CanAffect]->(conf:Confounders)
-    WITH c, r, conf
-    WHERE conf IS NOT NULL
-    RETURN
-      collect(DISTINCT {
-        confounder_name: conf.confounder_name,
-        mechanism: r.mechanism,
-        direction: r.direction,
-        reliability: r.reliability,
-        use_rule: r.use_rule
-      }) AS confounders,
-      collect(DISTINCT {
-        etccode: c.etccode,
-        etcdescription: coalesce(c.etcdescription, "")
-      }) AS evidence
-    """
-
-    with driver.session() as session and if etccodes:
-        record = session.run(cypher, etccodes=etccodes).single()
-    else:
+    if not etccodes:
         record = None
+    else:
+        cypher = """
+        WITH [code IN $etccodes WHERE code IS NOT NULL | toFloat(code)] AS codes
+        MATCH (c:ETCCategories)
+        WHERE c.etccode IN codes
+        OPTIONAL MATCH (c)-[r:CanAffect]->(conf:Confounders)
+        WITH c, r, conf
+        WHERE conf IS NOT NULL
+        RETURN
+          collect(DISTINCT {
+            confounder_name: conf.confounder_name,
+            mechanism: r.mechanism,
+            direction: r.direction,
+            reliability: r.reliability,
+            use_rule: r.use_rule
+          }) AS confounders,
+          collect(DISTINCT {
+            etccode: c.etccode,
+            etcdescription: coalesce(c.etcdescription, "")
+          }) AS evidence
+        """
+
+        driver = get_neo4j_driver()
+        with driver.session() as session:
+            record = session.run(cypher, etccodes=etccodes).single()
 
     confounders = record["confounders"] if record else []
     evidence_from_graph = record["evidence"] if record else []

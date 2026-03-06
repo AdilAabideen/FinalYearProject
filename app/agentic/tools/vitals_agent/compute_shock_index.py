@@ -5,9 +5,10 @@ class ShockIndexInput(BaseModel):
     hr: float | None = Field(description="The Heart Rate of the Patient | CODE HR")
     sbp: float | None = Field(description="The Systolic Blood Pressure of the Patient | CODE SBP")
 
-@tool("Compute Shock Index", args_schema=ShockIndexInput)
+@tool("compute_shock_index", args_schema=ShockIndexInput)
 def compute_shock_index(
-    input: ShockIndexInput
+    hr: float,
+    sbp: float
 ) -> dict:
 
     """
@@ -28,9 +29,6 @@ def compute_shock_index(
     Output: {"ok": True, "si": 1.25, "band": "hard"}
 
     """
-
-    hr = input.hr
-    sbp = input.sbp
 
     si = hr / sbp
 

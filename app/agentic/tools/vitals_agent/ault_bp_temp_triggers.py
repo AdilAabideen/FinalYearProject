@@ -7,9 +7,12 @@ class AdultBPTempTriggersInput(BaseModel):
     dbp: float | None = Field(description="The diastolic blood pressure of the patient in mmHg")
     symptomatic_context: dict = Field(description="The symptomatic context of the patient in the form of a dictionary with the keys 'chest_pain', 'shortness_of_breath', 'neuro_deficit_or_confusion', 'pregnant_or_postpartum', and 'suspected_infection'")
 
-@tool("Adult BP + Temp Triggers", args_schema=AdultBPTempTriggersInput)
+@tool("adult_bp_temp_triggers", args_schema=AdultBPTempTriggersInput)
 def adult_bp_temp_triggers(
-    input: AdultBPTempTriggersInput
+    temp_f: float,
+    sbp: float,
+    dbp: float,
+    symptomatic_context: dict
 ) -> dict:
     """
 
@@ -32,10 +35,7 @@ def adult_bp_temp_triggers(
     Input: temp_f = 97.7, sbp = 120, dbp = 80, symptomatic_context = {'chest_pain': True, 'shortness_of_breath': True, 'neuro_deficit_or_confusion': True, 'pregnant_or_postpartum': False, 'suspected_infection': False}
     Output: {'hard_flags': ['AS SBP<=90 there is Hypotension Hence Uptriage is Likely You should still look at Other Vitals and context such as medications and chief complaint before making the final decision.'], 'soft_flags': ['As SBP 91-100 there is Borderline Hypotension Hence there is a chance of Uptriage but you should still look at Other Vitals and context such as medications and chief complaint before making the final decision.']}
     """
-    temp_f = input.temp_f
-    sbp = input.sbp
-    dbp = input.dbp
-    symptomatic_context = input.symptomatic_context
+
 
     reasons_hard, reasons_soft = [], []
 

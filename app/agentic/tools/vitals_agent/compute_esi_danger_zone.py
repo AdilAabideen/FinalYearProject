@@ -8,9 +8,13 @@ class ESI_Danger_Zone_Vitals(BaseModel):
     spo2: float  = Field(description="The oxygen saturation of the patient in percentage")
     has_respiratory_compromise: bool = Field(description="Whether the patient has respiratory compromise By Looking at the Cheif Complaint")
 
-@tool("Compute ESI Danger Zone", args_schema=ESI_Danger_Zone_Vitals)
+@tool("compute_esi_danger_zone", args_schema=ESI_Danger_Zone_Vitals)
 def compute_esi_danger_zone(
-    input: ESI_Danger_Zone_Vitals
+    age_years: float,
+    hr: float,
+    rr: float,
+    spo2: float,
+    has_respiratory_compromise: bool
 ) -> dict:
     """
     Implements the ESI Danger Zone Calculation. This is the Best tool and Most important tool to see if there should be an uptriage. 
@@ -29,11 +33,6 @@ def compute_esi_danger_zone(
             - violations: The violations of the ESI Danger Zone in the form of a dictionary with the keys 'red' and 'orange' which are the different levels of Violations
     """
     # Convert age_years into the band used by ESI
-    age_years = input.age_years
-    hr = input.hr
-    rr = input.rr
-    spo2 = input.spo2
-    has_respiratory_compromise = input.has_respiratory_compromise
 
     if age_years < (1 / 12):  # < 1 month
         hr_thr, rr_thr = 190.0, 60.0

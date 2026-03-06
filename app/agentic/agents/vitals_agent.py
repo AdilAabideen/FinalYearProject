@@ -2,7 +2,7 @@ from __future__ import annotations
 from app.agentic.llm import get_chat_model
 from langgraph.prebuilt import create_react_agent
 from app.agentic.prompts.vitals_agent_prompt import SYSTEM_PROMPT, USER_PROMPT
-
+from app.schemas.vitals_agent import VitalsAgentInput
 
 from app.agentic.tools.vitals_agent.confounders import get_vitals_confounders
 from app.agentic.tools.vitals_agent.compute_esi_danger_zone import compute_esi_danger_zone
@@ -24,16 +24,17 @@ def build_vitals_agent():
     except Exception as e:
         raise Exception(f"Error building vitals agent: {e}")
 
-def run_vitals_agent(input: str):
+def run_vitals_agent(input: VitalsAgentInput):
     """
     Run Vital Signs Analysis
     """
     
     try:
         agent = build_vitals_agent()
-        return agent.invoke({"input": input})
+        return agent.invoke({"messages": [("user", input.model_dump_json())]},
+            print_mode=["debug", "updates"]
+        )
     except Exception as e:
         raise Exception(f"Error running vitals agent: {e}")
 
     
-
