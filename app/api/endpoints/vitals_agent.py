@@ -8,14 +8,14 @@ router = APIRouter()
 
 
 @router.post("/run")
-def vitals_agent_run(payload: VitalsAgentInput):
+def vitals_agent_run(payload: VitalsAgentInput, verbose: bool = True):
     """
     Run the vitals agent and return the final assistant message.
     """
     try:
         from app.agentic.agents.vitals_agent import run_vitals_agent
 
-        result = run_vitals_agent(payload)
+        result = run_vitals_agent(payload, verbose=verbose)
     except Exception as e:
         print(e)
         raise HTTPException(status_code=500, detail=str(e))
