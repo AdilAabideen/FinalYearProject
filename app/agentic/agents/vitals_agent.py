@@ -1,5 +1,7 @@
 from __future__ import annotations
 import json
+import os
+import sys
 import uuid
 
 from app.agentic.llm import get_chat_model
@@ -25,7 +27,7 @@ def build_vitals_agent():
             model=get_chat_model(),
             tools=[get_vitals_confounders, compute_esi_danger_zone, compute_shock_index, adult_bp_temp_triggers, log_thought],
             prompt=SYSTEM_PROMPT,
-            output_type=VitalsAgentOutput,
+            response_format=VitalsAgentOutput,
         )
         return agent
     except Exception as e:
@@ -58,18 +60,47 @@ def run_vitals_agent(input: VitalsAgentInput, *, verbose: bool = True):
         run_id = uuid.uuid4().hex[:8]
         final_state = None
 
+        use_color = (
+            (os.environ.get("FORCE_COLOR") == "1" or sys.stdout.isatty())
+            and os.environ.get("NO_COLOR") is None
+            and os.environ.get("TERM") != "dumb"
+        )
+        RESET = "\x1b[0m"
+        BOLD = "\x1b[1m"
+        DIM = "\x1b[2m"
+        RED = "\x1b[31m"
+        GREEN = "\x1b[32m"
+        YELLOW = "\x1b[33m"
+        MAGENTA = "\x1b[35m"
+        CYAN = "\x1b[36m"
+        GRAY = "\x1b[90m"
+
+        def _c(text: str, *codes: str) -> str:
+            if not use_color or not codes:
+                return text
+            return "".join(codes) + text + RESET
+
+        def _status_color(status: str) -> str:
+            normalized = (status or "").strip().lower()
+            if normalized in {"error", "failed", "failure"}:
+                return RED
+            if normalized in {"success", "ok"}:
+                return GREEN
+            return YELLOW
+
+        prefix = _c(f"[vitals-agent:{run_id}] ", DIM, GRAY)
+
         def _log(line: str) -> None:
-            print(f"{line}")
+            print(f"{prefix}{line}", flush=True)
 
-        def _log_block(title: str, block: str) -> None:
-            _log(title)
-            if block:
-                for ln in block.splitlines():
-                    _log(f"  {ln}")
+        def _log_block(header: str, body: str) -> None:
+            _log(header)
+            if body:
+                for ln in body.splitlines():
+                    _log(_c("  ", DIM, GRAY) + ln)
+            print("", flush=True)
 
-        _log("START")
-
-        # Mode: values Data: {'messages': [HumanMessage(content='{"temperature":97.3,"heartrate":70.0,"resprate":18.0,"o2sat":95.0,"sbp":145.0,"dbp":80.0,"pain":6.0,"subject_id":12482649,"intime":"2143-03-21T07:46:00","chiefcomplaint":"Head lac, s/p Fall","age_years":52.21801877}', additional_kwargs={}, response_metadata={}, id='7743a643-8436-45f8-b5f0-8cccbead29bc')]}
+        _log(_c("START", DIM, GRAY))
 
         for mode, data in agent.stream(payload, stream_mode=["updates", "values"]):
             if mode == "values":
@@ -88,33 +119,31 @@ def run_vitals_agent(input: VitalsAgentInput, *, verbose: bool = True):
 
                 for msg in messages:
                     if isinstance(msg, AIMessage):
-                        tool_calls = getattr(msg, "tool_calls", None) or []
-                        for tc in tool_calls:
-                            name = tc.get("name") if isinstance(tc, dict) else None
-                            args = tc.get("args") if isinstance(tc, dict) else None
-                            call_id = tc.get("id") if isinstance(tc, dict) else None
-                            if name:
-                                suffix = f" ({call_id})" if call_id else ""
-                                _log_block(
-                                    f"TOOL CALL -> {name}{suffix}",
-                                    _maybe_pretty_json(json.dumps(args)),
-                                )
-
                         content = (getattr(msg, "content", "") or "").strip()
                         if content:
-                            _log_block(f"{node_name} ASSISTANT", _maybe_pretty_json(content))
+                            _log_block(
+                                f"{_c('ASSISTANT', BOLD, MAGENTA)} {node_name}",
+                                _maybe_pretty_json(content),
+                            )
                     elif isinstance(msg, ToolMessage):
                         tool_name = getattr(msg, "name", None) or "tool"
                         status = getattr(msg, "status", None) or "ok"
                         tool_call_id = getattr(msg, "tool_call_id", None)
                         content = (getattr(msg, "content", "") or "").strip()
                         suffix = f" ({tool_call_id})" if tool_call_id else ""
-                        _log_block(
-                            f"{node_name} TOOL RESULT <- {tool_name} ({status}){suffix}",
-                            _maybe_pretty_json(content),
-                        )
 
-        _log("END")
+                        if tool_name == "log_thought":
+                            _log_block(
+                                _c("THOUGHT", DIM, GRAY) + _c(suffix, DIM, GRAY),
+                                _c(content, DIM, GRAY),
+                            )
+                        else:
+                            _log_block(
+                                f"{_c('RESULT', BOLD, CYAN)} {_c(tool_name, BOLD)} {_c(f'({status})', _status_color(status))}{_c(suffix, DIM, GRAY)}",
+                                _maybe_pretty_json(content),
+                            )
+
+        _log(_c("END", DIM, GRAY))
         return final_state if final_state is not None else agent.invoke(payload)
     except Exception as e:
         raise Exception(f"Error running vitals agent: {e}")

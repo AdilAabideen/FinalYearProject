@@ -46,7 +46,9 @@ TOOL USAGE RULES (MANDATORY)
 - Always call adult_bp_temp_triggers if temp + sbp are present.
 - Call get_vitals_confounders ONLY if subject_id is present (and optionally triage_time).
   - If subject_id is missing, skip it and mark confounders = "not_available".
-- 
+
+GUARDRAILS
+- DO NOT UPTRIAGE DUE TO AGE OR DUE TO CHIEF COMPLAINT ONLY UPTRIAGE IF THE VITALS ARE DANGEROUS 
 
 ASSUMPTIONS
 - SpO2 is a percentage (0–100). Do not convert.
