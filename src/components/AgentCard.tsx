@@ -4,12 +4,16 @@ import { IconButton } from './ui/IconButton';
 import { StatChip } from './ui/StatChip';
 
 type AgentCardProps = {
+  name: string;
   title: string;
+  description?: string;
   toolsCount: number;
-  testCasesCount: number;
+  onOpen?: (agentName: string) => void;
 };
 
-export function AgentCard({ title, toolsCount, testCasesCount }: AgentCardProps) {
+export function AgentCard({ name, title, description, toolsCount, onOpen }: AgentCardProps) {
+  const openDisabled = !onOpen;
+
   return (
     <div className="group flex w-full max-w-sm flex-col rounded-2xl border border-slate-200 border-t-4 border-t-PrimaryBlue bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md">
       <div className="flex items-start justify-between gap-4">
@@ -17,12 +21,19 @@ export function AgentCard({ title, toolsCount, testCasesCount }: AgentCardProps)
         <Badge>Ready</Badge>
       </div>
 
+      {description ? <p className="mt-2 text-sm text-slate-600">{description}</p> : null}
+
       <div className="mt-4 flex flex-wrap gap-2">
         <StatChip value={toolsCount} label="Tools" />
-        <StatChip value={testCasesCount} label="Test Cases" />
       </div>
 
-      <IconButton className="ml-auto mt-6" aria-label={`Open ${title}`}>
+      <IconButton
+        className="ml-auto mt-6"
+        aria-label={openDisabled ? `${title} (coming soon)` : `Open ${title}`}
+        disabled={openDisabled}
+        title={openDisabled ? 'Coming soon' : undefined}
+        onClick={() => onOpen?.(name)}
+      >
         <img
           alt=""
           src={arrowRightIcon}
@@ -30,6 +41,25 @@ export function AgentCard({ title, toolsCount, testCasesCount }: AgentCardProps)
           draggable={false}
         />
       </IconButton>
+    </div>
+  );
+}
+
+export function AgentCardSkeleton() {
+  return (
+    <div className="flex w-full max-w-sm flex-col rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+      <div className="flex items-start justify-between gap-4">
+        <div className="h-6 w-40 animate-pulse rounded bg-slate-200" />
+        <div className="h-6 w-14 animate-pulse rounded-full bg-slate-200" />
+      </div>
+      <div className="mt-3 space-y-2">
+        <div className="h-4 w-full animate-pulse rounded bg-slate-200" />
+        <div className="h-4 w-2/3 animate-pulse rounded bg-slate-200" />
+      </div>
+      <div className="mt-4">
+        <div className="h-8 w-28 animate-pulse rounded-lg bg-slate-200" />
+      </div>
+      <div className="mt-6 ml-auto h-10 w-10 animate-pulse rounded-xl bg-slate-200" />
     </div>
   );
 }
