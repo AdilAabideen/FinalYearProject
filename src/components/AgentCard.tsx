@@ -15,7 +15,22 @@ export function AgentCard({ name, title, description, toolsCount, onOpen }: Agen
   const openDisabled = !onOpen;
 
   return (
-    <div className="group flex w-full max-w-sm flex-col rounded-2xl border border-slate-200 border-t-4 border-t-PrimaryBlue bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md">
+    <div
+      role={openDisabled ? undefined : 'button'}
+      tabIndex={openDisabled ? -1 : 0}
+      className="group flex w-full max-w-sm flex-col rounded-2xl border border-slate-200 border-t-4 border-t-PrimaryBlue bg-white p-5 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
+      onClick={openDisabled ? undefined : () => onOpen?.(name)}
+      onKeyDown={
+        openDisabled
+          ? undefined
+          : (e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                onOpen?.(name);
+              }
+            }
+      }
+    >
       <div className="flex items-start justify-between gap-4">
         <h2 className="text-xl font-semibold text-slate-900">{title}</h2>
         <Badge>Ready</Badge>
@@ -32,7 +47,10 @@ export function AgentCard({ name, title, description, toolsCount, onOpen }: Agen
         aria-label={openDisabled ? `${title} (coming soon)` : `Open ${title}`}
         disabled={openDisabled}
         title={openDisabled ? 'Coming soon' : undefined}
-        onClick={() => onOpen?.(name)}
+        onClick={(e) => {
+          e.stopPropagation();
+          onOpen?.(name);
+        }}
       >
         <img
           alt=""

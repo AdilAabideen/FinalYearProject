@@ -4,8 +4,11 @@ import { AppShell } from './components/layout/AppShell';
 import { AgentsPage } from './pages/AgentsPage';
 import { HomePage } from './pages/HomePage';
 
+type HeaderOverride = { title: string; subtitle?: string; showSearch?: boolean };
+
 function App() {
   const [active, setActive] = useState<NavKey>('agents');
+  const [agentsHeaderOverride, setAgentsHeaderOverride] = useState<HeaderOverride | null>(null);
 
   const copy: Record<NavKey, { title: string; subtitle: string }> = {
     home: {
@@ -18,17 +21,28 @@ function App() {
     },
   };
 
-  const { title, subtitle } = copy[active];
+  const base = copy[active];
+  const title =
+    active === 'agents' && agentsHeaderOverride ? agentsHeaderOverride.title : base.title;
+  const subtitle =
+    active === 'agents' && agentsHeaderOverride ? agentsHeaderOverride.subtitle : base.subtitle;
+  const showSearch =
+    active === 'agents' ? (agentsHeaderOverride?.showSearch ?? true) : false;
+
+  function handleNavigate(key: NavKey) {
+    setActive(key);
+    if (key !== 'agents') setAgentsHeaderOverride(null);
+  }
 
   return (
     <AppShell
       activeNav={active}
-      onNavigate={setActive}
+      onNavigate={handleNavigate}
       title={title}
       subtitle={subtitle}
-      showSearch={active === 'agents'}
+      showSearch={showSearch}
     >
-      {active === 'agents' ? <AgentsPage /> : <HomePage />}
+      {active === 'agents' ? <AgentsPage onHeaderChange={setAgentsHeaderOverride} /> : <HomePage />}
     </AppShell>
   );
 }
