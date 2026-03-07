@@ -1,6 +1,14 @@
 @import 'tailwindcss';
 
+@theme {
+  --color-PrimaryBlue: #005EB8;
+}
+
 @layer base {
+  :root {
+    --PrimaryBlue: 0 94 184;
+  }
+
   html,
   body,
   #root {
