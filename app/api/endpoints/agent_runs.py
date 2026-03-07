@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import uuid
 from datetime import datetime
 
@@ -22,6 +23,57 @@ from app.schemas.agent_runs import (
 router = APIRouter()
 
 SUPPORTED_AGENTS = {"vitals_agent"}
+
+MAX_EVENT_TEXT_LEN = 50_000
+
+
+def _safe_text(text: str) -> str:
+    if len(text) <= MAX_EVENT_TEXT_LEN:
+        return text
+    return text[:MAX_EVENT_TEXT_LEN] + "…(truncated)"
+
+
+def _try_parse_json(text: str) -> tuple[dict | None, str | None]:
+    stripped = text.strip()
+    if not stripped:
+        return None, ""
+    try:
+        parsed = json.loads(stripped)
+    except Exception:
+        return None, stripped
+    if isinstance(parsed, dict):
+        return parsed, None
+    return {"value": parsed}, None
+
+
+def _append_event(
+    *,
+    db: Session,
+    run: AgentRun,
+    seq: int,
+    event_type: str,
+    node_name: str | None = None,
+    tool_name: str | None = None,
+    tool_call_id: str | None = None,
+    status: str | None = None,
+    payload_json: dict | None = None,
+    payload_text: str | None = None,
+) -> None:
+    ev = AgentEvent(
+        run_id=run.id,
+        agent_name=run.agent_name,
+        seq=seq,
+        event_type=event_type,
+        node_name=node_name,
+        tool_name=tool_name,
+        tool_call_id=tool_call_id,
+        status=status,
+        payload_json=payload_json,
+        payload_text=_safe_text(payload_text) if payload_text else None,
+        created_at=datetime.utcnow(),
+    )
+    db.add(ev)
+    db.commit()
 
 
 @router.post("", response_model=AgentRunCreateResponse)
@@ -81,3 +133,162 @@ def list_agent_events(
     next_after_seq = items[-1].seq if items else after_seq
     return AgentEventsPage(run_id=run_id, events=items, next_after_seq=next_after_seq)
 
+
+@router.post("/{run_id}/execute")
+def execute_agent_run(run_id: str, db: Session = Depends(get_db)):
+    run = db.get(AgentRun, run_id)
+    if run is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Run not found")
+
+    if run.status in {"running"}:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Run is already running")
+    if run.status in {"succeeded"}:
+        return {"run_id": run.id, "status": run.status, "output": run.output_json}
+
+    now = datetime.utcnow()
+    run.status = "running"
+    run.started_at = now
+    run.updated_at = now
+    db.add(run)
+    db.commit()
+
+    seq = 1
+    _append_event(
+        db=db,
+        run=run,
+        seq=seq,
+        event_type="run_start",
+        payload_json={"input": run.input_json},
+    )
+
+    try:
+        if run.agent_name != "vitals_agent":
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Unsupported agent_name '{run.agent_name}'",
+            )
+
+        from app.agentic.agents.vitals_agent import build_vitals_agent
+        from app.schemas.vitals_agent import VitalsAgentInput
+
+        vitals_input = VitalsAgentInput.model_validate(run.input_json)
+        agent = build_vitals_agent()
+        payload = {"messages": [("user", vitals_input.model_dump_json())]}
+
+        output_json: dict | None = None
+
+        for mode, data in agent.stream(payload, stream_mode=["updates", "values"]):
+            if mode != "updates" or not isinstance(data, dict):
+                continue
+
+            for node_name, node_update in data.items():
+                if not isinstance(node_update, dict):
+                    continue
+                messages = node_update.get("messages")
+                if not isinstance(messages, list):
+                    continue
+
+                for msg in messages:
+                    tool_calls = getattr(msg, "tool_calls", None) or []
+                    if tool_calls:
+                        for tc in tool_calls:
+                            if not isinstance(tc, dict):
+                                continue
+                            seq += 1
+                            _append_event(
+                                db=db,
+                                run=run,
+                                seq=seq,
+                                event_type="tool_call",
+                                node_name=node_name,
+                                tool_name=tc.get("name"),
+                                tool_call_id=tc.get("id"),
+                                payload_json={"args": tc.get("args")},
+                            )
+
+                    tool_name = getattr(msg, "name", None)
+                    tool_call_id = getattr(msg, "tool_call_id", None)
+                    tool_status = getattr(msg, "status", None)
+                    content = (getattr(msg, "content", "") or "").strip()
+
+                    if tool_name and tool_call_id:
+                        seq += 1
+                        parsed, raw = _try_parse_json(content)
+                        event_type = "thought" if tool_name == "log_thought" else "tool_result"
+                        _append_event(
+                            db=db,
+                            run=run,
+                            seq=seq,
+                            event_type=event_type,
+                            node_name=node_name,
+                            tool_name=tool_name,
+                            tool_call_id=tool_call_id,
+                            status=tool_status,
+                            payload_json={"result": parsed} if parsed is not None else None,
+                            payload_text=raw,
+                        )
+
+                    if content and not tool_name:
+                        parsed, raw = _try_parse_json(content)
+                        seq += 1
+                        _append_event(
+                            db=db,
+                            run=run,
+                            seq=seq,
+                            event_type="assistant",
+                            node_name=node_name,
+                            payload_json=parsed,
+                            payload_text=raw,
+                        )
+                        if parsed is not None:
+                            output_json = parsed
+
+        now = datetime.utcnow()
+        run.status = "succeeded"
+        run.output_json = output_json
+        run.finished_at = now
+        run.updated_at = now
+        db.add(run)
+        db.commit()
+
+        seq += 1
+        _append_event(
+            db=db,
+            run=run,
+            seq=seq,
+            event_type="run_end",
+            payload_json={"status": run.status},
+        )
+
+        return {"run_id": run.id, "status": run.status, "output": run.output_json}
+    except HTTPException:
+        raise
+    except Exception as e:
+        now = datetime.utcnow()
+        run.status = "failed"
+        run.error_text = str(e)
+        run.finished_at = now
+        run.updated_at = now
+        db.add(run)
+        db.commit()
+
+        seq += 1
+        _append_event(
+            db=db,
+            run=run,
+            seq=seq,
+            event_type="error",
+            status="error",
+            payload_text=str(e),
+        )
+
+        seq += 1
+        _append_event(
+            db=db,
+            run=run,
+            seq=seq,
+            event_type="run_end",
+            payload_json={"status": run.status},
+        )
+
+        raise HTTPException(status_code=500, detail=str(e))
