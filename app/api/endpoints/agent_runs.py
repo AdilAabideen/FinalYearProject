@@ -3,8 +3,10 @@ from __future__ import annotations
 import json
 import uuid
 from datetime import datetime
+from time import sleep
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi.responses import StreamingResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -132,6 +134,53 @@ def list_agent_events(
     items = [AgentEventRead.model_validate(e.__dict__) for e in events]
     next_after_seq = items[-1].seq if items else after_seq
     return AgentEventsPage(run_id=run_id, events=items, next_after_seq=next_after_seq)
+
+
+@router.get("/{run_id}/events/stream")
+def stream_agent_events(
+    run_id: str,
+    after_seq: int = Query(default=0, ge=0),
+    poll_interval_s: float = Query(default=0.25, ge=0.05, le=5.0),
+    db: Session = Depends(get_db),
+):
+    run = db.get(AgentRun, run_id)
+    if run is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Run not found")
+
+    def _event_stream():
+        nonlocal after_seq
+        last_heartbeat = datetime.utcnow()
+
+        while True:
+            db.rollback()
+
+            stmt = (
+                select(AgentEvent)
+                .where(AgentEvent.run_id == run_id, AgentEvent.seq > after_seq)
+                .order_by(AgentEvent.seq.asc())
+                .limit(200)
+            )
+            events = db.execute(stmt).scalars().all()
+            if events:
+                for ev in events:
+                    item = AgentEventRead.model_validate(ev.__dict__).model_dump(mode="json")
+                    after_seq = max(after_seq, item["seq"])
+                    yield f"event: agent_event\ndata: {json.dumps(item, ensure_ascii=False)}\n\n"
+
+            run_row = db.get(AgentRun, run_id)
+            is_terminal = run_row is not None and run_row.status in {"succeeded", "failed", "canceled"}
+            if is_terminal and not events:
+                yield "event: done\ndata: {}\n\n"
+                return
+
+            now = datetime.utcnow()
+            if (now - last_heartbeat).total_seconds() >= 10:
+                yield ": keep-alive\n\n"
+                last_heartbeat = now
+
+            sleep(poll_interval_s)
+
+    return StreamingResponse(_event_stream(), media_type="text/event-stream")
 
 
 @router.post("/{run_id}/execute")
