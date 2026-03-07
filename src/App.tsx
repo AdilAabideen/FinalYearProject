@@ -16,13 +16,26 @@ function App() {
     }
   }, [active]);
 
+  const subtitle = useMemo(() => {
+    switch (active) {
+      case 'home':
+        return 'Overview and quick links';
+      case 'agents':
+        return 'Manage and launch triage agents';
+    }
+  }, [active]);
+
   return (
-    <div className="min-h-screen bg-white text-black">
+    <div className="min-h-screen bg-slate-50 text-slate-900">
       <div className="flex min-h-screen">
         <Sidebar active={active} onNavigate={setActive} />
         <div className="flex-1">
-          <TopBar title={title} />
-          <main className="p-6">{active === 'agents' ? <AgentsPage /> : <HomePage />}</main>
+          <TopBar title={title} subtitle={subtitle} showSearch={active === 'agents'} />
+          <main className="p-6">
+            <div className="mx-auto w-full max-w-6xl">
+              {active === 'agents' ? <AgentsPage /> : <HomePage />}
+            </div>
+          </main>
         </div>
       </div>
     </div>
