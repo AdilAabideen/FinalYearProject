@@ -1,5 +1,6 @@
 import type { AgentCatalogDetail } from '../../types/agents';
 import { AgentDiagram } from './AgentDiagram';
+import AgentTab from './AgentTab';
 
 type AgentDetailSplitViewProps = {
   agent: AgentCatalogDetail;
@@ -18,9 +19,9 @@ export function AgentDetailSplitView({ agent }: AgentDetailSplitViewProps) {
         </div>
       </section>
 
-      {/* <section className="min-h-0 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-        <AgentSchemasPanel agent={agent} />
-      </section> */}
+      <section className="min-h-0   bg-white p-4 shadow-sm">
+        <AgentTab />
+      </section>
     </div>
   );
 }
