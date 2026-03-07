@@ -9,7 +9,14 @@ type AgentsLoadState =
   | { status: 'error'; message: string }
   | { status: 'success'; agents: AgentCatalogSummary[] };
 
-type HeaderOverride = { title: string; subtitle?: string; showSearch?: boolean };
+type BackAction = { label?: string; onClick: () => void };
+type HeaderOverride = {
+  title: string;
+  subtitle?: string;
+  showSearch?: boolean;
+  backAction?: BackAction;
+  contentOverflow?: 'auto' | 'hidden';
+};
 
 type AgentsPageProps = {
   onHeaderChange?: (override: HeaderOverride | null) => void;
@@ -72,6 +79,8 @@ export function AgentsPage({ onHeaderChange }: AgentsPageProps) {
       title: summary?.title ?? agentName,
       subtitle: summary?.description,
       showSearch: false,
+      backAction: { label: 'Back to agents', onClick: closeDetail },
+      contentOverflow: 'hidden',
     });
 
     detailAbortRef.current?.abort();
@@ -83,7 +92,13 @@ export function AgentsPage({ onHeaderChange }: AgentsPageProps) {
       const agent = await agentDiscoveryService.getAgent(agentName, ac.signal);
       if (ac.signal.aborted) return;
       setDetail({ status: 'success', agent });
-      onHeaderChange?.({ title: agent.title, subtitle: agent.description, showSearch: false });
+      onHeaderChange?.({
+        title: agent.title,
+        subtitle: agent.description,
+        showSearch: false,
+        backAction: { label: 'Back to agents', onClick: closeDetail },
+        contentOverflow: 'hidden',
+      });
     } catch (e: unknown) {
       if (ac.signal.aborted) return;
       setDetail({
@@ -96,23 +111,13 @@ export function AgentsPage({ onHeaderChange }: AgentsPageProps) {
 
   if (detail.status !== 'closed') {
     return (
-      <section aria-label="Agent Details">
-        <div className="space-y-6">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <button
-              type="button"
-              onClick={closeDetail}
-              className="inline-flex items-center rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-900 shadow-sm transition hover:bg-slate-50"
-            >
-              Back to agents
-            </button>
-          </div>
-
+      <section aria-label="Agent Details" className="h-full">
+        <div className="flex h-full flex-col">
           {detail.status === 'loading' ? (
-            <div className="grid gap-6 lg:grid-cols-2">
+            <div className="grid flex-1 gap-6 p-6 lg:grid-cols-2">
               <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
                 <div className="h-5 w-40 animate-pulse rounded bg-slate-200" />
-                <div className="mt-4 aspect-square w-full animate-pulse rounded-2xl bg-slate-100" />
+                <div className="mt-4 h-full w-full animate-pulse rounded-2xl bg-slate-100" />
               </div>
               <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
                 <div className="h-5 w-48 animate-pulse rounded bg-slate-200" />
@@ -126,7 +131,7 @@ export function AgentsPage({ onHeaderChange }: AgentsPageProps) {
           ) : null}
 
           {detail.status === 'error' ? (
-            <div className="space-y-4">
+            <div className="space-y-4 p-6">
               <div className="rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">
                 {detail.message}
               </div>
@@ -138,18 +143,15 @@ export function AgentsPage({ onHeaderChange }: AgentsPageProps) {
                 >
                   Retry
                 </button>
-                <button
-                  type="button"
-                  onClick={closeDetail}
-                  className="inline-flex items-center rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-900 shadow-sm transition hover:bg-slate-50"
-                >
-                  Back
-                </button>
               </div>
             </div>
           ) : null}
 
-          {detail.status === 'success' ? <AgentDetailSplitView agent={detail.agent} /> : null}
+          {detail.status === 'success' ? (
+            <div className="flex-1 min-h-0">
+              <AgentDetailSplitView agent={detail.agent} />
+            </div>
+          ) : null}
         </div>
       </section>
     );
@@ -164,7 +166,7 @@ export function AgentsPage({ onHeaderChange }: AgentsPageProps) {
           </div>
         ) : null}
 
-        <div className="grid items-start gap-6 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="grid items-start gap-6 sm:grid-cols-2 lg:grid-cols-3 p-6">
           {state.status === 'success'
             ? state.agents.map((agent) => (
                 <AgentCard

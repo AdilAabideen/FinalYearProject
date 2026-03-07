@@ -108,6 +108,10 @@ export function AgentDiagram({ agent }: AgentDiagramProps) {
 
   return (
     <div className="relative h-full w-full">
+      <div
+        aria-hidden="true"
+        className="pointer-events-none absolute inset-0  "
+      />
       <svg
         className="absolute inset-0 h-full w-full"
         viewBox="0 0 100 100"

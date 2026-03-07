@@ -4,7 +4,14 @@ import { AppShell } from './components/layout/AppShell';
 import { AgentsPage } from './pages/AgentsPage';
 import { HomePage } from './pages/HomePage';
 
-type HeaderOverride = { title: string; subtitle?: string; showSearch?: boolean };
+type BackAction = { label?: string; onClick: () => void };
+type HeaderOverride = {
+  title: string;
+  subtitle?: string;
+  showSearch?: boolean;
+  backAction?: BackAction;
+  contentOverflow?: 'auto' | 'hidden';
+};
 
 function App() {
   const [active, setActive] = useState<NavKey>('agents');
@@ -28,6 +35,9 @@ function App() {
     active === 'agents' && agentsHeaderOverride ? agentsHeaderOverride.subtitle : base.subtitle;
   const showSearch =
     active === 'agents' ? (agentsHeaderOverride?.showSearch ?? true) : false;
+  const backAction = active === 'agents' ? agentsHeaderOverride?.backAction : undefined;
+  const contentOverflow =
+    active === 'agents' ? (agentsHeaderOverride?.contentOverflow ?? 'auto') : 'auto';
 
   function handleNavigate(key: NavKey) {
     setActive(key);
@@ -41,6 +51,8 @@ function App() {
       title={title}
       subtitle={subtitle}
       showSearch={showSearch}
+      backAction={backAction}
+      contentOverflow={contentOverflow}
     >
       {active === 'agents' ? <AgentsPage onHeaderChange={setAgentsHeaderOverride} /> : <HomePage />}
     </AppShell>
