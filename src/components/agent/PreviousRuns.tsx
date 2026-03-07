@@ -1,0 +1,201 @@
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { cn } from '../../lib/cn';
+import { formatJson } from '../../lib/formatJson';
+import { agentRunService } from '../../services/agentRunService';
+import type { AgentRunRead } from '../../types/agentRuns';
+import { Badge } from '../ui/Badge';
+import { CodeBlock } from '../ui/CodeBlock';
+
+type PreviousRunsProps = {
+  agentName: string;
+};
+
+type RunsLoadState =
+  | { status: 'loading' }
+  | { status: 'error'; message: string }
+  | { status: 'success'; runs: AgentRunRead[] };
+
+function formatTimestamp(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' }).format(
+    date,
+  );
+}
+
+function statusBadgeClass(status: string) {
+  const normalized = status.toLowerCase();
+  if (
+    normalized.includes('success') ||
+    normalized.includes('succeed') ||
+    normalized.includes('complete')
+  ) {
+    return 'bg-emerald-50 text-emerald-700 ring-emerald-200';
+  }
+  if (normalized.includes('fail') || normalized.includes('error')) {
+    return 'bg-rose-50 text-rose-700 ring-rose-200';
+  }
+  if (normalized.includes('run')) {
+    return 'bg-amber-50 text-amber-700 ring-amber-200';
+  }
+  return 'bg-slate-100 text-slate-700 ring-slate-200';
+}
+
+export default function PreviousRuns({ agentName }: PreviousRunsProps) {
+  const [state, setState] = useState<RunsLoadState>({ status: 'loading' });
+  const abortRef = useRef<AbortController | null>(null);
+
+  useEffect(() => {
+    abortRef.current?.abort();
+    const ac = new AbortController();
+    abortRef.current = ac;
+
+    async function loadRuns() {
+      setState({ status: 'loading' });
+      try {
+        const runs = await agentRunService.listAgentRuns(
+          { agentName, limit: 50, offset: 0, order: 'desc' },
+          ac.signal,
+        );
+        if (ac.signal.aborted) return;
+        setState({ status: 'success', runs });
+      } catch (e: unknown) {
+        if (ac.signal.aborted) return;
+        setState({
+          status: 'error',
+          message: e instanceof Error ? e.message : 'Failed to load runs',
+        });
+      }
+    }
+
+    loadRuns();
+
+    return () => ac.abort();
+  }, [agentName]);
+
+  useEffect(() => {
+    return () => abortRef.current?.abort();
+  }, []);
+
+  const headerSuffix = useMemo(() => {
+    if (state.status !== 'success') return null;
+    return `${state.runs.length} run${state.runs.length === 1 ? '' : 's'}`;
+  }, [state]);
+
+  return (
+    <div className="flex h-full min-h-0 flex-col">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <h3 className="text-sm font-semibold text-slate-900">Previous Runs</h3>
+          <p className="mt-1 text-sm text-slate-600">Review prior agent runs and outputs.</p>
+        </div>
+        {headerSuffix ? (
+          <Badge className="shrink-0 bg-slate-100 text-slate-700 ring-slate-200">
+            {headerSuffix}
+          </Badge>
+        ) : null}
+      </div>
+
+      <div className="mt-4 min-h-0 flex-1">
+        {state.status === 'loading' ? (
+          <div className="space-y-3">
+            {Array.from({ length: 3 }, (_, i) => (
+              <div key={i} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="h-4 w-40 animate-pulse rounded bg-slate-200" />
+                  <div className="h-6 w-20 animate-pulse rounded-full bg-slate-200" />
+                </div>
+                <div className="mt-3 h-3 w-56 animate-pulse rounded bg-slate-100" />
+                <div className="mt-2 h-3 w-40 animate-pulse rounded bg-slate-100" />
+              </div>
+            ))}
+          </div>
+        ) : null}
+
+        {state.status === 'error' ? (
+          <div className="rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">
+            {state.message}
+          </div>
+        ) : null}
+
+        {state.status === 'success' ? (
+          state.runs.length ? (
+            <div className="space-y-3">
+              {state.runs.map((run) => (
+                <article
+                  key={run.id}
+                  className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"
+                >
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-semibold text-slate-900">
+                        Run{' '}
+                        <span className="font-mono text-xs font-semibold text-slate-700">
+                          {run.id}
+                        </span>
+                      </p>
+                      <p className="mt-1 text-xs text-slate-500">
+                        Created {formatTimestamp(run.createdAt)}
+                        {run.modelName ? <span className="text-slate-400"> · </span> : null}
+                        {run.modelName ? (
+                          <span className="text-slate-600">{run.modelName}</span>
+                        ) : null}
+                      </p>
+                    </div>
+                    <Badge className={cn('shrink-0', statusBadgeClass(run.status))}>
+                      {run.status}
+                    </Badge>
+                  </div>
+
+                  {run.errorText ? (
+                    <div className="mt-3 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">
+                      {run.errorText}
+                    </div>
+                  ) : null}
+
+                  <details className="mt-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
+                    <summary className="cursor-pointer select-none text-xs font-semibold text-slate-700">
+                      View JSON
+                    </summary>
+                    <div className="mt-3 grid gap-3 lg:grid-cols-2">
+                      <div className="min-w-0">
+                        <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-600">
+                          Input
+                        </p>
+                        <CodeBlock
+                          code={formatJson(run.inputJson)}
+                          className="mt-2 max-h-[min(18rem,40vh)] border-0 bg-white p-3"
+                        />
+                      </div>
+
+                      <div className="min-w-0">
+                        <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-600">
+                          Output
+                        </p>
+                        {run.outputJson ? (
+                          <CodeBlock
+                            code={formatJson(run.outputJson)}
+                            className="mt-2 max-h-[min(18rem,40vh)] border-0 bg-white p-3"
+                          />
+                        ) : (
+                          <div className="mt-2 rounded-2xl border border-slate-200 bg-white p-3 text-xs text-slate-500">
+                            No output yet.
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </details>
+                </article>
+              ))}
+            </div>
+          ) : (
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-6 text-sm text-slate-600">
+              No previous runs yet.
+            </div>
+          )
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
