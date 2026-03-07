@@ -12,7 +12,7 @@ function App() {
       case 'home':
         return 'Home';
       case 'agents':
-        return 'Agents';
+        return 'All Agents Within the System';
     }
   }, [active]);
 
@@ -21,7 +21,7 @@ function App() {
       case 'home':
         return 'Overview and quick links';
       case 'agents':
-        return 'Manage and launch triage agents';
+        return 'All Agents within the System. View and Inspect them Singularly ';
     }
   }, [active]);
 
@@ -32,7 +32,7 @@ function App() {
         <div className="flex-1">
           <TopBar title={title} subtitle={subtitle} showSearch={active === 'agents'} />
           <main className="p-6">
-            <div className="mx-auto w-full max-w-6xl">
+            <div className="mx-auto w-full">
               {active === 'agents' ? <AgentsPage /> : <HomePage />}
             </div>
           </main>

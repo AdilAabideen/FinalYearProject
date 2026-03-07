@@ -11,7 +11,7 @@ type SidebarProps = {
 
 export function Sidebar({ active, onNavigate }: SidebarProps) {
   const navItemBase =
-    'group relative flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-medium transition focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-500 focus-visible:ring-offset-2 focus-visible:ring-offset-white';
+    'group relative flex w-full items-center gap-3 rounded-xl rounded-l-none px-3 py-2.5 text-left text-sm font-medium transition focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-500 focus-visible:ring-offset-2 focus-visible:ring-offset-white';
   const navItemActive =
     'bg-slate-50 text-slate-900 shadow-sm ring-1 ring-slate-200/60 before:absolute before:left-1 before:top-2 before:bottom-2 before:w-1 before:rounded-full before:bg-teal-600';
   const navItemInactive = 'text-slate-700 hover:bg-slate-50 hover:text-slate-900';
@@ -21,7 +21,7 @@ export function Sidebar({ active, onNavigate }: SidebarProps) {
   const iconInactive = 'opacity-70 group-hover:opacity-100';
 
   return (
-    <aside className="flex w-64 flex-col border-r border-slate-200 bg-white">
+    <aside className="flex w-64 flex-col border-r border-slate-200 bg-white ">
       <div className="flex items-center gap-3 px-4 py-5">
         <img alt="" src={logoPng} className="h-8 w-10 rounded-md" draggable={false} />
         <div className="leading-tight">
