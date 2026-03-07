@@ -11,6 +11,11 @@ export type ListAgentRunsParams = {
 
 export type AgentRunService = {
   listAgentRuns: (params?: ListAgentRunsParams, signal?: AbortSignal) => Promise<AgentRunRead[]>;
+  startAgentRun: (
+    agentName: string,
+    input: Record<string, unknown>,
+    signal?: AbortSignal,
+  ) => Promise<{ runId: string; status: RunStatus }>;
 };
 
 export const agentRunService: AgentRunService = {
@@ -52,5 +57,24 @@ export const agentRunService: AgentRunService = {
       updatedAt: run.updated_at,
     }));
   },
-};
 
+  async startAgentRun(agentName, input, signal) {
+    const response = await fetch(`${API_BASE_URL}/api/agent-runs/start`, {
+      method: 'POST',
+      headers: {
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ agent_name: agentName, input }),
+      signal,
+    });
+
+    if (!response.ok) {
+      const message = await response.text();
+      throw new Error(message || 'Failed to start agent run');
+    }
+
+    const data = (await response.json()) as { run_id: string; status: RunStatus };
+    return { runId: data.run_id, status: data.status };
+  },
+};
