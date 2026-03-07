@@ -54,6 +54,39 @@ function computeRadialPositions(count: number): Point[] {
   return points;
 }
 
+function clamp(value: number, min: number, max: number) {
+  return Math.min(max, Math.max(min, value));
+}
+
+function curvedConnectorPath(from: Point, to: Point, curve: number) {
+  const dx = to.x - from.x;
+  const dy = to.y - from.y;
+  const dist = Math.hypot(dx, dy) || 1;
+
+  const px = -dy / dist;
+  const py = dx / dist;
+
+  const c1 = {
+    x: from.x + dx * 0.28 + px * curve,
+    y: from.y + dy * 0.28 + py * curve,
+  };
+
+  const c2 = {
+    x: from.x + dx * 0.72 + px * curve,
+    y: from.y + dy * 0.72 + py * curve,
+  };
+
+  return `M ${from.x} ${from.y} C ${c1.x} ${c1.y} ${c2.x} ${c2.y} ${to.x} ${to.y}`;
+}
+
+function ConvertToolName(toolName: string) {
+  return toolName
+    .replace(/_/g, ' ')
+    .replace(/\w\S*/g, (txt) => txt.charAt(0).toUpperCase() + txt.slice(1));
+
+}
+
+
 function ToolNode({
   tool,
   active,
@@ -64,36 +97,54 @@ function ToolNode({
   onActiveChange: (active: boolean) => void;
 }) {
   return (
-      <button
-        type="button"
-        className={cn(
-          'group relative w-44 rounded-2xl border bg-white px-3 py-2 text-left shadow-sm transition focus:outline-none focus:ring-4 focus:ring-PrimaryBlue/20 sm:w-48',
-        active ? 'border-PrimaryBlue' : 'border-slate-200 hover:border-PrimaryBlue/70',
+    <button
+      type="button"
+      className={cn(
+        'group relative w-52 rounded-xl z-10 border border-PrimaryBlue bg-white px-3 py-2 text-center shadow-sm transition-all focus:outline-none focus:ring-4 focus:ring-PrimaryBlue/20 sm:w-56 hover:border-2',
+        active && 'border-2',
       )}
       onMouseEnter={() => onActiveChange(true)}
       onMouseLeave={() => onActiveChange(false)}
       onFocus={() => onActiveChange(true)}
       onBlur={() => onActiveChange(false)}
     >
-      <p className="truncate text-xs font-semibold text-slate-900">{tool.name}</p>
-      <p className="mt-1 max-h-8 overflow-hidden text-[11px] leading-snug text-slate-600">
-        {tool.description || '—'}
+      <p className="truncate text-xs font-semibold text-slate-900">{ConvertToolName(tool.name)}</p>
+      <p className="mt-1 max-h-9 overflow-hidden text-[11px] ml-0 leading-snug text-slate-600">
+        {(() => {
+          const sentences = tool.description.split(/[.!?]+/).filter(s => s.trim());
+          const firstOne = sentences.slice(0, 1).join('. ').trim();
+          const words = firstOne.split(/\s+/);
+          if (words.length > 15) {
+            return words.slice(0, 15).join(' ') + '...';
+          }
+          return firstOne + (sentences.length > 1 ? '...' : '');
+        })()}
       </p>
 
       <div className="absolute left-1/2 top-full z-20 mt-2 hidden w-80 -translate-x-1/2 rounded-2xl border border-slate-200 bg-white p-3 shadow-lg group-hover:block group-focus-within:block">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
-            <p className="truncate text-sm font-semibold text-slate-900">{tool.name}</p>
+            <p className="truncate text-sm text-left ml-0 font-semibold text-slate-900">{ConvertToolName(tool.name)}</p>
             {tool.description ? (
-              <p className="mt-0.5 text-xs text-slate-600">{tool.description}</p>
+              <p className="mt-0.5 text-left ml-0 text-xs text-slate-600">
+                {(() => {
+                  const sentences = tool.description.split(/[.!?]+/).filter(s => s.trim());
+                  const firstTwo = sentences.slice(0, 2).join('. ').trim();
+                  const words = firstTwo.split(/\s+/);
+                  if (words.length > 25) {
+                    return words.slice(0, 25).join(' ') + '...';
+                  }
+                  return firstTwo + (sentences.length > 2 ? '...' : '');
+                })()}
+              </p>
             ) : null}
           </div>
-          <Badge className="shrink-0 bg-slate-100 text-slate-700 ring-slate-200">Schema</Badge>
+          <Badge className="shrink-0  ring-slate-200 bg-PrimaryBlue/10 text-PrimaryBlue">Schema</Badge>
         </div>
 
         <CodeBlock
           code={formatJson(tool.argsSchema)}
-          className="mt-3 max-h-56 border-0 bg-slate-50 p-3"
+          className="mt-3 max-h-56 border-0 bg-slate-50 p-1 text-left ml-0"
         />
       </div>
     </button>
@@ -103,46 +154,47 @@ function ToolNode({
 export function AgentDiagram({ agent }: AgentDiagramProps) {
   const [activeToolIndex, setActiveToolIndex] = useState<number | null>(null);
 
-  const positions = useMemo(() => computeRadialPositions(agent.tools.length), [agent.tools.length]);
+  const positions = useMemo(
+    () =>
+      computeRadialPositions(agent.tools.length).map((p) => ({
+        x: clamp(p.x, 10, 90),
+        y: clamp(p.y, 10, 90),
+      })),
+    [agent.tools.length],
+  );
   const inputLabel = useMemo(() => getSchemaLabel(agent.inputSchema), [agent.inputSchema]);
 
   return (
     <div className="relative h-full w-full">
       <div
         aria-hidden="true"
-        className="pointer-events-none absolute inset-0  "
+        className="pointer-events-none absolute inset-0 bg-slate-50 [background-image:radial-gradient(circle_at_1px_1px,rgba(148,163,184,0.35)_1px,transparent_0)] [background-size:18px_18px]"
       />
       <svg
         className="absolute inset-0 h-full w-full"
         viewBox="0 0 100 100"
+        preserveAspectRatio="none"
         aria-hidden="true"
       >
-        <defs>
-          <radialGradient id="agent-diagram-glow" cx="50%" cy="50%" r="60%">
-            <stop offset="0%" stopColor="rgb(var(--PrimaryBlue) / 0.10)" />
-            <stop offset="70%" stopColor="rgb(var(--PrimaryBlue) / 0.02)" />
-            <stop offset="100%" stopColor="rgb(var(--PrimaryBlue) / 0)" />
-          </radialGradient>
-        </defs>
+        {positions.map((p, i) => {
+          const dist = Math.hypot(p.x - 50, p.y - 50) || 1;
+          const curve = (i % 2 === 0 ? 1 : -1) * clamp(8 - dist / 7, 2.5, 6);
+          const d = curvedConnectorPath({ x: 50, y: 50 }, p, curve);
 
-        <circle cx="50" cy="50" r="36" fill="url(#agent-diagram-glow)" />
-
-        {positions.map((p, i) => (
-          <line
-            key={`${p.x}-${p.y}`}
-            x1={50}
-            y1={50}
-            x2={p.x}
-            y2={p.y}
-            className={cn(
-              'transition-colors',
-              activeToolIndex === i ? 'stroke-PrimaryBlue' : 'stroke-slate-200',
-            )}
-            strokeWidth={activeToolIndex === i ? 1.4 : 1}
-          />
-        ))}
-
-        <circle cx="50" cy="50" r="12" className="fill-white stroke-slate-200" strokeWidth={1} />
+          return (
+            <path
+              key={`${p.x}-${p.y}`}
+              d={d}
+              fill="none"
+              strokeLinecap="round"
+              className={cn(
+                'transition-colors',
+                activeToolIndex === i ? 'stroke-PrimaryBlue' : 'stroke-slate-400',
+              )}
+              strokeWidth={activeToolIndex === i ? 1.2 : 0.8}
+            />
+          );
+        })}
       </svg>
 
       <div className="absolute left-1/2 top-1/2 w-56 -translate-x-1/2 -translate-y-1/2 rounded-2xl border border-slate-200 bg-white p-4 text-center shadow-sm">
