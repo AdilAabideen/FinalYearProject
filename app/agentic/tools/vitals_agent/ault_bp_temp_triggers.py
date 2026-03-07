@@ -1,10 +1,13 @@
+from typing import Optional
+
 from langchain.tools import tool
 from pydantic import BaseModel, Field
 
+
 class AdultBPTempTriggersInput(BaseModel):
-    temp_f: float | None = Field(description="The temperature of the patient in Fahrenheit")
-    sbp: float | None = Field(description="The systolic blood pressure of the patient in mmHg")
-    dbp: float | None = Field(description="The diastolic blood pressure of the patient in mmHg")
+    temp_f: Optional[float] = Field(description="The temperature of the patient in Fahrenheit")
+    sbp: Optional[float] = Field(description="The systolic blood pressure of the patient in mmHg")
+    dbp: Optional[float] = Field(description="The diastolic blood pressure of the patient in mmHg")
     symptomatic_context: dict = Field(description="The symptomatic context of the patient in the form of a dictionary with the keys 'chest_pain', 'shortness_of_breath', 'neuro_deficit_or_confusion', 'pregnant_or_postpartum', and 'suspected_infection'")
 
 @tool("adult_bp_temp_triggers", args_schema=AdultBPTempTriggersInput)

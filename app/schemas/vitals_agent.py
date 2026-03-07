@@ -12,8 +12,8 @@ class VitalsAgentInput(BaseModel):
     pain: float
     subject_id: int
     intime: datetime
-    chiefcomplaint: str
     age_years: float
+    chiefcomplaint: str
 
 class RecommendationOutput(BaseModel):
     consider_uptriage: bool = Field(description="Whether the agent recommends uptriage")

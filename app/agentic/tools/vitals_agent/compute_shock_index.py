@@ -1,9 +1,12 @@
+from typing import Optional
+
 from pydantic import BaseModel, Field
 from langchain.tools import tool
 
+
 class ShockIndexInput(BaseModel):
-    hr: float | None = Field(description="The Heart Rate of the Patient | CODE HR")
-    sbp: float | None = Field(description="The Systolic Blood Pressure of the Patient | CODE SBP")
+    hr: Optional[float] = Field(description="The Heart Rate of the Patient | CODE HR")
+    sbp: Optional[float] = Field(description="The Systolic Blood Pressure of the Patient | CODE SBP")
 
 @tool("compute_shock_index", args_schema=ShockIndexInput)
 def compute_shock_index(

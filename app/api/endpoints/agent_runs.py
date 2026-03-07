@@ -4,6 +4,7 @@ import json
 import uuid
 from datetime import datetime
 from time import sleep
+from typing import Optional, Tuple
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request, status
 from fastapi.responses import StreamingResponse
@@ -20,6 +21,7 @@ from app.schemas.agent_runs import (
     AgentRunCreateRequest,
     AgentRunCreateResponse,
     AgentRunRead,
+    RunStatus,
 )
 from app.agentic.registry import get_agent_spec, supported_agent_names
 
@@ -34,7 +36,7 @@ def _safe_text(text: str) -> str:
     return text[:MAX_EVENT_TEXT_LEN] + "…(truncated)"
 
 
-def _try_parse_json(text: str) -> tuple[dict | None, str | None]:
+def _try_parse_json(text: str) -> Tuple[Optional[dict], Optional[str]]:
     stripped = text.strip()
     if not stripped:
         return None, ""
@@ -53,12 +55,12 @@ def _append_event(
     run: AgentRun,
     seq: int,
     event_type: str,
-    node_name: str | None = None,
-    tool_name: str | None = None,
-    tool_call_id: str | None = None,
-    status: str | None = None,
-    payload_json: dict | None = None,
-    payload_text: str | None = None,
+    node_name: Optional[str] = None,
+    tool_name: Optional[str] = None,
+    tool_call_id: Optional[str] = None,
+    status: Optional[str] = None,
+    payload_json: Optional[dict] = None,
+    payload_text: Optional[str] = None,
 ) -> None:
     ev = AgentEvent(
         run_id=run.id,
@@ -88,7 +90,7 @@ def _get_last_seq(db: Session, run_id: str) -> int:
     return int(last) if last is not None else 0
 
 
-def _run_agent_and_persist(db: Session, run: AgentRun, seq: int) -> tuple[int, dict | None]:
+def _run_agent_and_persist(db: Session, run: AgentRun, seq: int) -> Tuple[int, Optional[dict]]:
     try:
         spec = get_agent_spec(run.agent_name)
     except KeyError as e:
@@ -97,7 +99,7 @@ def _run_agent_and_persist(db: Session, run: AgentRun, seq: int) -> tuple[int, d
     agent = spec.build()
     payload = {"messages": [("user", validated_input.model_dump_json())]}
 
-    output_json: dict | None = None
+    output_json: Optional[dict] = None
 
     for mode, data in agent.stream(payload, stream_mode=["updates", "values"]):
         if mode != "updates" or not isinstance(data, dict):
@@ -470,3 +472,32 @@ def execute_agent_run(run_id: str, db: Session = Depends(get_db)):
         )
 
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("", response_model=list[AgentRunRead])
+def list_agent_runs(
+    agent_name: Optional[str] = Query(
+        default=None, description="Optional filter (e.g. 'vitals_agent')."
+    ),
+    status: Optional[RunStatus] = Query(default=None),
+    limit: int = Query(default=100, ge=1, le=1000),
+    offset: int = Query(default=0, ge=0),
+    order: str = Query(default="desc", pattern="^(asc|desc)$"),
+    db: Session = Depends(get_db),
+):
+    stmt = select(AgentRun)
+
+    if agent_name:
+        stmt = stmt.where(AgentRun.agent_name == agent_name)
+    if status:
+        stmt = stmt.where(AgentRun.status == status)
+
+    if order == "asc":
+        stmt = stmt.order_by(AgentRun.created_at.asc(), AgentRun.id.asc())
+    else:
+        stmt = stmt.order_by(AgentRun.created_at.desc(), AgentRun.id.desc())
+
+    stmt = stmt.offset(offset).limit(limit)
+
+    runs = db.execute(stmt).scalars().all()
+    return [AgentRunRead.model_validate(r.__dict__) for r in runs]

@@ -1,3 +1,5 @@
+from typing import Optional
+
 from langchain.tools import tool
 from pydantic import BaseModel, Field
 
@@ -64,7 +66,7 @@ def compute_esi_danger_zone(
     red_reasons = []
     missing_vitals = []
 
-    def classify_upper(vital_name: str, value: float | None, threshold: float):
+    def classify_upper(vital_name: str, value: Optional[float], threshold: float):
         if value is None:
             missing_vitals.append(vital_name)
             return
