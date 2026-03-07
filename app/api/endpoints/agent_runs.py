@@ -5,13 +5,13 @@ import uuid
 from datetime import datetime
 from time import sleep
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request, status
 from fastapi.responses import StreamingResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.config import settings
-from app.database import get_db
+from app.database import SessionLocal, get_db
 from app.models.agent_event import AgentEvent
 from app.models.agent_run import AgentRun
 from app.schemas.agent_runs import (
@@ -78,6 +78,160 @@ def _append_event(
     db.commit()
 
 
+def _get_last_seq(db: Session, run_id: str) -> int:
+    stmt = (
+        select(AgentEvent.seq)
+        .where(AgentEvent.run_id == run_id)
+        .order_by(AgentEvent.seq.desc())
+        .limit(1)
+    )
+    last = db.execute(stmt).scalar_one_or_none()
+    return int(last) if last is not None else 0
+
+
+def _run_vitals_agent_and_persist(db: Session, run: AgentRun, seq: int) -> tuple[int, dict | None]:
+    from app.agentic.agents.vitals_agent import build_vitals_agent
+    from app.schemas.vitals_agent import VitalsAgentInput
+
+    vitals_input = VitalsAgentInput.model_validate(run.input_json)
+    agent = build_vitals_agent()
+    payload = {"messages": [("user", vitals_input.model_dump_json())]}
+
+    output_json: dict | None = None
+
+    for mode, data in agent.stream(payload, stream_mode=["updates", "values"]):
+        if mode != "updates" or not isinstance(data, dict):
+            continue
+
+        for node_name, node_update in data.items():
+            if not isinstance(node_update, dict):
+                continue
+            messages = node_update.get("messages")
+            if not isinstance(messages, list):
+                continue
+
+            for msg in messages:
+                tool_calls = getattr(msg, "tool_calls", None) or []
+                if tool_calls:
+                    for tc in tool_calls:
+                        if not isinstance(tc, dict):
+                            continue
+                        seq += 1
+                        _append_event(
+                            db=db,
+                            run=run,
+                            seq=seq,
+                            event_type="tool_call",
+                            node_name=node_name,
+                            tool_name=tc.get("name"),
+                            tool_call_id=tc.get("id"),
+                            payload_json={"args": tc.get("args")},
+                        )
+
+                tool_name = getattr(msg, "name", None)
+                tool_call_id = getattr(msg, "tool_call_id", None)
+                tool_status = getattr(msg, "status", None)
+                content = (getattr(msg, "content", "") or "").strip()
+
+                if tool_name and tool_call_id:
+                    seq += 1
+                    parsed, raw = _try_parse_json(content)
+                    event_type = "thought" if tool_name == "log_thought" else "tool_result"
+                    _append_event(
+                        db=db,
+                        run=run,
+                        seq=seq,
+                        event_type=event_type,
+                        node_name=node_name,
+                        tool_name=tool_name,
+                        tool_call_id=tool_call_id,
+                        status=tool_status,
+                        payload_json={"result": parsed} if parsed is not None else None,
+                        payload_text=raw,
+                    )
+
+                if content and not tool_name:
+                    parsed, raw = _try_parse_json(content)
+                    seq += 1
+                    _append_event(
+                        db=db,
+                        run=run,
+                        seq=seq,
+                        event_type="assistant",
+                        node_name=node_name,
+                        payload_json=parsed,
+                        payload_text=raw,
+                    )
+                    if parsed is not None:
+                        output_json = parsed
+
+    return seq, output_json
+
+
+def _execute_run_in_background(run_id: str) -> None:
+    db = SessionLocal()
+    try:
+        run = db.get(AgentRun, run_id)
+        if run is None:
+            return
+        if run.status != "running":
+            return
+
+        seq = _get_last_seq(db, run_id)
+
+        try:
+            if run.agent_name != "vitals_agent":
+                raise RuntimeError(f"Unsupported agent_name '{run.agent_name}'")
+
+            seq, output_json = _run_vitals_agent_and_persist(db, run, seq)
+
+            now = datetime.utcnow()
+            run.status = "succeeded"
+            run.output_json = output_json
+            run.finished_at = now
+            run.updated_at = now
+            db.add(run)
+            db.commit()
+
+            seq += 1
+            _append_event(
+                db=db,
+                run=run,
+                seq=seq,
+                event_type="run_end",
+                payload_json={"status": run.status},
+            )
+        except Exception as e:
+            now = datetime.utcnow()
+            run.status = "failed"
+            run.error_text = str(e)
+            run.finished_at = now
+            run.updated_at = now
+            db.add(run)
+            db.commit()
+
+            seq += 1
+            _append_event(
+                db=db,
+                run=run,
+                seq=seq,
+                event_type="error",
+                status="error",
+                payload_text=str(e),
+            )
+
+            seq += 1
+            _append_event(
+                db=db,
+                run=run,
+                seq=seq,
+                event_type="run_end",
+                payload_json={"status": run.status},
+            )
+    finally:
+        db.close()
+
+
 @router.post("", response_model=AgentRunCreateResponse)
 def create_agent_run(payload: AgentRunCreateRequest, db: Session = Depends(get_db)):
     if payload.agent_name not in SUPPORTED_AGENTS:
@@ -103,6 +257,46 @@ def create_agent_run(payload: AgentRunCreateRequest, db: Session = Depends(get_d
     db.commit()
 
     return AgentRunCreateResponse(run_id=run_id, status="created")
+
+
+@router.post("/start", response_model=AgentRunCreateResponse)
+def start_agent_run(
+    payload: AgentRunCreateRequest,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+):
+    if payload.agent_name not in SUPPORTED_AGENTS:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Unsupported agent_name '{payload.agent_name}'. Supported: {sorted(SUPPORTED_AGENTS)}",
+        )
+
+    run_id = str(uuid.uuid4())
+    now = datetime.utcnow()
+    run = AgentRun(
+        id=run_id,
+        agent_name=payload.agent_name,
+        status="running",
+        model_name=settings.OPENAI_MODEL,
+        input_json=payload.input,
+        started_at=now,
+        finished_at=None,
+        created_at=now,
+        updated_at=now,
+    )
+    db.add(run)
+    db.commit()
+
+    _append_event(
+        db=db,
+        run=run,
+        seq=1,
+        event_type="run_start",
+        payload_json={"input": run.input_json},
+    )
+
+    background_tasks.add_task(_execute_run_in_background, run_id)
+    return AgentRunCreateResponse(run_id=run_id, status="running")
 
 
 @router.get("/{run_id}", response_model=AgentRunRead)
@@ -139,6 +333,7 @@ def list_agent_events(
 @router.get("/{run_id}/events/stream")
 def stream_agent_events(
     run_id: str,
+    request: Request,
     after_seq: int = Query(default=0, ge=0),
     poll_interval_s: float = Query(default=0.25, ge=0.05, le=5.0),
     db: Session = Depends(get_db),
@@ -147,9 +342,18 @@ def stream_agent_events(
     if run is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Run not found")
 
+    last_event_id = request.headers.get("Last-Event-ID")
+    if last_event_id:
+        try:
+            after_seq = max(after_seq, int(last_event_id))
+        except ValueError:
+            pass
+
     def _event_stream():
         nonlocal after_seq
         last_heartbeat = datetime.utcnow()
+
+        yield "retry: 1000\n\n"
 
         while True:
             db.rollback()
@@ -165,7 +369,7 @@ def stream_agent_events(
                 for ev in events:
                     item = AgentEventRead.model_validate(ev.__dict__).model_dump(mode="json")
                     after_seq = max(after_seq, item["seq"])
-                    yield f"event: agent_event\ndata: {json.dumps(item, ensure_ascii=False)}\n\n"
+                    yield f"id: {item['seq']}\nevent: agent_event\ndata: {json.dumps(item, ensure_ascii=False)}\n\n"
 
             run_row = db.get(AgentRun, run_id)
             is_terminal = run_row is not None and run_row.status in {"succeeded", "failed", "canceled"}
@@ -180,7 +384,12 @@ def stream_agent_events(
 
             sleep(poll_interval_s)
 
-    return StreamingResponse(_event_stream(), media_type="text/event-stream")
+    headers = {
+        "Cache-Control": "no-cache",
+        "Connection": "keep-alive",
+        "X-Accel-Buffering": "no",
+    }
+    return StreamingResponse(_event_stream(), media_type="text/event-stream", headers=headers)
 
 
 @router.post("/{run_id}/execute")
@@ -217,80 +426,7 @@ def execute_agent_run(run_id: str, db: Session = Depends(get_db)):
                 detail=f"Unsupported agent_name '{run.agent_name}'",
             )
 
-        from app.agentic.agents.vitals_agent import build_vitals_agent
-        from app.schemas.vitals_agent import VitalsAgentInput
-
-        vitals_input = VitalsAgentInput.model_validate(run.input_json)
-        agent = build_vitals_agent()
-        payload = {"messages": [("user", vitals_input.model_dump_json())]}
-
-        output_json: dict | None = None
-
-        for mode, data in agent.stream(payload, stream_mode=["updates", "values"]):
-            if mode != "updates" or not isinstance(data, dict):
-                continue
-
-            for node_name, node_update in data.items():
-                if not isinstance(node_update, dict):
-                    continue
-                messages = node_update.get("messages")
-                if not isinstance(messages, list):
-                    continue
-
-                for msg in messages:
-                    tool_calls = getattr(msg, "tool_calls", None) or []
-                    if tool_calls:
-                        for tc in tool_calls:
-                            if not isinstance(tc, dict):
-                                continue
-                            seq += 1
-                            _append_event(
-                                db=db,
-                                run=run,
-                                seq=seq,
-                                event_type="tool_call",
-                                node_name=node_name,
-                                tool_name=tc.get("name"),
-                                tool_call_id=tc.get("id"),
-                                payload_json={"args": tc.get("args")},
-                            )
-
-                    tool_name = getattr(msg, "name", None)
-                    tool_call_id = getattr(msg, "tool_call_id", None)
-                    tool_status = getattr(msg, "status", None)
-                    content = (getattr(msg, "content", "") or "").strip()
-
-                    if tool_name and tool_call_id:
-                        seq += 1
-                        parsed, raw = _try_parse_json(content)
-                        event_type = "thought" if tool_name == "log_thought" else "tool_result"
-                        _append_event(
-                            db=db,
-                            run=run,
-                            seq=seq,
-                            event_type=event_type,
-                            node_name=node_name,
-                            tool_name=tool_name,
-                            tool_call_id=tool_call_id,
-                            status=tool_status,
-                            payload_json={"result": parsed} if parsed is not None else None,
-                            payload_text=raw,
-                        )
-
-                    if content and not tool_name:
-                        parsed, raw = _try_parse_json(content)
-                        seq += 1
-                        _append_event(
-                            db=db,
-                            run=run,
-                            seq=seq,
-                            event_type="assistant",
-                            node_name=node_name,
-                            payload_json=parsed,
-                            payload_text=raw,
-                        )
-                        if parsed is not None:
-                            output_json = parsed
+        seq, output_json = _run_vitals_agent_and_persist(db, run, seq)
 
         now = datetime.utcnow()
         run.status = "succeeded"
