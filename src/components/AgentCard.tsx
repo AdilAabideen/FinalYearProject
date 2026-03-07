@@ -1,4 +1,7 @@
 import arrowRightIcon from '../assets/figma/icon-arrow-right.png';
+import { Badge } from './ui/Badge';
+import { IconButton } from './ui/IconButton';
+import { StatChip } from './ui/StatChip';
 
 type AgentCardProps = {
   title: string;
@@ -8,21 +11,25 @@ type AgentCardProps = {
 
 export function AgentCard({ title, toolsCount, testCasesCount }: AgentCardProps) {
   return (
-    <div className="flex w-full max-w-sm flex-col justify-between rounded-2xl border-2 border-neutral-200 bg-neutral-100 p-4 shadow-sm">
-      <div>
-        <h2 className="text-xl font-medium">{title}</h2>
-        <div className="mt-1 text-sm font-light text-neutral-700">
-          <p>Tools - {toolsCount}</p>
-          <p>Test Cases - {testCasesCount}</p>
-        </div>
+    <div className="group flex w-full max-w-sm flex-col rounded-2xl border border-slate-200 border-t-4 border-t-PrimaryBlue bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md">
+      <div className="flex items-start justify-between gap-4">
+        <h2 className="text-xl font-semibold text-slate-900">{title}</h2>
+        <Badge>Ready</Badge>
       </div>
-      <button
-        type="button"
-        className="ml-auto mt-4 inline-flex h-10 w-10 items-center justify-center rounded-lg bg-white shadow-sm ring-1 ring-neutral-200 transition hover:bg-neutral-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-black/20"
-        aria-label={`Open ${title}`}
-      >
-        <img alt="" src={arrowRightIcon} className="h-5 w-5 object-contain" draggable={false} />
-      </button>
+
+      <div className="mt-4 flex flex-wrap gap-2">
+        <StatChip value={toolsCount} label="Tools" />
+        <StatChip value={testCasesCount} label="Test Cases" />
+      </div>
+
+      <IconButton className="ml-auto mt-6" aria-label={`Open ${title}`}>
+        <img
+          alt=""
+          src={arrowRightIcon}
+          className="h-5 w-5 object-contain invert transition-transform group-hover:translate-x-0.5"
+          draggable={false}
+        />
+      </IconButton>
     </div>
   );
 }
