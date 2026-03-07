@@ -20,7 +20,7 @@ export function AgentDetailSplitView({ agent }: AgentDetailSplitViewProps) {
       </section>
 
       <section className="min-h-0   bg-white p-4 shadow-sm">
-        <AgentTab />
+        <AgentTab agent={agent} />
       </section>
     </div>
   );

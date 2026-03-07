@@ -1,5 +1,6 @@
 import { useId, useRef, useState } from 'react';
 import { cn } from '../../lib/cn';
+import type { AgentCatalogDetail } from '../../types/agents';
 import RunAgentTab from './RunAgentTab';
 
 type TabKey = 'run' | 'previous' | 'tests';
@@ -10,7 +11,11 @@ const tabs: Array<{ key: TabKey; label: string }> = [
   { key: 'tests', label: 'Test Cases' },
 ];
 
-export default function AgentTab() {
+type AgentTabProps = {
+  agent: AgentCatalogDetail;
+};
+
+export default function AgentTab({ agent }: AgentTabProps) {
   const baseId = useId();
   const [activeTab, setActiveTab] = useState<TabKey>('run');
   const tabRefs = useRef<Record<TabKey, HTMLButtonElement | null>>({
@@ -91,7 +96,7 @@ export default function AgentTab() {
           hidden={activeTab !== 'run'}
           className="h-full overflow-auto"
         >
-          <RunAgentTab />
+          <RunAgentTab key={agent.name} agent={agent} />
         </div>
 
         <div
@@ -123,4 +128,3 @@ export default function AgentTab() {
     </div>
   );
 }
-
