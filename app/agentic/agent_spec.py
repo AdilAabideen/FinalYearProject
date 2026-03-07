@@ -1,0 +1,27 @@
+from __future__ import annotations
+
+from dataclasses import dataclass
+from typing import Any, Callable, Sequence, Type
+
+from langchain_core.tools import BaseTool
+from pydantic import BaseModel
+
+
+@dataclass(frozen=True)
+class AgentSpec:
+    """
+    Single source of truth for an agent's:
+    - identity (name/title/description)
+    - validated input schema (Pydantic model)
+    - available tools (LangChain tools)
+    - build function (returns a runnable/graph you can invoke/stream)
+    """
+
+    name: str
+    title: str
+    description: str
+    input_model: Type[BaseModel]
+    tools: Sequence[BaseTool]
+    build: Callable[[], Any]
+    output_model: Type[BaseModel] | None = None
+

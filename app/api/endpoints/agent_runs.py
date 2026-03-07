@@ -21,10 +21,9 @@ from app.schemas.agent_runs import (
     AgentRunCreateResponse,
     AgentRunRead,
 )
+from app.agentic.registry import get_agent_spec, supported_agent_names
 
 router = APIRouter()
-
-SUPPORTED_AGENTS = {"vitals_agent"}
 
 MAX_EVENT_TEXT_LEN = 50_000
 
@@ -89,13 +88,14 @@ def _get_last_seq(db: Session, run_id: str) -> int:
     return int(last) if last is not None else 0
 
 
-def _run_vitals_agent_and_persist(db: Session, run: AgentRun, seq: int) -> tuple[int, dict | None]:
-    from app.agentic.agents.vitals_agent import build_vitals_agent
-    from app.schemas.vitals_agent import VitalsAgentInput
-
-    vitals_input = VitalsAgentInput.model_validate(run.input_json)
-    agent = build_vitals_agent()
-    payload = {"messages": [("user", vitals_input.model_dump_json())]}
+def _run_agent_and_persist(db: Session, run: AgentRun, seq: int) -> tuple[int, dict | None]:
+    try:
+        spec = get_agent_spec(run.agent_name)
+    except KeyError as e:
+        raise RuntimeError(f"Unsupported agent_name '{run.agent_name}'") from e
+    validated_input = spec.input_model.model_validate(run.input_json)
+    agent = spec.build()
+    payload = {"messages": [("user", validated_input.model_dump_json())]}
 
     output_json: dict | None = None
 
@@ -180,10 +180,7 @@ def _execute_run_in_background(run_id: str) -> None:
         seq = _get_last_seq(db, run_id)
 
         try:
-            if run.agent_name != "vitals_agent":
-                raise RuntimeError(f"Unsupported agent_name '{run.agent_name}'")
-
-            seq, output_json = _run_vitals_agent_and_persist(db, run, seq)
+            seq, output_json = _run_agent_and_persist(db, run, seq)
 
             now = datetime.utcnow()
             run.status = "succeeded"
@@ -234,10 +231,11 @@ def _execute_run_in_background(run_id: str) -> None:
 
 @router.post("", response_model=AgentRunCreateResponse)
 def create_agent_run(payload: AgentRunCreateRequest, db: Session = Depends(get_db)):
-    if payload.agent_name not in SUPPORTED_AGENTS:
+    supported = supported_agent_names()
+    if payload.agent_name not in supported:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Unsupported agent_name '{payload.agent_name}'. Supported: {sorted(SUPPORTED_AGENTS)}",
+            detail=f"Unsupported agent_name '{payload.agent_name}'. Supported: {sorted(supported)}",
         )
 
     run_id = str(uuid.uuid4())
@@ -265,10 +263,11 @@ def start_agent_run(
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
 ):
-    if payload.agent_name not in SUPPORTED_AGENTS:
+    supported = supported_agent_names()
+    if payload.agent_name not in supported:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Unsupported agent_name '{payload.agent_name}'. Supported: {sorted(SUPPORTED_AGENTS)}",
+            detail=f"Unsupported agent_name '{payload.agent_name}'. Supported: {sorted(supported)}",
         )
 
     run_id = str(uuid.uuid4())
@@ -420,13 +419,7 @@ def execute_agent_run(run_id: str, db: Session = Depends(get_db)):
     )
 
     try:
-        if run.agent_name != "vitals_agent":
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Unsupported agent_name '{run.agent_name}'",
-            )
-
-        seq, output_json = _run_vitals_agent_and_persist(db, run, seq)
+        seq, output_json = _run_agent_and_persist(db, run, seq)
 
         now = datetime.utcnow()
         run.status = "succeeded"

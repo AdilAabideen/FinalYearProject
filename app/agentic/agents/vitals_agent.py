@@ -18,6 +18,17 @@ from app.agentic.tools.log_thought import log_thought
 
 from app.schemas.vitals_agent import VitalsAgentOutput
 
+from app.agentic.agent_spec import AgentSpec
+
+
+TOOLS = [
+    get_vitals_confounders,
+    compute_esi_danger_zone,
+    compute_shock_index,
+    adult_bp_temp_triggers,
+    log_thought,
+]
+
 def build_vitals_agent():
     """
     Build Simple React Agent for Vital Signs Analysis
@@ -25,13 +36,24 @@ def build_vitals_agent():
     try:
         agent = create_react_agent(
             model=get_chat_model(),
-            tools=[get_vitals_confounders, compute_esi_danger_zone, compute_shock_index, adult_bp_temp_triggers, log_thought],
+            tools=TOOLS,
             prompt=SYSTEM_PROMPT,
             response_format=VitalsAgentOutput,
         )
         return agent
     except Exception as e:
         raise Exception(f"Error building vitals agent: {e}")
+
+
+VITALS_AGENT_SPEC = AgentSpec(
+    name="vitals_agent",
+    title="Vitals Agent",
+    description="Analyzes patient vital signs and produces an uptriage recommendation with confidence.",
+    input_model=VitalsAgentInput,
+    output_model=VitalsAgentOutput,
+    tools=TOOLS,
+    build=build_vitals_agent,
+)
 
 
 def _maybe_pretty_json(text: str) -> str:
