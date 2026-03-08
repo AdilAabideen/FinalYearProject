@@ -5,6 +5,7 @@ import type { AgentRunRead } from '../../types/agentRuns';
 import { AgentRunReview } from './AgentRunReview';
 import { Badge } from '../ui/Badge';
 import { JsonInspector } from '../ui/JsonInspector';
+import { IoIosRefresh } from 'react-icons/io';
 
 type PreviousRunsProps = {
   agentName: string;
@@ -46,30 +47,30 @@ export default function PreviousRuns({ agentName }: PreviousRunsProps) {
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
 
+  async function loadRuns(ac: AbortController) {
+    setState({ status: 'loading' });
+    try {
+      const runs = await agentRunService.listAgentRuns(
+        { agentName, limit: 50, offset: 0, order: 'desc' },
+        ac.signal,
+      );
+      if (ac.signal.aborted) return;
+      setState({ status: 'success', runs });
+    } catch (e: unknown) {
+      if (ac.signal.aborted) return;
+      setState({
+        status: 'error',
+        message: e instanceof Error ? e.message : 'Failed to load runs',
+      });
+    }
+  }
+
   useEffect(() => {
     abortRef.current?.abort();
     const ac = new AbortController();
     abortRef.current = ac;
 
-    async function loadRuns() {
-      setState({ status: 'loading' });
-      try {
-        const runs = await agentRunService.listAgentRuns(
-          { agentName, limit: 50, offset: 0, order: 'desc' },
-          ac.signal,
-        );
-        if (ac.signal.aborted) return;
-        setState({ status: 'success', runs });
-      } catch (e: unknown) {
-        if (ac.signal.aborted) return;
-        setState({
-          status: 'error',
-          message: e instanceof Error ? e.message : 'Failed to load runs',
-        });
-      }
-    }
-
-    loadRuns();
+    loadRuns(ac);
 
     return () => ac.abort();
   }, [agentName]);
@@ -94,11 +95,21 @@ export default function PreviousRuns({ agentName }: PreviousRunsProps) {
               <h3 className="text-sm font-semibold text-slate-900">Previous Runs</h3>
               <p className="mt-1 text-sm text-slate-600">Review prior agent runs and outputs.</p>
             </div>
-            {headerSuffix ? (
-              <Badge className="shrink-0 bg-slate-100 text-slate-700 ring-slate-200">
-                {headerSuffix}
-              </Badge>
-            ) : null}
+            <div className="flex items-center gap-2">
+              {headerSuffix ? (
+                <Badge className="shrink-0 bg-slate-100 text-slate-700 ring-slate-200">
+                  {headerSuffix}
+                </Badge>
+              ) : null}
+              <button type="button" onClick={() => {
+                loadRuns(abortRef.current ?? new AbortController());
+              }}>
+                <Badge className=" hover:scale-[1.01] transition-all duration-300 cursor-pointer shrink-0 bg-PrimaryBlue/10 text-PrimaryBlue ring-PrimaryBlue/20 flex items-center gap-1">
+                  <IoIosRefresh className="size-4 mb-[2px]" />
+                  <span className="mt-[2px]">Refresh</span>
+                </Badge>
+              </button>
+            </div>
           </div>
 
           <div className="mt-4 min-h-0 flex-1">
