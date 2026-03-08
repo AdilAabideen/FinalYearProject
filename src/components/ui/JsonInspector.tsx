@@ -141,7 +141,7 @@ function renderValue(value: unknown, opts: RenderOptions): ReactNode {
 }
 
 export function JsonInspector({ value, className, maxDepth = 6 }: JsonInspectorProps) {
-  console.log('value', value);
+
   const ancestors = isContainer(value) ? [value as object] : [];
   return (
     <div className={cn('space-y-1 text-xs', className)}>
