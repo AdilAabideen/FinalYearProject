@@ -34,7 +34,7 @@ export default function AgentTestCases({ agentName }: AgentTestCasesProps) {
   const [runError, setRunError] = useState<string | null>(null);
   const [lastRunId, setLastRunId] = useState<string | null>(null);
   const [runDrawerOpen, setRunDrawerOpen] = useState(false);
-  const [lastRunCaseIds, setLastRunCaseIds] = useState<string[]>([]);
+  const [lastRunCases, setLastRunCases] = useState<AgentTestCaseRead[]>([]);
   const abortRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
@@ -108,7 +108,12 @@ export default function AgentTestCases({ agentName }: AgentTestCasesProps) {
     setRunBusy(true);
 
     const idsToRun = selectedIds.size ? Array.from(selectedIds) : state.cases.map((c) => c.id);
-    setLastRunCaseIds(idsToRun);
+    const byId = new Map(state.cases.map((c) => [c.id, c]));
+    setLastRunCases(
+      idsToRun
+        .map((id) => byId.get(id))
+        .filter((c): c is AgentTestCaseRead => c != null),
+    );
 
     try {
       const run = await agentTestService.startTestRun(agentName, idsToRun);
@@ -177,7 +182,8 @@ export default function AgentTestCases({ agentName }: AgentTestCasesProps) {
                       </th>
                       <th
                         className={cn(
-                          'sticky  border-b border-slate-200 px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-600',
+                          'sticky z-30 border-b border-slate-200 px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-600',
+                          stickyIdLeft,
                           'w-[18rem] min-w-[18rem] bg-slate-50',
                         )}
                       >
@@ -245,7 +251,8 @@ export default function AgentTestCases({ agentName }: AgentTestCasesProps) {
                           </td>
                           <td
                             className={cn(
-                              'sticky border-b border-slate-100 px-3 py-2 font-mono text-[11px] text-slate-700',
+                              'sticky z-20 border-b border-slate-100 px-3 py-2 font-mono text-[11px] text-slate-700',
+                              stickyIdLeft,
                               'w-[18rem] min-w-[18rem] max-w-[18rem]',
                               stickyBodyBg(rowSelected),
                             )}
@@ -300,8 +307,19 @@ export default function AgentTestCases({ agentName }: AgentTestCasesProps) {
         ) : null}
       </div>
 
-      <SlidingModal open={runDrawerOpen} title="Test Run" onClose={() => setRunDrawerOpen(false)} widthClassName="w-[80%]">
-        <p>Hello</p>
+      <SlidingModal
+        open={runDrawerOpen}
+        title="Test Harness"
+        onClose={() => setRunDrawerOpen(false)}
+        widthClassName="w-[80%]"
+      >
+        <AgentTestRunDrawer
+          agentName={agentName}
+          runId={lastRunId}
+          selectedCases={lastRunCases}
+          busy={runBusy}
+          error={runError}
+        />
       </SlidingModal>
     </div>
   );
