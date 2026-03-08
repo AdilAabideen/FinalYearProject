@@ -2,11 +2,10 @@ import { useId, useState } from 'react';
 import type { AgentCatalogDetail } from '../../types/agents';
 import { agentRunService } from '../../services/agentRunService';
 import { cn } from '../../lib/cn';
-import { formatJson } from '../../lib/formatJson';
 import { AgentInputForm } from './AgentInputForm';
 import { AgentTracesComponent } from './AgentTracesComponent';
 import { SegmentedTabs } from '../ui/SegmentedTabs';
-import { CodeBlock } from '../ui/CodeBlock';
+import { JsonInspector } from '../ui/JsonInspector';
 
 type OutputTabKey = 'traces' | 'results';
 
@@ -301,7 +300,9 @@ export default function RunAgentTab({ agent }: RunAgentTabProps) {
                     {runError}
                   </div>
                 ) : runOutput ? (
-                  <CodeBlock code={formatJson(runOutput)} className="mt-3 max-h-[min(28rem,60vh)]" />
+                  <div className="mt-3 max-h-[min(28rem,60vh)] overflow-auto rounded-2xl border border-slate-200 bg-slate-50 p-3">
+                    <JsonInspector value={runOutput} />
+                  </div>
                 ) : runStatus && runStatus.toLowerCase().includes('run') ? (
                   <p className="mt-2 text-sm text-slate-600">Waiting for the run to finish…</p>
                 ) : (

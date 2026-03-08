@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { API_BASE_URL } from '../../config/env';
-import { formatJson } from '../../lib/formatJson';
-import { CodeBlock } from '../ui/CodeBlock';
+import { JsonInspector } from '../ui/JsonInspector';
 
 type AgentTracesComponentProps = {
   runId: string;
@@ -35,7 +34,7 @@ type TraceEntry =
       kind: 'action';
       toolName: string;
       status: ToolStatus;
-      output: string;
+      output: unknown;
     };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -91,10 +90,18 @@ function classifyStatus(status: string | undefined): ToolStatus {
   return 'unknown';
 }
 
-function getToolOutput(payload: AgentEventPayload) {
-  if (payload.payload_json != null) return formatJson(payload.payload_json);
-  if (payload.payload_text != null) return payload.payload_text;
-  return '';
+function tryParseJson(value: string) {
+  try {
+    return JSON.parse(value) as unknown;
+  } catch {
+    return value;
+  }
+}
+
+function getToolOutputValue(payload: AgentEventPayload) {
+  if (payload.payload_json != null) return payload.payload_json;
+  if (payload.payload_text != null) return tryParseJson(payload.payload_text);
+  return null;
 }
 
 function StatusBadge({ status }: { status: ToolStatus }) {
@@ -115,15 +122,24 @@ function StatusBadge({ status }: { status: ToolStatus }) {
   );
 }
 
-function OutputHoverBadge({ output }: { output: string }) {
+function OutputHoverBadge({ value }: { value: unknown }) {
+  const hasValue =
+    value != null && (typeof value !== 'string' || value.trim().length > 0);
+
   return (
-    <span className="group relative inline-flex">
+    <span className="group relative inline-flex ">
       <span className="inline-flex cursor-default items-center rounded-full bg-sky-50 px-2.5 py-1 text-xs font-semibold text-sky-700 ring-1 ring-sky-200">
         Output
       </span>
 
-      <div className="absolute left-0 top-full z-20 mt-2 hidden w-[min(40rem,92vw)] max-w-[92vw] rounded-2xl border border-slate-200 bg-white p-3 shadow-xl group-hover:block group-focus-within:block">
-        <CodeBlock code={output || 'No output'} className="max-h-80 border-0 bg-slate-50 p-3" />
+      <div className="absolute left-0 top-full z-20 mt-2 hidden w-140 rounded-2xl border border-slate-200 bg-white p-3 shadow-xl group-hover:block group-focus-within:block">
+        {hasValue ? (
+          <div className="max-h-80 overflow-auto rounded-2xl border border-slate-200 bg-slate-50 p-3">
+            <JsonInspector value={value} />
+          </div>
+        ) : (
+          <p className="text-xs text-slate-500">No output.</p>
+        )}
       </div>
     </span>
   );
@@ -181,8 +197,10 @@ export function AgentTracesComponent({ runId, onDone }: AgentTracesComponentProp
       if (payload.event_type !== 'tool_result' && payload.event_type !== 'thought') return;
       if (!payload.tool_name) return;
 
-      const output = getToolOutput(payload);
+      const output = getToolOutputValue(payload);
       const status = classifyStatus(payload.status);
+
+      const hasOutput = output != null && (typeof output !== 'string' || output.trim().length > 0);
 
       entryIdRef.current += 1;
       const idSuffix = event.lastEventId ? `${event.lastEventId}` : `evt-${Date.now()}`;
@@ -195,7 +213,7 @@ export function AgentTracesComponent({ runId, onDone }: AgentTracesComponentProp
         return;
       }
 
-      if (!output.trim() && status === 'unknown') return;
+      if (!hasOutput && status === 'unknown') return;
 
       setEntries((prev) => [
         ...prev,
@@ -204,7 +222,7 @@ export function AgentTracesComponent({ runId, onDone }: AgentTracesComponentProp
           kind: 'action',
           toolName: payload.tool_name ?? 'Tool',
           status,
-          output: output || 'No output',
+          output,
         },
       ]);
     } catch {
@@ -259,7 +277,7 @@ export function AgentTracesComponent({ runId, onDone }: AgentTracesComponentProp
                   </p>
                   <div className="flex flex-wrap items-center gap-2">
                     <StatusBadge status={entry.status} />
-                    <OutputHoverBadge output={entry.output} />
+                    <OutputHoverBadge value={entry.output} />
                   </div>
                 </div>
               );
