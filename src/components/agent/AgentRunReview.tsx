@@ -358,19 +358,7 @@ export function AgentRunReview({ runId, onBack }: AgentRunReviewProps) {
                       );
                     }
 
-                    return (
-                      <div key={entry.id} className="space-y-2">
-                        <p className="text-xs font-semibold tracking-wide text-slate-900">EVENT</p>
-                        <p className="text-sm font-semibold text-slate-800">{entry.title}</p>
-                        <div className="flex flex-wrap items-center gap-2">
-                          <StatusBadge status={entry.status} />
-                          <OutputHoverBadge value={entry.payload} />
-                          <span className="text-xs font-semibold text-slate-500">
-                            {entry.eventType}
-                          </span>
-                        </div>
-                      </div>
-                    );
+                    
                   })}
                 </div>
               ) : (
