@@ -2,6 +2,8 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { cn } from '../../lib/cn';
 import { agentTestService } from '../../services/agentTestService';
 import type { AgentTestCaseRead } from '../../types/agentTests';
+import { SlidingModal } from '../ui/SlidingModal';
+import AgentTestRunDrawer from './AgentTestRunDrawer';
 
 type AgentTestCasesProps = {
   agentName: string;
@@ -31,6 +33,8 @@ export default function AgentTestCases({ agentName }: AgentTestCasesProps) {
   const [runBusy, setRunBusy] = useState(false);
   const [runError, setRunError] = useState<string | null>(null);
   const [lastRunId, setLastRunId] = useState<string | null>(null);
+  const [runDrawerOpen, setRunDrawerOpen] = useState(false);
+  const [lastRunCaseIds, setLastRunCaseIds] = useState<string[]>([]);
   const abortRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
@@ -98,11 +102,13 @@ export default function AgentTestCases({ agentName }: AgentTestCasesProps) {
 
   async function handleRun() {
     if (state.status !== 'success') return;
+    setRunDrawerOpen(true);
     setRunError(null);
     setLastRunId(null);
     setRunBusy(true);
 
     const idsToRun = selectedIds.size ? Array.from(selectedIds) : state.cases.map((c) => c.id);
+    setLastRunCaseIds(idsToRun);
 
     try {
       const run = await agentTestService.startTestRun(agentName, idsToRun);
@@ -119,7 +125,7 @@ export default function AgentTestCases({ agentName }: AgentTestCasesProps) {
   const stickyIdLeft = 'left-[19rem]';
 
   function stickyBodyBg(rowSelected: boolean) {
-    return rowSelected ? 'bg-PrimaryBlue/10' : 'bg-white group-hover:bg-slate-50/80';
+    return rowSelected ? 'bg-[#E6EFF8]' : 'bg-white group-hover:bg-slate-50';
   }
 
   return (
@@ -172,7 +178,6 @@ export default function AgentTestCases({ agentName }: AgentTestCasesProps) {
                       <th
                         className={cn(
                           'sticky  border-b border-slate-200 px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-600',
-
                           'w-[18rem] min-w-[18rem] bg-slate-50',
                         )}
                       >
@@ -208,8 +213,8 @@ export default function AgentTestCases({ agentName }: AgentTestCasesProps) {
                           className={cn(
                             'group',
                             rowSelected
-                              ? 'bg-PrimaryBlue/10 hover:bg-PrimaryBlue/10'
-                              : 'bg-white hover:bg-slate-50/80',
+                              ? 'bg-[#E6EFF8] hover:bg-[#E6EFF8]'
+                              : 'bg-white hover:bg-slate-50',
                           )}
                         >
                           <td
@@ -240,7 +245,7 @@ export default function AgentTestCases({ agentName }: AgentTestCasesProps) {
                           </td>
                           <td
                             className={cn(
-                              'sticky  border-b border-slate-100 px-3 py-2 font-mono text-[11px] text-slate-700',
+                              'sticky border-b border-slate-100 px-3 py-2 font-mono text-[11px] text-slate-700',
                               'w-[18rem] min-w-[18rem] max-w-[18rem]',
                               stickyBodyBg(rowSelected),
                             )}
@@ -276,19 +281,6 @@ export default function AgentTestCases({ agentName }: AgentTestCasesProps) {
                 </table>
               </div>
 
-              {runError ? (
-                <div className="mt-4 rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">
-                  {runError}
-                </div>
-              ) : null}
-
-              {lastRunId ? (
-                <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-4 text-sm text-slate-700">
-                  Started test run{' '}
-                  <span className="font-mono text-xs font-semibold text-slate-900">{lastRunId}</span>
-                </div>
-              ) : null}
-
               <div className="mt-4 flex items-center justify-end">
                 <button
                   type="button"
@@ -307,6 +299,10 @@ export default function AgentTestCases({ agentName }: AgentTestCasesProps) {
           )
         ) : null}
       </div>
+
+      <SlidingModal open={runDrawerOpen} title="Test Run" onClose={() => setRunDrawerOpen(false)} widthClassName="w-[80%]">
+        <p>Hello</p>
+      </SlidingModal>
     </div>
   );
 }
