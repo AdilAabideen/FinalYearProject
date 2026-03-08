@@ -5,6 +5,7 @@ import { CodeBlock } from '../ui/CodeBlock';
 
 type AgentTracesComponentProps = {
   runId: string;
+  onDone?: (runId: string) => void;
 };
 
 type StreamState = 'connecting' | 'open' | 'done' | 'error';
@@ -109,7 +110,7 @@ function StatusBadge({ status }: { status: ToolStatus }) {
     <span
       className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold ring-1 ${className}`}
     >
-      {label}
+      {label.charAt(0).toUpperCase() + label.slice(1)}
     </span>
   );
 }
@@ -128,7 +129,7 @@ function OutputHoverBadge({ output }: { output: string }) {
   );
 }
 
-export function AgentTracesComponent({ runId }: AgentTracesComponentProps) {
+export function AgentTracesComponent({ runId, onDone }: AgentTracesComponentProps) {
   const [streamState, setStreamState] = useState<StreamState>('connecting');
   const [errorText, setErrorText] = useState<string | null>(null);
   const [entries, setEntries] = useState<TraceEntry[]>([]);
@@ -158,12 +159,14 @@ export function AgentTracesComponent({ runId }: AgentTracesComponentProps) {
     void event;
     setStreamState('done');
     sourceRef.current?.close();
-  }, []);
+    onDone?.(runId);
+  }, [onDone, runId]);
 
   const handleAgentEvent = useCallback((event: MessageEvent<string>) => {
     try {
       const parsed = JSON.parse(event.data) as unknown;
       const payload = asAgentEventPayload(parsed);
+      if (payload.event_type !== 'tool_result' && payload.event_type !== 'thought') return;
       if (!payload.tool_name) return;
 
       const output = getToolOutput(payload);
@@ -173,7 +176,7 @@ export function AgentTracesComponent({ runId }: AgentTracesComponentProps) {
       const idSuffix = event.lastEventId ? `${event.lastEventId}` : `evt-${Date.now()}`;
       const entryId = `${idSuffix}-${entryIdRef.current}`;
 
-      if (isLogThoughtTool(payload.tool_name)) {
+      if (payload.event_type === 'thought' || isLogThoughtTool(payload.tool_name)) {
         const text = payload.payload_text?.trim();
         if (!text) return;
         setEntries((prev) => [...prev, { id: entryId, kind: 'thinking', text }]);
@@ -216,48 +219,50 @@ export function AgentTracesComponent({ runId }: AgentTracesComponentProps) {
   }, [handleAgentEvent, handleDone, handleError, handleMessage, handleOpen, streamUrl]);
 
   return (
-    <div className="space-y-6">
+    <div className="flex h-full min-h-0 flex-col">
       {errorText ? (
-        <p className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
+        <p className="shrink-0 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
           {errorText}
         </p>
       ) : null}
 
-      {entries.length ? (
-        <div className="space-y-8">
-          {entries.map((entry) => {
-            if (entry.kind === 'thinking') {
+      <div className="flex-1 min-h-0 overflow-auto pr-2">
+        {entries.length ? (
+          <div className="space-y-8 py-1">
+            {entries.map((entry) => {
+              if (entry.kind === 'thinking') {
+                return (
+                  <div key={entry.id} className="space-y-2">
+                    <p className="text-xs font-semibold tracking-wide text-slate-900">THINKING</p>
+                    <p className="text-sm text-slate-800">{truncateText(entry.text, 2000)}</p>
+                  </div>
+                );
+              }
+
               return (
                 <div key={entry.id} className="space-y-2">
-                  <p className="text-xs font-semibold tracking-wide text-slate-900">THINKING</p>
-                  <p className="text-sm text-slate-800">{truncateText(entry.text, 2000)}</p>
+                  <p className="text-xs font-semibold tracking-wide text-slate-900">ACTION</p>
+                  <p className="text-sm font-semibold text-PrimaryBlue">
+                    {prettifyToolName(entry.toolName)}
+                  </p>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <StatusBadge status={entry.status} />
+                    <OutputHoverBadge output={entry.output} />
+                  </div>
                 </div>
               );
-            }
-
-            return (
-              <div key={entry.id} className="space-y-2">
-                <p className="text-xs font-semibold tracking-wide text-slate-900">ACTION</p>
-                <p className="text-sm font-semibold text-PrimaryBlue">
-                  {prettifyToolName(entry.toolName)}
-                </p>
-                <div className="flex flex-wrap items-center gap-2">
-                  <StatusBadge status={entry.status} />
-                  <OutputHoverBadge output={entry.output} />
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      ) : (
-        <div className="text-sm text-slate-600">
-          {streamState === 'connecting'
-            ? 'Connecting…'
-            : streamState === 'error'
-              ? 'Stream error.'
-              : 'Waiting for tool output…'}
-        </div>
-      )}
+            })}
+          </div>
+        ) : (
+          <div className="text-sm text-slate-600">
+            {streamState === 'connecting'
+              ? 'Connecting…'
+              : streamState === 'error'
+                ? 'Stream error.'
+                : 'Waiting for tool output…'}
+          </div>
+        )}
+      </div>
     </div>
   );
 }

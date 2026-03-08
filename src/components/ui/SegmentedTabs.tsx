@@ -60,7 +60,7 @@ export function SegmentedTabs<T extends string>({
       role="tablist"
       aria-label={ariaLabel}
       className={cn(
-        'grid gap-1 rounded-xl bg-slate-100 p-1 ring-1 ring-slate-200',
+        `grid gap-1 rounded-xl bg-slate-100 p-1 ring-1 ring-slate-200`,
         className,
       )}
       style={{ gridTemplateColumns: `repeat(${tabs.length}, minmax(0, 1fr))` }}

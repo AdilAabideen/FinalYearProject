@@ -11,6 +11,7 @@ export type ListAgentRunsParams = {
 
 export type AgentRunService = {
   listAgentRuns: (params?: ListAgentRunsParams, signal?: AbortSignal) => Promise<AgentRunRead[]>;
+  getAgentRun: (runId: string, signal?: AbortSignal) => Promise<AgentRunRead>;
   startAgentRun: (
     agentName: string,
     input: Record<string, unknown>,
@@ -56,6 +57,35 @@ export const agentRunService: AgentRunService = {
       createdAt: run.created_at,
       updatedAt: run.updated_at,
     }));
+  },
+
+  async getAgentRun(runId, signal) {
+    const response = await fetch(`${API_BASE_URL}/api/agent-runs/${encodeURIComponent(runId)}`, {
+      method: 'GET',
+      headers: { Accept: 'application/json' },
+      signal,
+    });
+
+    if (!response.ok) {
+      const message = await response.text();
+      throw new Error(message || 'Failed to load agent run');
+    }
+
+    const run = (await response.json()) as AgentRunReadDto;
+
+    return {
+      id: run.id,
+      agentName: run.agent_name,
+      status: run.status,
+      modelName: run.model_name ?? null,
+      inputJson: run.input_json,
+      outputJson: run.output_json ?? null,
+      errorText: run.error_text ?? null,
+      startedAt: run.started_at ?? null,
+      finishedAt: run.finished_at ?? null,
+      createdAt: run.created_at,
+      updatedAt: run.updated_at,
+    };
   },
 
   async startAgentRun(agentName, input, signal) {

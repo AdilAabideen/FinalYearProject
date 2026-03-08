@@ -1,10 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { cn } from '../../lib/cn';
-import { formatJson } from '../../lib/formatJson';
 import { agentRunService } from '../../services/agentRunService';
 import type { AgentRunRead } from '../../types/agentRuns';
 import { Badge } from '../ui/Badge';
-import { CodeBlock } from '../ui/CodeBlock';
+import { JsonInspector } from '../ui/JsonInspector';
 
 type PreviousRunsProps = {
   agentName: string;
@@ -155,17 +154,16 @@ export default function PreviousRuns({ agentName }: PreviousRunsProps) {
 
                   <details className="mt-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
                     <summary className="cursor-pointer select-none text-xs font-semibold text-slate-700">
-                      View JSON
+                      Inspect
                     </summary>
                     <div className="mt-3 grid gap-3 lg:grid-cols-2">
                       <div className="min-w-0">
                         <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-600">
-                          Input
+                          Parameters
                         </p>
-                        <CodeBlock
-                          code={formatJson(run.inputJson)}
-                          className="mt-2 max-h-[min(18rem,40vh)] border-0 bg-white p-3"
-                        />
+                        <div className="mt-2 max-h-[min(18rem,40vh)] overflow-y-auto overflow-x-hidden rounded-2xl border border-slate-200 bg-white p-3">
+                          <JsonInspector value={run.inputJson} />
+                        </div>
                       </div>
 
                       <div className="min-w-0">
@@ -173,10 +171,9 @@ export default function PreviousRuns({ agentName }: PreviousRunsProps) {
                           Output
                         </p>
                         {run.outputJson ? (
-                          <CodeBlock
-                            code={formatJson(run.outputJson)}
-                            className="mt-2 max-h-[min(18rem,40vh)] border-0 bg-white p-3"
-                          />
+                          <div className="mt-2 max-h-[min(18rem,40vh)] overflow-y-auto overflow-x-hidden rounded-2xl border border-slate-200 bg-white p-3">
+                            <JsonInspector value={run.outputJson} />
+                          </div>
                         ) : (
                           <div className="mt-2 rounded-2xl border border-slate-200 bg-white p-3 text-xs text-slate-500">
                             No output yet.
@@ -198,4 +195,3 @@ export default function PreviousRuns({ agentName }: PreviousRunsProps) {
     </div>
   );
 }
-
