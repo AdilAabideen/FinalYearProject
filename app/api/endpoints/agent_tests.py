@@ -10,9 +10,7 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.api.endpoints.agent_runs import _append_event as _append_agent_event
-from app.api.endpoints.agent_runs import _get_last_seq as _get_last_agent_seq
-from app.api.endpoints.agent_runs import _run_agent_and_persist as _run_agent_and_persist
+from app.api.endpoints.agent_runs import _execute_agent_run_and_persist
 from app.config import settings
 from app.database import get_db
 from app.models.agent_run import AgentRun
@@ -143,7 +141,9 @@ def delete_test_case(case_id: str, db: Session = Depends(get_db)):
     row = db.get(AgentTestCase, case_id)
     if row is None:
         raise HTTPException(status_code=404, detail="Test case not found")
-    db.delete(row)
+    row.enabled = False
+    row.updated_at = datetime.utcnow()
+    db.add(row)
     db.commit()
     return None
 
@@ -380,68 +380,9 @@ def stream_test_run(
                 event_id=event_id,
             )
 
-            agent_seq = 1
-            _append_agent_event(
-                db=db,
-                run=agent_run,
-                seq=agent_seq,
-                event_type="run_start",
-                payload_json={"input": agent_run.input_json},
-            )
-
-            output_json: Optional[dict] = None
-            agent_status = "failed"
-            error_text: Optional[str] = None
-            try:
-                agent_seq, output_json = _run_agent_and_persist(db, agent_run, agent_seq)
-
-                now = datetime.utcnow()
-                agent_run.status = "succeeded"
-                agent_run.output_json = output_json
-                agent_run.finished_at = now
-                agent_run.updated_at = now
-                db.add(agent_run)
-                db.commit()
-
-                agent_seq += 1
-                _append_agent_event(
-                    db=db,
-                    run=agent_run,
-                    seq=agent_seq,
-                    event_type="run_end",
-                    payload_json={"status": agent_run.status},
-                )
-                agent_status = agent_run.status
-            except Exception as e:
-                now = datetime.utcnow()
-                agent_run.status = "failed"
-                agent_run.error_text = str(e)
-                agent_run.finished_at = now
-                agent_run.updated_at = now
-                db.add(agent_run)
-                db.commit()
-
-                error_text = str(e)
-
-                agent_seq = _get_last_agent_seq(db, agent_run_id)
-                agent_seq += 1
-                _append_agent_event(
-                    db=db,
-                    run=agent_run,
-                    seq=agent_seq,
-                    event_type="error",
-                    status="error",
-                    payload_text=str(e),
-                )
-                agent_seq += 1
-                _append_agent_event(
-                    db=db,
-                    run=agent_run,
-                    seq=agent_seq,
-                    event_type="run_end",
-                    payload_json={"status": agent_run.status},
-                )
-                agent_status = agent_run.status
+            output_json = _execute_agent_run_and_persist(db, agent_run)
+            agent_status = agent_run.status
+            error_text = agent_run.error_text
 
             passed, score, diff_json = _evaluate_expected_subset(test_case.expected_json, output_json)
             end_ts = datetime.utcnow()

@@ -29,7 +29,7 @@ flowchart LR
 - `GET /api/tests/cases?agent_name=vitals_agent`
 - `POST /api/tests/cases`
 - `PUT /api/tests/cases/{case_id}`
-- `DELETE /api/tests/cases/{case_id}`
+- `DELETE /api/tests/cases/{case_id}` (soft-delete: sets `enabled=false`)
 
 ### Test runs
 - `POST /api/tests/runs/start` (creates run + case-run rows)
@@ -46,3 +46,11 @@ flowchart LR
 - UI opens `/api/tests/runs/{run_id}/stream`
   - On each `case_start`, open `/api/agent-runs/{agent_run_id}/events/stream` to show tool trace for the currently running case
 
+## SQLite migration (foreign keys)
+If you created the tables before foreign keys were added, run:
+
+```bash
+python scripts/migrate_agent_tests_add_fks.py
+```
+
+This rebuilds the `agent_test_*` tables with FK constraints and leaves backup copies of the original data.

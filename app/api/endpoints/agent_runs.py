@@ -90,6 +90,96 @@ def _get_last_seq(db: Session, run_id: str) -> int:
     return int(last) if last is not None else 0
 
 
+def _ensure_run_start_event(db: Session, run: AgentRun) -> int:
+    """
+    Ensure a run has a `run_start` event (seq=1) before executing.
+
+    Returns the current last seq (>= 1 once started).
+    """
+    seq = _get_last_seq(db, run.id)
+    if seq > 0:
+        return seq
+
+    now = datetime.utcnow()
+    if run.status != "running":
+        run.status = "running"
+    if run.started_at is None:
+        run.started_at = now
+    run.updated_at = now
+    db.add(run)
+    db.commit()
+
+    _append_event(
+        db=db,
+        run=run,
+        seq=1,
+        event_type="run_start",
+        payload_json={"input": run.input_json},
+    )
+    return 1
+
+
+def _execute_agent_run_and_persist(db: Session, run: AgentRun) -> Optional[dict]:
+    """
+    Execute the agent run, persist all events and terminal status, and never raise.
+
+    This is the shared execution path used by:
+    - background execution (`/agent-runs/start`)
+    - synchronous execution (`/agent-runs/{id}/execute`)
+    - test harness execution (`/tests/.../stream`)
+    """
+    seq = _ensure_run_start_event(db, run)
+
+    try:
+        seq, output_json = _run_agent_and_persist(db, run, seq)
+
+        now = datetime.utcnow()
+        run.status = "succeeded"
+        run.output_json = output_json
+        run.finished_at = now
+        run.updated_at = now
+        db.add(run)
+        db.commit()
+
+        seq += 1
+        _append_event(
+            db=db,
+            run=run,
+            seq=seq,
+            event_type="run_end",
+            payload_json={"status": run.status},
+        )
+        return output_json
+    except Exception as e:
+        now = datetime.utcnow()
+        run.status = "failed"
+        run.error_text = str(e)
+        run.finished_at = now
+        run.updated_at = now
+        db.add(run)
+        db.commit()
+
+        seq = _get_last_seq(db, run.id)
+        seq += 1
+        _append_event(
+            db=db,
+            run=run,
+            seq=seq,
+            event_type="error",
+            status="error",
+            payload_text=str(e),
+        )
+        seq += 1
+        _append_event(
+            db=db,
+            run=run,
+            seq=seq,
+            event_type="run_end",
+            payload_json={"status": run.status},
+        )
+        return None
+
+
 def _run_agent_and_persist(db: Session, run: AgentRun, seq: int) -> Tuple[int, Optional[dict]]:
     try:
         spec = get_agent_spec(run.agent_name)
@@ -179,54 +269,7 @@ def _execute_run_in_background(run_id: str) -> None:
         if run.status != "running":
             return
 
-        seq = _get_last_seq(db, run_id)
-
-        try:
-            seq, output_json = _run_agent_and_persist(db, run, seq)
-
-            now = datetime.utcnow()
-            run.status = "succeeded"
-            run.output_json = output_json
-            run.finished_at = now
-            run.updated_at = now
-            db.add(run)
-            db.commit()
-
-            seq += 1
-            _append_event(
-                db=db,
-                run=run,
-                seq=seq,
-                event_type="run_end",
-                payload_json={"status": run.status},
-            )
-        except Exception as e:
-            now = datetime.utcnow()
-            run.status = "failed"
-            run.error_text = str(e)
-            run.finished_at = now
-            run.updated_at = now
-            db.add(run)
-            db.commit()
-
-            seq += 1
-            _append_event(
-                db=db,
-                run=run,
-                seq=seq,
-                event_type="error",
-                status="error",
-                payload_text=str(e),
-            )
-
-            seq += 1
-            _append_event(
-                db=db,
-                run=run,
-                seq=seq,
-                event_type="run_end",
-                payload_json={"status": run.status},
-            )
+        _execute_agent_run_and_persist(db, run)
     finally:
         db.close()
 
@@ -411,67 +454,10 @@ def execute_agent_run(run_id: str, db: Session = Depends(get_db)):
     db.add(run)
     db.commit()
 
-    seq = 1
-    _append_event(
-        db=db,
-        run=run,
-        seq=seq,
-        event_type="run_start",
-        payload_json={"input": run.input_json},
-    )
-
-    try:
-        seq, output_json = _run_agent_and_persist(db, run, seq)
-
-        now = datetime.utcnow()
-        run.status = "succeeded"
-        run.output_json = output_json
-        run.finished_at = now
-        run.updated_at = now
-        db.add(run)
-        db.commit()
-
-        seq += 1
-        _append_event(
-            db=db,
-            run=run,
-            seq=seq,
-            event_type="run_end",
-            payload_json={"status": run.status},
-        )
-
+    _execute_agent_run_and_persist(db, run)
+    if run.status == "succeeded":
         return {"run_id": run.id, "status": run.status, "output": run.output_json}
-    except HTTPException:
-        raise
-    except Exception as e:
-        now = datetime.utcnow()
-        run.status = "failed"
-        run.error_text = str(e)
-        run.finished_at = now
-        run.updated_at = now
-        db.add(run)
-        db.commit()
-
-        seq += 1
-        _append_event(
-            db=db,
-            run=run,
-            seq=seq,
-            event_type="error",
-            status="error",
-            payload_text=str(e),
-        )
-
-        seq += 1
-        _append_event(
-            db=db,
-            run=run,
-            seq=seq,
-            event_type="run_end",
-            payload_json={"status": run.status},
-        )
-
-        raise HTTPException(status_code=500, detail=str(e))
+    raise HTTPException(status_code=500, detail=run.error_text or "Agent run failed")
 
 
 @router.get("", response_model=list[AgentRunRead])
