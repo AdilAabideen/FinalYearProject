@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { cn } from '../../lib/cn';
 import { agentRunService } from '../../services/agentRunService';
 import type { AgentRunRead } from '../../types/agentRuns';
@@ -47,33 +47,36 @@ export default function PreviousRuns({ agentName }: PreviousRunsProps) {
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
 
-  async function loadRuns(ac: AbortController) {
-    setState({ status: 'loading' });
-    try {
-      const runs = await agentRunService.listAgentRuns(
-        { agentName, limit: 50, offset: 0, order: 'desc' },
-        ac.signal,
-      );
-      if (ac.signal.aborted) return;
-      setState({ status: 'success', runs });
-    } catch (e: unknown) {
-      if (ac.signal.aborted) return;
-      setState({
-        status: 'error',
-        message: e instanceof Error ? e.message : 'Failed to load runs',
-      });
-    }
-  }
+  const fetchRuns = useCallback(
+    (signal: AbortSignal) =>
+      agentRunService.listAgentRuns({ agentName, limit: 50, offset: 0, order: 'desc' }, signal),
+    [agentName],
+  );
 
   useEffect(() => {
     abortRef.current?.abort();
     const ac = new AbortController();
     abortRef.current = ac;
 
-    loadRuns(ac);
+    async function load() {
+      setState({ status: 'loading' });
+      try {
+        const runs = await fetchRuns(ac.signal);
+        if (ac.signal.aborted) return;
+        setState({ status: 'success', runs });
+      } catch (e: unknown) {
+        if (ac.signal.aborted) return;
+        setState({
+          status: 'error',
+          message: e instanceof Error ? e.message : 'Failed to load runs',
+        });
+      }
+    }
+
+    load();
 
     return () => ac.abort();
-  }, [agentName]);
+  }, [fetchRuns]);
 
   useEffect(() => {
     return () => abortRef.current?.abort();
@@ -83,6 +86,29 @@ export default function PreviousRuns({ agentName }: PreviousRunsProps) {
     if (state.status !== 'success') return null;
     return `${state.runs.length} run${state.runs.length === 1 ? '' : 's'}`;
   }, [state]);
+
+  function handleRefresh() {
+    abortRef.current?.abort();
+    const ac = new AbortController();
+    abortRef.current = ac;
+
+    async function load() {
+      setState({ status: 'loading' });
+      try {
+        const runs = await fetchRuns(ac.signal);
+        if (ac.signal.aborted) return;
+        setState({ status: 'success', runs });
+      } catch (e: unknown) {
+        if (ac.signal.aborted) return;
+        setState({
+          status: 'error',
+          message: e instanceof Error ? e.message : 'Failed to load runs',
+        });
+      }
+    }
+
+    load();
+  }
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -101,10 +127,8 @@ export default function PreviousRuns({ agentName }: PreviousRunsProps) {
                   {headerSuffix}
                 </Badge>
               ) : null}
-              <button type="button" onClick={() => {
-                loadRuns(abortRef.current ?? new AbortController());
-              }}>
-                <Badge className=" hover:scale-[1.01] transition-all duration-300 cursor-pointer shrink-0 bg-PrimaryBlue/10 text-PrimaryBlue ring-PrimaryBlue/20 flex items-center gap-1">
+              <button type="button" onClick={handleRefresh}>
+                <Badge className="flex items-center gap-1 shrink-0 bg-PrimaryBlue/10 text-PrimaryBlue ring-PrimaryBlue/20 cursor-pointer transition-all duration-300 hover:scale-[1.01]">
                   <IoIosRefresh className="size-4 mb-[2px]" />
                   <span className="mt-[2px]">Refresh</span>
                 </Badge>
