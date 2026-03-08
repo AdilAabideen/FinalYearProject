@@ -135,6 +135,12 @@ export function AgentTracesComponent({ runId, onDone }: AgentTracesComponentProp
   const [entries, setEntries] = useState<TraceEntry[]>([]);
   const sourceRef = useRef<EventSource | null>(null);
   const entryIdRef = useRef(0);
+  const seenEventIdsRef = useRef<Set<number>>(new Set());
+  const onDoneRef = useRef(onDone);
+
+  useEffect(() => {
+    onDoneRef.current = onDone;
+  }, [onDone]);
 
   const streamUrl = useMemo(() => {
     const base = API_BASE_URL ? API_BASE_URL : '';
@@ -159,11 +165,17 @@ export function AgentTracesComponent({ runId, onDone }: AgentTracesComponentProp
     void event;
     setStreamState('done');
     sourceRef.current?.close();
-    onDone?.(runId);
-  }, [onDone, runId]);
+    onDoneRef.current?.(runId);
+  }, [runId]);
 
   const handleAgentEvent = useCallback((event: MessageEvent<string>) => {
     try {
+      const eventId = Number(event.lastEventId);
+      if (Number.isFinite(eventId)) {
+        if (seenEventIdsRef.current.has(eventId)) return;
+        seenEventIdsRef.current.add(eventId);
+      }
+
       const parsed = JSON.parse(event.data) as unknown;
       const payload = asAgentEventPayload(parsed);
       if (payload.event_type !== 'tool_result' && payload.event_type !== 'thought') return;

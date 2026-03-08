@@ -146,7 +146,11 @@ export default function RunAgentTab({ agent }: RunAgentTabProps) {
   const [starting, setStarting] = useState(false);
 
   async function refreshRunResults(targetRunId: string) {
-    setResultsLoading(true);
+    let done = false;
+    const loadingTimer = window.setTimeout(() => {
+      if (!done) setResultsLoading(true);
+    }, 200);
+
     try {
       const run = await agentRunService.getAgentRun(targetRunId);
       setRunStatus(run.status);
@@ -155,6 +159,8 @@ export default function RunAgentTab({ agent }: RunAgentTabProps) {
     } catch (e: unknown) {
       setRunError(e instanceof Error ? e.message : 'Failed to load run results');
     } finally {
+      done = true;
+      window.clearTimeout(loadingTimer);
       setResultsLoading(false);
     }
   }
@@ -281,11 +287,16 @@ export default function RunAgentTab({ agent }: RunAgentTabProps) {
               className="h-full min-h-0 overflow-auto"
             >
               <div className="rounded-2xl border border-slate-200 bg-white p-4">
-                <h4 className="text-sm font-semibold text-slate-900">Results</h4>
+                <div className="flex items-center justify-between gap-3">
+                  <h4 className="text-sm font-semibold text-slate-900">Results</h4>
+                  {resultsLoading ? (
+                    <span className="inline-flex items-center rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-700 ring-1 ring-slate-200">
+                      Loading…
+                    </span>
+                  ) : null}
+                </div>
 
-                {resultsLoading ? (
-                  <p className="mt-2 text-sm text-slate-600">Loading…</p>
-                ) : runError ? (
+                {runError ? (
                   <div className="mt-3 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
                     {runError}
                   </div>

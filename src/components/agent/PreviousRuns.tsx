@@ -123,7 +123,7 @@ export default function PreviousRuns({ agentName }: PreviousRunsProps) {
               {state.runs.map((run) => (
                 <article
                   key={run.id}
-                  className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"
+                  className="rounded-2xl border border-slate-200 bg-white p-4 "
                 >
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div className="min-w-0">
@@ -142,7 +142,7 @@ export default function PreviousRuns({ agentName }: PreviousRunsProps) {
                       </p>
                     </div>
                     <Badge className={cn('shrink-0', statusBadgeClass(run.status))}>
-                      {run.status}
+                      {run.status.charAt(0).toUpperCase() + run.status.slice(1)}
                     </Badge>
                   </div>
 

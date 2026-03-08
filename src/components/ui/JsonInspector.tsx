@@ -36,19 +36,26 @@ function isContainer(value: unknown): value is Record<string, unknown> | unknown
   return isPlainObject(value) || Array.isArray(value);
 }
 
+function formatLabel(label: string) {
+  if (!label) return label;
+  if (label.startsWith('[')) return label;
+  return label.charAt(0).toUpperCase() + label.slice(1);
+}
+
 type RenderOptions = {
   depth: number;
   maxDepth: number;
   path: string;
-  seen: WeakSet<object>;
+  ancestors: ReadonlyArray<object>;
 };
 
 function PrimitiveRow({ label, value }: { label: string; value: string }) {
+  const formattedLabel = formatLabel(label);
   return (
-    <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
-      <span className="shrink-0 font-semibold text-slate-700">{label}</span>
-      <span className="min-w-0 flex-1 whitespace-pre-wrap break-words text-slate-500">{value}</span>
-    </div>
+    <p className="whitespace-pre-wrap break-words leading-snug">
+      <span className="font-semibold text-slate-700">{formattedLabel}</span>{' '}
+      <span className="text-slate-500">{value}</span>
+    </p>
   );
 }
 
@@ -65,24 +72,23 @@ function ContainerBlock({
     return <PrimitiveRow label={label} value={summarizeContainer(value)} />;
   }
 
-  if (opts.seen.has(value as object)) {
+  const containerRef = value as object;
+  if (opts.ancestors.includes(containerRef)) {
     return <PrimitiveRow label={label} value="[Circular]" />;
   }
-  opts.seen.add(value as object);
+
+  const children = renderValue(value, {
+    ...opts,
+    depth: opts.depth + 1,
+    path: opts.path,
+    ancestors: [...opts.ancestors, containerRef],
+  });
 
   return (
     <div className="space-y-1">
-      <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
-        <span className="shrink-0 font-semibold text-slate-700">{label}</span>
-      </div>
+      <p className="break-words font-semibold leading-snug text-slate-700">{formatLabel(label)}</p>
       <div className={cn('border-l border-slate-200', indentClass(opts.depth + 1))}>
-        <div className="mt-1 space-y-2">
-          {renderValue(value, {
-            ...opts,
-            depth: opts.depth + 1,
-            path: opts.path,
-          })}
-        </div>
+        <div className="mt-1 space-y-1">{children}</div>
       </div>
     </div>
   );
@@ -135,9 +141,10 @@ function renderValue(value: unknown, opts: RenderOptions): ReactNode {
 }
 
 export function JsonInspector({ value, className, maxDepth = 6 }: JsonInspectorProps) {
+  const ancestors = isContainer(value) ? [value as object] : [];
   return (
-    <div className={cn('space-y-2 text-xs leading-relaxed', className)}>
-      {renderValue(value, { depth: 0, maxDepth, path: '', seen: new WeakSet<object>() })}
+    <div className={cn('space-y-1 text-xs', className)}>
+      {renderValue(value, { depth: 0, maxDepth, path: '', ancestors })}
     </div>
   );
 }
