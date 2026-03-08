@@ -123,14 +123,14 @@ export default function AgentTestRunDrawer({
         hidden={activeTab !== 'cases'}
         className="h-full"
       >
-        <div className="grid h-full grid-cols-5 grid-rows-7 rounded-2xl border border-slate-200 bg-white overflow-y-hidden">
-          <div className="col-span-2 row-span-7 min-h-0 overflow-auto border-r border-slate-200 pb-16">
+        <div className="grid h-full grid-cols-5 grid-rows-8 rounded-2xl border border-slate-200 bg-white overflow-y-hidden">
+          <div className="col-span-3 row-span-8 min-h-0 overflow-auto border-r border-slate-200 pb-16">
             {selectedCases.length ? (
               <div className="divide-y divide-slate-200">
                 {selectedCases.map((testCase, index) => {
                   const status = fakeCaseStatus(index, busy, runId, error);
                   return (
-                    <div key={testCase.id} className="flex items-center justify-between p-4">
+                    <div key={testCase.id} className="flex items-center justify-between p-4 border-b border-slate-200">
                       <div className="cursor-pointer min-w-0 space-y-1 hover:scale-[1.02] transition-all duration-300">
                         <p className="truncate text-sm font-semibold text-slate-900 leading-tight">
                           {NormaliseTitle(testCase.name)}
@@ -161,36 +161,45 @@ export default function AgentTestRunDrawer({
               <p className="text-xs text-slate-500">No cases selected.</p>
             )}
           </div>
-          <div className="col-span-3 row-span-1 border-b border-slate-200 p-4">
-            <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-xs">
-              {true ? (
-                  <div className="flex flex-col gap-1">
-                    <span className=" text-slate-900 text-2xl">Start Test Run</span>
-                    <span className="text-slate-900 text-[15px]">
-                      <button className=" ml-5 cursor-pointer w-[100px] inline-flex items-center justify-center rounded-xl bg-PrimaryBlue px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-PrimaryBlue/90 focus:outline-none focus-visible:ring-2 focus-visible:ring-PrimaryBlue focus-visible:ring-offset-2 focus-visible:ring-offset-white disabled:cursor-not-allowed disabled:bg-slate-300">
-                        Start
-                      </button>
-                    </span>
-                  </div>
-              ):
-                (
-                  [
-                    { title: 'Number of Cases', answer: selectedCases.length },
-                    { title: 'Currently Running', answer: "3/7" },
-                    { title: 'Completed', answer: '4/7' },
-                    { title: 'Time Elapsed', answer: '100s' },
-
-                  ].map(({title, answer}) => (
-              <div key={title} className="flex flex-col gap-0.5">
-                <span className="font-semibold text-slate-500 text-[13px]">{title}</span>
-                <span className="text-slate-900 text-[15px]">{answer}</span>
+          <div className="col-span-2 row-span-2 border-b border-slate-200   px-6 py-4 text-white">
+            <div className="flex flex-wrap items-center justify-between gap-6">
+              <div>
+                <p className="text-[11px] uppercase tracking-[0.3em] text-slate-900">Harness panel</p>
+                <h3 className="text-2xl font-semibold text-slate-900">Start Test Run</h3>
+                <p className="text-sm text-slate-900/70">
+                  {selectedCases.length} case{selectedCases.length === 1 ? '' : 's'} selected
+                </p>
               </div>
-                  ))
-              )}
+              <button
+                type="button"
+                className="flex items-center hover:scale-[1.02] cursor-pointer transition-all duration-300 gap-2 rounded-2xl bg-PrimaryBlue px-5 py-2 text-xs font-semibold text-white  shadow-slate-900/40 backdrop-blur  hover:bg-PrimaryBlue/90 focus:outline-none focus-visible:ring-2 focus-visible:ring-white"
+              >
+                <span>Start</span>
+                <span className=" mb-[2px] inline-flex h-2 w-2 rounded-full bg-emerald-400" />
+              </button>
+            </div>
+            <div className="mt-4 grid gap-3 sm:grid-cols-4">
+              {[
+                { label: 'Total cases', value: selectedCases.length },
+                { label: 'Running', value: busy ? '2 / 7' : '0 / 7' },
+                { label: 'Completed', value: busy ? '0 / 7' : '7 / 7' },
+                { label: 'Elapsed', value: busy ? '0s' : '120s' },
+              ].map((stat) => (
+                <div
+                  key={stat.label}
+                  className="rounded-2xl border border-slate-200 bg-white/5 p-3 text-[10px] uppercase tracking-wide text-slate-900/80 backdrop-blur"
+                >
+                  <p className="text-[10px] font-semibold text-slate-900/60">{stat.label}</p>
+                  <p className="text-xl font-semibold">{stat.value}</p>
+                </div>
+              ))}
             </div>
           </div>
-          <div className="col-span-3 row-span-5 border-slate-200">
-
+          <div className="col-span-2 row-span-5 border-slate-200 flex flex-col w-full">
+                {/* Test TRACES PER CASE */}
+                <div className="flex flex-col w-full p-4 border-b border-slate-200">
+                  <p className="text-sm font-semibold text-slate-900">Rectal Abscess Test Traces</p>
+                </div>
           </div>
         </div>
       </div>
