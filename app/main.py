@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.config import settings
-from app.database import engine, Base
+from app.database import SessionLocal, engine, Base
 from app.api.api import api_router
 
 # Create database tables
@@ -26,6 +26,16 @@ app.add_middleware(
 # Include API routers
 app.include_router(api_router, prefix="/api")
 
+@app.on_event("startup")
+def _seed_test_data() -> None:
+    from app.seed_agent_tests import ensure_seed_vitals_agent_test_cases
+
+    db = SessionLocal()
+    try:
+        ensure_seed_vitals_agent_test_cases(db)
+    finally:
+        db.close()
+
 @app.get("/")
 def root():
     return {"message": "Welcome to Emergency Severity Index Multi Agent V Monolithic Agent System"}
@@ -33,4 +43,3 @@ def root():
 @app.get("/health")
 def health_check():
     return {"status": "healthy"}
-
