@@ -31,6 +31,10 @@ flowchart LR
 - `PUT /api/tests/cases/{case_id}`
 - `DELETE /api/tests/cases/{case_id}` (soft-delete: sets `enabled=false`)
 
+**Vitals agent expected_json**
+- For `agent_name="vitals_agent"`, `expected_json` must be exactly:
+  - `{"recommendation": {"consider_uptriage": true|false}}`
+
 ### Test runs
 - `POST /api/tests/runs/start` (creates run + case-run rows)
 - `GET /api/tests/runs?agent_name=vitals_agent`
@@ -45,6 +49,9 @@ flowchart LR
 - User selects cases → `POST /api/tests/runs/start`
 - UI opens `/api/tests/runs/{run_id}/stream`
   - On each `case_start`, open `/api/agent-runs/{agent_run_id}/events/stream` to show tool trace for the currently running case
+
+**Metrics (vitals)**
+- `agent_test_runs.metrics_json.classification` includes `accuracy`, `precision`, `recall`, `f1`, `specificity` computed over `recommendation.consider_uptriage` (excluding exec_failed cases).
 
 ## SQLite migration (foreign keys)
 If you created the tables before foreign keys were added, run:

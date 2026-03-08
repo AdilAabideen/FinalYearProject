@@ -19,6 +19,7 @@ from app.agentic.tools.log_thought import log_thought
 from app.schemas.vitals_agent import VitalsAgentOutput
 
 from app.agentic.agent_spec import AgentSpec
+from app.agentic.evaluators.vitals_uptriage import VitalsUptriageEvaluator
 
 
 TOOLS = [
@@ -53,6 +54,7 @@ VITALS_AGENT_SPEC = AgentSpec(
     output_model=VitalsAgentOutput,
     tools=TOOLS,
     build=build_vitals_agent,
+    evaluator=VitalsUptriageEvaluator(),
 )
 
 

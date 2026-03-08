@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Callable, Sequence, Type
+from typing import Any, Callable, Optional, Sequence, Type
 
 from langchain_core.tools import BaseTool
 from pydantic import BaseModel
+
+from app.agentic.eval_types import AgentEvaluator
 
 
 @dataclass(frozen=True)
@@ -23,5 +25,5 @@ class AgentSpec:
     input_model: Type[BaseModel]
     tools: Sequence[BaseTool]
     build: Callable[[], Any]
-    output_model: Type[BaseModel] | None = None
-
+    output_model: Optional[Type[BaseModel]] = None
+    evaluator: Optional[AgentEvaluator] = None

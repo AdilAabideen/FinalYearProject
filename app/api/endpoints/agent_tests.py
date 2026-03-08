@@ -10,6 +10,7 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.agentic.registry import get_agent_spec, supported_agent_names
 from app.api.endpoints.agent_runs import _execute_agent_run_and_persist
 from app.config import settings
 from app.database import get_db
@@ -28,6 +29,17 @@ from app.schemas.agent_tests import (
 )
 
 router = APIRouter()
+
+
+def _get_spec_or_400(agent_name: str):
+    try:
+        return get_agent_spec(agent_name)
+    except KeyError:
+        supported = sorted(supported_agent_names())
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported agent_name '{agent_name}'. Supported: {supported}",
+        )
 
 
 def _evaluate_expected_subset(
@@ -93,6 +105,13 @@ def list_test_cases(
 
 @router.post("/cases", response_model=AgentTestCaseRead, status_code=status.HTTP_201_CREATED)
 def create_test_case(payload: AgentTestCaseCreateRequest, db: Session = Depends(get_db)):
+    spec = _get_spec_or_400(payload.agent_name)
+    if spec.evaluator is not None:
+        try:
+            spec.evaluator.validate_expected(payload.expected_json)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+
     case_id = str(uuid.uuid4())
     now = datetime.utcnow()
     row = AgentTestCase(
@@ -118,6 +137,8 @@ def update_test_case(case_id: str, payload: AgentTestCaseUpdateRequest, db: Sess
     if row is None:
         raise HTTPException(status_code=404, detail="Test case not found")
 
+    spec = _get_spec_or_400(row.agent_name)
+
     if payload.name is not None:
         row.name = payload.name
     if payload.enabled is not None:
@@ -125,6 +146,11 @@ def update_test_case(case_id: str, payload: AgentTestCaseUpdateRequest, db: Sess
     if payload.input_json is not None:
         row.input_json = payload.input_json
     if payload.expected_json is not None:
+        if spec.evaluator is not None:
+            try:
+                spec.evaluator.validate_expected(payload.expected_json)
+            except ValueError as e:
+                raise HTTPException(status_code=400, detail=str(e))
         row.expected_json = payload.expected_json
     if payload.notes is not None:
         row.notes = payload.notes
@@ -153,6 +179,8 @@ def start_test_run(payload: AgentTestRunStartRequest, db: Session = Depends(get_
     if not payload.case_ids:
         raise HTTPException(status_code=400, detail="case_ids must be non-empty")
 
+    spec = _get_spec_or_400(payload.agent_name)
+
     stmt = (
         select(AgentTestCase)
         .where(AgentTestCase.id.in_(payload.case_ids))
@@ -171,6 +199,13 @@ def start_test_run(payload: AgentTestRunStartRequest, db: Session = Depends(get_
     disabled = [c.id for c in cases if not c.enabled]
     if disabled:
         raise HTTPException(status_code=400, detail=f"Selected test cases are disabled: {disabled}")
+
+    if spec.evaluator is not None:
+        for c in cases:
+            try:
+                spec.evaluator.validate_expected(c.expected_json)
+            except ValueError as e:
+                raise HTTPException(status_code=400, detail=f"Invalid expected_json for case_id={c.id}: {e}")
 
     run_id = str(uuid.uuid4())
     now = datetime.utcnow()
@@ -281,6 +316,15 @@ def stream_test_run(
     ).scalars().all()
     cr_by_case_id = {cr.test_case_id: cr for cr in cr_rows}
 
+    spec = _get_spec_or_400(run.agent_name)
+    evaluator = spec.evaluator
+    if evaluator is not None:
+        for c in cases:
+            try:
+                evaluator.validate_expected(c.expected_json)
+            except ValueError as e:
+                raise HTTPException(status_code=400, detail=f"Invalid expected_json for case_id={c.id}: {e}")
+
     def _sse(event: str, data: dict, event_id: Optional[int] = None) -> str:
         payload = json.dumps(data, ensure_ascii=False)
         lines = []
@@ -313,6 +357,8 @@ def stream_test_run(
 
         passed_count = 0
         exec_failed_count = 0
+        invalid_pred_count = 0
+        eval_results = []
 
         for idx, case_id in enumerate(run.selected_case_ids_json):
             test_case = case_by_id[case_id]
@@ -384,7 +430,38 @@ def stream_test_run(
             agent_status = agent_run.status
             error_text = agent_run.error_text
 
-            passed, score, diff_json = _evaluate_expected_subset(test_case.expected_json, output_json)
+            if evaluator is not None:
+                try:
+                    eval_result = evaluator.evaluate(
+                        test_case.expected_json,
+                        output_json,
+                        agent_status=agent_status,
+                    )
+                except ValueError as e:
+                    eval_result = None
+                    passed = False
+                    score = 0.0
+                    diff_json = {"error": "invalid_expected_json", "detail": str(e)}
+                    eval_metrics = {"exec_failed": False, "invalid_pred": False}
+                else:
+                    eval_results.append(eval_result)
+                    passed = eval_result.passed
+                    score = eval_result.score
+                    diff_json = eval_result.diff_json
+                    eval_metrics = eval_result.metrics_json
+
+                if eval_metrics.get("exec_failed") is True:
+                    exec_failed_count += 1
+                if eval_metrics.get("invalid_pred") is True:
+                    invalid_pred_count += 1
+            else:
+                passed, score, diff_json = _evaluate_expected_subset(
+                    test_case.expected_json, output_json
+                )
+                eval_metrics = {}
+                if agent_status == "failed":
+                    exec_failed_count += 1
+
             end_ts = datetime.utcnow()
 
             case_run.finished_at = end_ts
@@ -397,12 +474,11 @@ def stream_test_run(
             case_run.metrics_json = {
                 "latency_ms": int((end_ts - start_ts).total_seconds() * 1000),
                 "agent_status": agent_status,
+                **(eval_metrics or {}),
             }
             db.add(case_run)
             db.commit()
 
-            if agent_status == "failed":
-                exec_failed_count += 1
             if passed:
                 passed_count += 1
 
@@ -434,8 +510,11 @@ def stream_test_run(
             "passed": passed_count,
             "failed": total - passed_count,
             "exec_failed": exec_failed_count,
+            "invalid_pred": invalid_pred_count,
             "pass_rate": round(pass_rate, 4),
         }
+        if evaluator is not None:
+            run.metrics_json["classification"] = evaluator.aggregate(eval_results)
         db.add(run)
         db.commit()
 
