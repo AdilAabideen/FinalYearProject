@@ -30,6 +30,8 @@ TOOLS = [
     log_thought,
 ]
 
+# TOOLS = []
+
 def build_vitals_agent():
     """
     Build Simple React Agent for Vital Signs Analysis
