@@ -44,8 +44,6 @@ export const agentRunService: AgentRunService = {
 
     const data = (await response.json()) as AgentRunReadDto[];
 
-    console.log('data', data);
-
     return data.map((run) => ({
       id: run.id,
       agentName: run.agent_name,

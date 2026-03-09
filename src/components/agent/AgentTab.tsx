@@ -3,6 +3,7 @@ import type { AgentCatalogDetail } from '../../types/agents';
 import { SegmentedTabs } from '../ui/SegmentedTabs';
 import RunAgentTab from './RunAgentTab';
 import PreviousRuns from './PreviousRuns';
+import AgentTestCases from './AgentTestCases';
 
 type TabKey = 'run' | 'previous' | 'tests';
 
@@ -66,10 +67,7 @@ export default function AgentTab({ agent }: AgentTabProps) {
           hidden={activeTab !== 'tests'}
           className="h-full overflow-auto"
         >
-          <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-            <h3 className="text-sm font-semibold text-slate-900">Test Cases</h3>
-            <p className="mt-1 text-sm text-slate-600">Create and run repeatable test cases for this agent.</p>
-          </div>
+          <AgentTestCases agentName={agent.name} />
         </div>
       </div>
     </div>
