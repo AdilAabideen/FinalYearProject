@@ -232,6 +232,7 @@ export function AgentTracesComponent({ runId, onDone }: AgentTracesComponentProp
 
   useEffect(() => {
     sourceRef.current?.close();
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setEntries([]);
     setStreamState('connecting');
     setErrorText(null);

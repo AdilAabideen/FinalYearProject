@@ -6,6 +6,34 @@ import { SegmentedTabs } from '../ui/SegmentedTabs';
 
 type HarnessTabKey = 'cases' | 'results';
 type CaseStatus = 'pending' | 'running' | 'passed' | 'failed';
+type RunPhase = 'idle' | 'running' | 'done';
+
+type RunMetrics = {
+  total?: number;
+  passed?: number;
+  failed?: number;
+  exec_failed?: number;
+  invalid_pred?: number;
+  pass_rate?: number;
+  classification?: {
+    label?: string;
+    tp?: number;
+    tn?: number;
+    fp?: number;
+    fn?: number;
+    n_eval?: number;
+    accuracy?: number;
+    precision?: number | null;
+    recall?: number | null;
+    f1?: number | null;
+    specificity?: number | null;
+    excluded?: {
+      exec_failed?: number;
+      invalid_pred?: number;
+      other?: number;
+    };
+  };
+};
 
 const tabs: Array<{ key: HarnessTabKey; label: string }> = [
   { key: 'cases', label: 'Test Cases' },
@@ -45,16 +73,15 @@ function CaseBadge({ label, value }: { label: string; value: string | number }) 
 }
 
 function StatusDot({ status }: { status: CaseStatus }) {
-  if (status === 'running') {
-    return (
-      <span className="inline-flex h-4 w-4 items-center justify-center">
-        <span className="h-3 w-3 animate-spin rounded-full border-2 border-slate-300 border-t-PrimaryBlue" />
-      </span>
-    );
-  }
-  if (status === 'failed') return <span className="text-xs font-semibold text-rose-600">×</span>;
-  if (status === 'passed') return <span className="text-xs font-semibold text-emerald-600">✓</span>;
-  return <span className="inline-flex h-2 w-2 rounded-full bg-slate-300" />;
+  const color =
+    status === 'running'
+      ? 'bg-orange-400'
+      : status === 'passed'
+        ? 'bg-emerald-500'
+        : status === 'failed'
+          ? 'bg-rose-500'
+          : 'bg-slate-300';
+  return <span className={`inline-flex h-2.5 w-2.5 rounded-full ${color}`} />;
 }
 
 function titleCase(value: string) {
@@ -65,7 +92,6 @@ export default function AgentTestRunDrawer({
   agentName,
   runId,
   selectedCases,
-  busy,
   error,
   onStart,
 }: AgentTestRunDrawerProps) {
@@ -74,7 +100,8 @@ export default function AgentTestRunDrawer({
   const [activeTab, setActiveTab] = useState<HarnessTabKey>('results');
   const [activeCaseId, setActiveCaseId] = useState<string | null>(null);
   const [caseStates, setCaseStates] = useState<Record<string, { status: CaseStatus; testCaseId?: string }>>({});
-  const [classification, setClassification] = useState<string | null>(null);
+  const [runMetrics, setRunMetrics] = useState<RunMetrics | null>(null);
+  const [runPhase, setRunPhase] = useState<RunPhase>('idle');
 
   const [agentRuns, setAgentRuns] = useState<{ testCaseId: string; agentRunId: string }[]>([]);
 
@@ -93,7 +120,8 @@ export default function AgentTestRunDrawer({
       for (const c of selectedCases) initial[c.id] = { status: 'pending' };
       setCaseStates(initial);
       setActiveCaseId(selectedCases[0]?.id ?? null);
-      setClassification(null);
+      setRunMetrics(null);
+      setRunPhase('idle');
     }
     resetSelection();
   }, [selectedCases]);
@@ -107,6 +135,8 @@ export default function AgentTestRunDrawer({
     if (!runId) return undefined;
     const url = `${API_BASE_URL}/api/tests/runs/${encodeURIComponent(runId)}/stream`;
     const source = new EventSource(url);
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setRunPhase('running');
 
     source.addEventListener('case_start', (evt) => {
       try {
@@ -150,10 +180,10 @@ export default function AgentTestRunDrawer({
     source.addEventListener('run_done', (evt) => {
       try {
         const payload = JSON.parse((evt as MessageEvent<string>).data) as {
-          metrics?: { classification?: string };
+          metrics?: RunMetrics;
         };
-        console.log('payload', payload);
-        if (payload.metrics?.classification) setClassification(String(payload.metrics.classification));
+        if (payload.metrics) setRunMetrics(payload.metrics);
+        setRunPhase('done');
       } catch {
         // ignore
       }
@@ -245,11 +275,21 @@ export default function AgentTestRunDrawer({
               <button
                 type="button"
                 onClick={onStart}
-                disabled={busy || !selectedCases.length}
-                className=" cursor-pointer hover:scale-[1.02] transition-all duration-300 inline-flex items-center gap-2 rounded-2xl bg-PrimaryBlue px-5 py-2 text-xs font-semibold text-white shadow-slate-900/40 backdrop-blur  hover:bg-PrimaryBlue/90 focus:outline-none focus-visible:ring-2 focus-visible:ring-white disabled:cursor-not-allowed disabled:opacity-60"
+                disabled={runPhase === 'running' || !selectedCases.length}
+                className={`inline-flex items-center gap-2 rounded-2xl px-5 py-2 text-xs font-semibold shadow-slate-900/40 backdrop-blur focus:outline-none focus-visible:ring-2 focus-visible:ring-white transition-all duration-300 ${
+                  runPhase === 'running'
+                    ? 'bg-slate-200 text-slate-600 cursor-not-allowed'
+                    : 'bg-PrimaryBlue text-white hover:scale-[1.02] hover:bg-PrimaryBlue/90 disabled:cursor-not-allowed disabled:opacity-60'
+                }`}
               >
-                <span>{busy ? 'Starting…' : 'Start'}</span>
-                <span className="inline-flex h-2 w-2 rounded-full bg-emerald-400" />
+                <span>
+                  {runPhase === 'running' ? 'Running' : runPhase === 'done' ? 'Re Run' : 'Start'}
+                </span>
+                <span
+                  className={`inline-flex h-2.5 w-2.5 rounded-full ${
+                    runPhase === 'running' ? 'bg-orange-400' : 'bg-emerald-400'
+                  }`}
+                />
               </button>
             </div>
             <div className="mt-4 grid gap-3 sm:grid-cols-4">
@@ -258,7 +298,6 @@ export default function AgentTestRunDrawer({
                 { label: 'Running', value: totals.running },
                 { label: 'Completed', value: totals.completed },
                 { label: 'Queued', value: totals.queued },
-                ...(classification ? [{ label: 'Classification', value: classification }] : []),
               ].map((stat) => (
                 <div
                   key={stat.label}
@@ -317,25 +356,98 @@ export default function AgentTestRunDrawer({
         aria-labelledby={tabId('results')}
         hidden={activeTab !== 'results'}
       >
-        {busy ? (
-          <div className="rounded-2xl border border-slate-200 bg-white p-4 text-sm text-slate-700">
-            Starting test run…
-          </div>
-        ) : null}
-
         {error ? (
           <div className="rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">
             {error}
           </div>
         ) : null}
 
-        {runId ? (
+        {!runId && runPhase === 'idle' ? (
           <div className="rounded-2xl border border-slate-200 bg-white p-4 text-sm text-slate-700">
-            Started test run <span className="font-mono text-xs font-semibold text-slate-900">{runId}</span>
+            Test not run. Please start a test run.
+          </div>
+        ) : runPhase === 'running' ? (
+          <div className="rounded-2xl border border-slate-200 bg-white p-4 text-sm text-slate-700">
+            Currently running test…
+          </div>
+        ) : runPhase === 'done' ? (
+          <div className="space-y-4">
+            <div className="rounded-2xl border border-slate-200 bg-white p-4">
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Run Summary</p>
+              <div className="mt-3 grid gap-3 sm:grid-cols-4">
+                {[
+                  { label: 'Total', value: runMetrics?.total ?? totals.total },
+                  { label: 'Passed', value: runMetrics?.passed ?? totals.completed },
+                  { label: 'Failed', value: runMetrics?.failed ?? 0 },
+                  {
+                    label: 'Pass Rate',
+                    value:
+                      runMetrics?.pass_rate != null
+                        ? `${Math.round(runMetrics.pass_rate * 100)}%`
+                        : totals.total
+                          ? `${Math.round((totals.completed / totals.total) * 100)}%`
+                          : '—',
+                  },
+                ].map((stat) => (
+                  <div key={stat.label} className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                    <p className="text-[11px] font-semibold text-slate-500">{stat.label}</p>
+                    <p className="text-lg font-semibold text-slate-900">{stat.value}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {runMetrics?.classification ? (
+              <div className="rounded-2xl border border-slate-200 bg-white p-4">
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  Classification ({runMetrics.classification.label ?? 'n/a'})
+                </p>
+                <div className="mt-3 grid gap-3 sm:grid-cols-3">
+                  {[
+                    { label: 'Accuracy', value: runMetrics.classification.accuracy },
+                    { label: 'Precision', value: runMetrics.classification.precision },
+                    { label: 'Recall', value: runMetrics.classification.recall },
+                    { label: 'F1', value: runMetrics.classification.f1 },
+                    { label: 'Specificity', value: runMetrics.classification.specificity },
+                    { label: 'Evaluated', value: runMetrics.classification.n_eval },
+                  ].map((stat) => (
+                    <div key={stat.label} className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                      <p className="text-[11px] font-semibold text-slate-500">{stat.label}</p>
+                      <p className="text-lg font-semibold text-slate-900">
+                        {stat.value == null
+                          ? '—'
+                          : typeof stat.value === 'number'
+                            ? stat.value.toFixed(3)
+                            : stat.value}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+                <div className="mt-4 grid grid-cols-2 gap-3">
+                  <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                    <p className="text-[11px] font-semibold text-slate-500">Confusion</p>
+                    <div className="mt-2 grid grid-cols-2 gap-2 text-sm font-semibold text-slate-900">
+                      <span>TP: {runMetrics.classification.tp ?? 0}</span>
+                      <span>TN: {runMetrics.classification.tn ?? 0}</span>
+                      <span>FP: {runMetrics.classification.fp ?? 0}</span>
+                      <span>FN: {runMetrics.classification.fn ?? 0}</span>
+                    </div>
+                  </div>
+                  <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                    <p className="text-[11px] font-semibold text-slate-500">Excluded</p>
+                    <div className="mt-2 space-y-1 text-sm font-semibold text-slate-900">
+                      <p>Exec failed: {runMetrics.classification.excluded?.exec_failed ?? 0}</p>
+                      <p>Invalid pred: {runMetrics.classification.excluded?.invalid_pred ?? 0}</p>
+                      <p>Other: {runMetrics.classification.excluded?.other ?? 0}</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ) : null}
           </div>
         ) : (
-          <div className="rounded-2xl border border-slate-200 bg-white p-4 text-sm text-slate-600">
-            Results will appear here.
+          <div className="rounded-2xl border border-slate-200 bg-white p-4 text-sm text-slate-700">
+            Results not available yet.
           </div>
         )}
       </div>
