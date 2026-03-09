@@ -320,14 +320,16 @@ export default function AgentTestCases({ agentName }: AgentTestCasesProps) {
         onClose={() => setRunDrawerOpen(false)}
         widthClassName="w-[80%]"
       >
-        <AgentTestRunDrawer
-          agentName={agentName}
-          runId={lastRunId}
-          selectedCases={lastRunCases}
-          busy={runBusy}
-          error={runError}
-          onStart={startRun}
-        />
+        {runDrawerOpen ? (
+          <AgentTestRunDrawer
+            agentName={agentName}
+            runId={lastRunId}
+            selectedCases={lastRunCases}
+            busy={runBusy}
+            error={runError}
+            onStart={startRun}
+          />
+        ) : null}
       </SlidingModal>
     </div>
   );

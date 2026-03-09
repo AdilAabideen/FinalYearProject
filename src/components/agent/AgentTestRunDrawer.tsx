@@ -1,7 +1,8 @@
 import { useEffect, useId, useMemo, useState } from 'react';
 import type { AgentTestCaseRead } from '../../types/agentTests';
-import { SegmentedTabs } from '../ui/SegmentedTabs';
 import { API_BASE_URL } from '../../config/env';
+import { AgentTracesComponent } from './AgentTracesComponent';
+import { SegmentedTabs } from '../ui/SegmentedTabs';
 
 type HarnessTabKey = 'cases' | 'results';
 type CaseStatus = 'pending' | 'running' | 'passed' | 'failed';
@@ -68,11 +69,14 @@ export default function AgentTestRunDrawer({
   error,
   onStart,
 }: AgentTestRunDrawerProps) {
+
   const baseId = useId();
   const [activeTab, setActiveTab] = useState<HarnessTabKey>('results');
   const [activeCaseId, setActiveCaseId] = useState<string | null>(null);
-  const [caseStates, setCaseStates] = useState<Record<string, { status: CaseStatus; agentRunId?: string }>>({});
+  const [caseStates, setCaseStates] = useState<Record<string, { status: CaseStatus; testCaseId?: string }>>({});
   const [classification, setClassification] = useState<string | null>(null);
+
+  const [agentRuns, setAgentRuns] = useState<{ testCaseId: string; agentRunId: string }[]>([]);
 
   const totals = useMemo(() => {
     const total = selectedCases.length;
@@ -94,6 +98,11 @@ export default function AgentTestRunDrawer({
     resetSelection();
   }, [selectedCases]);
 
+  const activeAgentRunId = useMemo(
+    () => agentRuns.find((r) => r.testCaseId === activeCaseId)?.agentRunId ?? null,
+    [agentRuns, activeCaseId],
+  );
+
   useEffect(() => {
     if (!runId) return undefined;
     const url = `${API_BASE_URL}/api/tests/runs/${encodeURIComponent(runId)}/stream`;
@@ -101,9 +110,11 @@ export default function AgentTestRunDrawer({
 
     source.addEventListener('case_start', (evt) => {
       try {
-        const payload = JSON.parse((evt as MessageEvent<string>).data) as { test_case_id?: string };
+        const payload = JSON.parse((evt as MessageEvent<string>).data) as { test_case_id?: string; agent_run_id?: string };
         const testCaseId = payload.test_case_id;
-        if (!testCaseId) return;
+        const agentRunId = payload.agent_run_id;
+        if (!testCaseId || !agentRunId) return;
+        setAgentRuns((prev) => [...prev, { testCaseId, agentRunId }]);
         setCaseStates((prev) => ({
           ...prev,
           [testCaseId]: { ...(prev[testCaseId] ?? { status: 'pending' }), status: 'running', testCaseId },
@@ -197,9 +208,8 @@ export default function AgentTestRunDrawer({
                       key={testCase.id}
                       type="button"
                       onClick={() => setActiveCaseId(testCase.id)}
-                      className={`flex w-full items-center justify-between p-4 text-left transition ${
-                        isActive ? 'bg-slate-50' : 'hover:bg-slate-50'
-                      }`}
+                      className={`flex w-full items-center justify-between p-4 text-left transition ${isActive ? 'bg-slate-50' : 'hover:bg-slate-50'
+                        }`}
                     >
                       <div className="min-w-0 space-y-1">
                         <p className="truncate text-sm font-semibold text-slate-900">
@@ -280,12 +290,20 @@ export default function AgentTestRunDrawer({
                 )}
               </div>
 
-              <div className="row-span-2 rounded-xl border border-slate-200 bg-white p-3">
-                <p className="text-xs font-semibold text-slate-900">Test traces</p>
-                <div className="mt-2 min-h-0 h-[92%] overflow-hidden rounded-xl border border-slate-100 bg-slate-50 p-3">
-                  <p className="text-xs text-slate-600">
-                    Traces hidden for now. Run will still execute.
-                  </p>
+              <div className="row-span-2 min-h-0 flex flex-col rounded-xl border border-slate-200 bg-white p-3">
+                <p className="shrink-0 text-xs font-semibold text-slate-900">Test traces</p>
+                <div className="mt-2 min-h-0 flex-1 overflow-hidden rounded-xl border border-slate-100 bg-slate-50 p-3 mb-10">
+                  {activeAgentRunId ? (
+                    <AgentTracesComponent runId={activeAgentRunId} />
+                  ) : activeCaseId ? (
+                    <p className="text-xs text-slate-600">
+                      No agent run yet for this case. Start the run to stream traces.
+                    </p>
+                  ) : (
+                    <p className="text-xs text-slate-600">
+                      Select a test case to view its traces.
+                    </p>
+                  )}
                 </div>
               </div>
             </div>

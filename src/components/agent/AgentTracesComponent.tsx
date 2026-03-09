@@ -232,6 +232,11 @@ export function AgentTracesComponent({ runId, onDone }: AgentTracesComponentProp
 
   useEffect(() => {
     sourceRef.current?.close();
+    setEntries([]);
+    setStreamState('connecting');
+    setErrorText(null);
+    entryIdRef.current = 0;
+    seenEventIdsRef.current = new Set();
 
     const source = new EventSource(streamUrl);
     sourceRef.current = source;
@@ -256,7 +261,7 @@ export function AgentTracesComponent({ runId, onDone }: AgentTracesComponentProp
         </p>
       ) : null}
 
-      <div className="flex-1 min-h-0 overflow-auto pr-2">
+      <div className="flex-1 min-h-0 overflow-auto pr-2 pb-6">
         {entries.length ? (
           <div className="space-y-8 py-1">
             {entries.map((entry) => {
