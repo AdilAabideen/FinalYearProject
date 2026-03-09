@@ -100,13 +100,8 @@ export default function AgentTestCases({ agentName }: AgentTestCasesProps) {
     });
   }
 
-  async function handleRun() {
+  function openDrawer() {
     if (state.status !== 'success') return;
-    setRunDrawerOpen(true);
-    setRunError(null);
-    setLastRunId(null);
-    setRunBusy(true);
-
     const idsToRun = selectedIds.size ? Array.from(selectedIds) : state.cases.map((c) => c.id);
     const byId = new Map(state.cases.map((c) => [c.id, c]));
     setLastRunCases(
@@ -114,9 +109,21 @@ export default function AgentTestCases({ agentName }: AgentTestCasesProps) {
         .map((id) => byId.get(id))
         .filter((c): c is AgentTestCaseRead => c != null),
     );
+    setRunError(null);
+    setLastRunId(null);
+    setRunDrawerOpen(true);
+  }
 
+  async function startRun() {
+    if (!lastRunCases.length) return;
+    setRunError(null);
+    setRunBusy(true);
+    setLastRunId(null);
     try {
-      const run = await agentTestService.startTestRun(agentName, idsToRun);
+      const run = await agentTestService.startTestRun(
+        agentName,
+        lastRunCases.map((c) => c.id),
+      );
       setLastRunId(run.id);
     } catch (e: unknown) {
       setRunError(e instanceof Error ? e.message : 'Failed to start test run');
@@ -291,7 +298,7 @@ export default function AgentTestCases({ agentName }: AgentTestCasesProps) {
               <div className="mt-4 flex items-center justify-end">
                 <button
                   type="button"
-                  onClick={handleRun}
+                  onClick={openDrawer}
                   disabled={runBusy}
                   className="inline-flex items-center justify-center rounded-xl bg-PrimaryBlue px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-PrimaryBlue/90 focus:outline-none focus-visible:ring-2 focus-visible:ring-PrimaryBlue focus-visible:ring-offset-2 focus-visible:ring-offset-white disabled:cursor-not-allowed disabled:bg-slate-300"
                 >
@@ -319,6 +326,7 @@ export default function AgentTestCases({ agentName }: AgentTestCasesProps) {
           selectedCases={lastRunCases}
           busy={runBusy}
           error={runError}
+          onStart={startRun}
         />
       </SlidingModal>
     </div>
