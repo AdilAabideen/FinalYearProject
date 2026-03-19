@@ -3,6 +3,8 @@ import type { AgentTestCaseRead } from '../../types/agentTests';
 import { API_BASE_URL } from '../../config/env';
 import { AgentTracesComponent } from './AgentTracesComponent';
 import { SegmentedTabs } from '../ui/SegmentedTabs';
+import { modelService } from '../../services/modelService';
+import type { ModelSpec } from '../../types/models';
 
 type HarnessTabKey = 'cases' | 'results';
 type CaseStatus = 'pending' | 'running' | 'passed' | 'failed';
@@ -60,7 +62,7 @@ type AgentTestRunDrawerProps = {
   selectedCases: AgentTestCaseRead[];
   busy: boolean;
   error: string | null;
-  onStart: () => void | Promise<void>;
+  onStart: (modelId?: string) => void | Promise<void>;
 };
 
 function CaseBadge({ label, value }: { label: string; value: string | number }) {
@@ -97,11 +99,15 @@ export default function AgentTestRunDrawer({
 }: AgentTestRunDrawerProps) {
 
   const baseId = useId();
+  const modelSelectId = useId();
   const [activeTab, setActiveTab] = useState<HarnessTabKey>('results');
   const [activeCaseId, setActiveCaseId] = useState<string | null>(null);
   const [caseStates, setCaseStates] = useState<Record<string, { status: CaseStatus; testCaseId?: string }>>({});
   const [runMetrics, setRunMetrics] = useState<RunMetrics | null>(null);
   const [runPhase, setRunPhase] = useState<RunPhase>('idle');
+  const [models, setModels] = useState<ModelSpec[]>([]);
+  const [modelsStatus, setModelsStatus] = useState<'loading' | 'error' | 'success'>('loading');
+  const [selectedModelId, setSelectedModelId] = useState<string>('');
 
   const [agentRuns, setAgentRuns] = useState<{ testCaseId: string; agentRunId: string }[]>([]);
 
@@ -125,6 +131,28 @@ export default function AgentTestRunDrawer({
     }
     resetSelection();
   }, [selectedCases]);
+
+  useEffect(() => {
+    const ac = new AbortController();
+
+    async function loadModels() {
+      setModelsStatus('loading');
+      try {
+        const items = await modelService.listModels(ac.signal);
+        if (ac.signal.aborted) return;
+        setModels(items);
+        setModelsStatus('success');
+        setSelectedModelId((prev) => prev || items[0]?.id || '');
+      } catch {
+        if (ac.signal.aborted) return;
+        setModelsStatus('error');
+        setModels([]);
+      }
+    }
+
+    loadModels();
+    return () => ac.abort();
+  }, []);
 
   const activeAgentRunId = useMemo(
     () => agentRuns.find((r) => r.testCaseId === activeCaseId)?.agentRunId ?? null,
@@ -271,10 +299,33 @@ export default function AgentTestRunDrawer({
                 <p className="text-sm text-slate-900/70">
                   {selectedCases.length} case{selectedCases.length === 1 ? '' : 's'} selected
                 </p>
+
+                <div className="mt-3 flex items-center gap-2">
+                  <label htmlFor={modelSelectId} className="text-xs font-semibold text-slate-700">
+                    Model
+                  </label>
+                  <select
+                    id={modelSelectId}
+                    value={selectedModelId}
+                    onChange={(e) => setSelectedModelId(e.target.value)}
+                    disabled={modelsStatus !== 'success' || runPhase === 'running' || models.length === 0}
+                    className="min-w-52 rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 shadow-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-PrimaryBlue focus-visible:ring-offset-2 focus-visible:ring-offset-white disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-400"
+                  >
+                    {modelsStatus === 'loading' ? <option value="">Loading…</option> : null}
+                    {modelsStatus === 'error' ? <option value="">Unavailable</option> : null}
+                    {modelsStatus === 'success'
+                      ? models.map((model) => (
+                          <option key={model.id} value={model.id}>
+                            {model.id} ({model.provider})
+                          </option>
+                        ))
+                      : null}
+                  </select>
+                </div>
               </div>
               <button
                 type="button"
-                onClick={onStart}
+                onClick={() => onStart(selectedModelId || undefined)}
                 disabled={runPhase === 'running' || !selectedCases.length}
                 className={`inline-flex items-center gap-2 rounded-2xl px-5 py-2 text-xs font-semibold shadow-slate-900/40 backdrop-blur focus:outline-none focus-visible:ring-2 focus-visible:ring-white transition-all duration-300 ${
                   runPhase === 'running'

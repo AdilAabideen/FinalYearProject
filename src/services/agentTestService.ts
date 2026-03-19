@@ -23,6 +23,7 @@ export type AgentTestService = {
     agentName: string,
     caseIds: string[],
     name?: string,
+    modelId?: string,
     signal?: AbortSignal,
   ) => Promise<AgentTestRunRead>;
 };
@@ -65,7 +66,7 @@ export const agentTestService: AgentTestService = {
     }));
   },
 
-  async startTestRun(agentName, caseIds, name, signal) {
+  async startTestRun(agentName, caseIds, name, modelId, signal) {
     const url = `${API_BASE_URL}/api/tests/runs/start`;
 
     const response = await fetch(url, {
@@ -77,6 +78,7 @@ export const agentTestService: AgentTestService = {
       body: JSON.stringify({
         agent_name: agentName,
         name: name ?? null,
+        model_id: modelId ?? null,
         case_ids: caseIds,
       }),
       signal,
@@ -104,4 +106,3 @@ export const agentTestService: AgentTestService = {
     };
   },
 };
-

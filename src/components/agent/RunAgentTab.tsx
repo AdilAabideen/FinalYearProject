@@ -1,11 +1,13 @@
-import { useId, useState } from 'react';
+import { useEffect, useId, useState } from 'react';
 import type { AgentCatalogDetail } from '../../types/agents';
 import { agentRunService } from '../../services/agentRunService';
+import { modelService } from '../../services/modelService';
 import { cn } from '../../lib/cn';
 import { AgentInputForm } from './AgentInputForm';
 import { AgentTracesComponent } from './AgentTracesComponent';
 import { SegmentedTabs } from '../ui/SegmentedTabs';
 import { JsonInspector } from '../ui/JsonInspector';
+import type { ModelSpec } from '../../types/models';
 
 type OutputTabKey = 'traces' | 'results';
 
@@ -133,6 +135,7 @@ function coerceInputForRun(inputSchema: Record<string, unknown>, raw: Record<str
 
 export default function RunAgentTab({ agent }: RunAgentTabProps) {
   const outputTabsId = useId();
+  const modelSelectId = useId();
   const [view, setView] = useState<'input' | 'output'>('input');
   const [activeOutputTab, setActiveOutputTab] = useState<OutputTabKey>('traces');
   const [value, setValue] = useState<Record<string, unknown>>(() => getDefaultInputs(agent));
@@ -143,6 +146,31 @@ export default function RunAgentTab({ agent }: RunAgentTabProps) {
   const [resultsLoading, setResultsLoading] = useState(false);
   const [startError, setStartError] = useState<string | null>(null);
   const [starting, setStarting] = useState(false);
+  const [models, setModels] = useState<ModelSpec[]>([]);
+  const [modelsStatus, setModelsStatus] = useState<'loading' | 'error' | 'success'>('loading');
+  const [selectedModelId, setSelectedModelId] = useState<string>('');
+
+  useEffect(() => {
+    const ac = new AbortController();
+
+    async function loadModels() {
+      setModelsStatus('loading');
+      try {
+        const items = await modelService.listModels(ac.signal);
+        if (ac.signal.aborted) return;
+        setModels(items);
+        setModelsStatus('success');
+        setSelectedModelId((prev) => prev || items[0]?.id || '');
+      } catch {
+        if (ac.signal.aborted) return;
+        setModelsStatus('error');
+        setModels([]);
+      }
+    }
+
+    loadModels();
+    return () => ac.abort();
+  }, []);
 
   async function refreshRunResults(targetRunId: string) {
     let done = false;
@@ -172,9 +200,12 @@ export default function RunAgentTab({ agent }: RunAgentTabProps) {
 
     try {
       const input = coerceInputForRun(agent.inputSchema, value);
-      console.log('Starting agent run:', { agent_name: agent.name, input });
 
-      const started = await agentRunService.startAgentRun(agent.name, input);
+      const started = await agentRunService.startAgentRun(
+        agent.name,
+        input,
+        selectedModelId || undefined,
+      );
       setRunId(started.runId);
       setRunStatus(started.status);
       setView('output');
@@ -188,10 +219,34 @@ export default function RunAgentTab({ agent }: RunAgentTabProps) {
 
   return (
     <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 pt-2 h-full flex min-h-0 flex-col">
-      <div>
-        {view === 'input' && <p className="mt-1 text-md text-slate-600">
-          Select tools and provide inputs to run this agent.
-        </p>}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        {view === 'input' ? (
+          <>
+            <p className="mt-1 text-md text-slate-600">Select tools and provide inputs to run this agent.</p>
+            <div className="mt-1 flex items-center gap-2">
+              <label htmlFor={modelSelectId} className="text-xs font-semibold text-slate-700">
+                Model
+              </label>
+              <select
+                id={modelSelectId}
+                value={selectedModelId}
+                onChange={(e) => setSelectedModelId(e.target.value)}
+                disabled={modelsStatus !== 'success' || models.length === 0}
+                className="min-w-48 rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 shadow-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-PrimaryBlue focus-visible:ring-offset-2 focus-visible:ring-offset-white disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-400"
+              >
+                {modelsStatus === 'loading' ? <option value="">Loading…</option> : null}
+                {modelsStatus === 'error' ? <option value="">Unavailable</option> : null}
+                {modelsStatus === 'success'
+                  ? models.map((model) => (
+                      <option key={model.id} value={model.id}>
+                        {model.id} ({model.provider})
+                      </option>
+                    ))
+                  : null}
+              </select>
+            </div>
+          </>
+        ) : null}
       </div>
 
       {view === 'input' ? (
