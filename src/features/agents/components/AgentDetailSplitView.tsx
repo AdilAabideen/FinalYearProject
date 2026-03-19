@@ -1,4 +1,4 @@
-import type { AgentCatalogDetail } from '../../types/agents';
+import type { AgentCatalogDetail } from '../../../types/agents';
 import { AgentDiagram } from './AgentDiagram';
 import AgentTab from './AgentTab';
 

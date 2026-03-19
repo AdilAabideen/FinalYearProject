@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { cn } from '../../shared/lib/cn';
-import { agentTestService } from '../../services/agentTestService';
-import type { AgentTestCaseRead } from '../../types/agentTests';
-import { SlidingModal } from '../../shared/ui/SlidingModal';
+import { cn } from '../../../shared/lib/cn';
+import { agentTestService } from '../../../services/agentTestService';
+import type { AgentTestCaseRead } from '../../../types/agentTests';
+import { SlidingModal } from '../../../shared/ui/SlidingModal';
 import AgentTestRunDrawer from './AgentTestRunDrawer';
 
 type AgentTestCasesProps = {

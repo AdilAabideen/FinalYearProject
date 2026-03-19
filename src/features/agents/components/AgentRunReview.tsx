@@ -1,11 +1,11 @@
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
-import { agentEventService } from '../../services/agentEventService';
-import { agentRunService } from '../../services/agentRunService';
-import type { AgentEventRead } from '../../types/agentEvents';
-import type { AgentRunRead } from '../../types/agentRuns';
-import { cn } from '../../shared/lib/cn';
-import { SegmentedTabs } from '../../shared/ui/SegmentedTabs';
-import { JsonInspector } from '../../shared/ui/JsonInspector';
+import { agentEventService } from '../../../services/agentEventService';
+import { agentRunService } from '../../../services/agentRunService';
+import type { AgentEventRead } from '../../../types/agentEvents';
+import type { AgentRunRead } from '../../../types/agentRuns';
+import { cn } from '../../../shared/lib/cn';
+import { SegmentedTabs } from '../../../shared/ui/SegmentedTabs';
+import { JsonInspector } from '../../../shared/ui/JsonInspector';
 
 type OutputTabKey = 'traces' | 'results';
 

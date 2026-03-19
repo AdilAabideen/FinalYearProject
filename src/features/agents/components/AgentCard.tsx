@@ -1,7 +1,7 @@
-import arrowRightIcon from '../assets/figma/icon-arrow-right.png';
-import { Badge } from '../shared/ui/Badge';
-import { IconButton } from '../shared/ui/IconButton';
-import { StatChip } from '../shared/ui/StatChip';
+import arrowRightIcon from '../../../assets/figma/icon-arrow-right.png';
+import { Badge } from '../../../shared/ui/Badge';
+import { IconButton } from '../../../shared/ui/IconButton';
+import { StatChip } from '../../../shared/ui/StatChip';
 
 type AgentCardProps = {
   name: string;

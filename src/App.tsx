@@ -1,8 +1,8 @@
 import { useState } from 'react';
 import type { NavKey } from './components/Sidebar';
 import { AppShell } from './components/layout/AppShell';
-import { AgentsPage } from './pages/AgentsPage';
-import { HomePage } from './pages/HomePage';
+import { AgentsPage } from './features/agents/pages/AgentsPage';
+import { HomePage } from './features/home/pages/HomePage';
 
 type BackAction = { label?: string; onClick: () => void };
 type HeaderOverride = {

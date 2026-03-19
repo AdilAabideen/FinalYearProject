@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { agentDiscoveryService } from '../services/agentDiscoveryService';
-import type { AgentCatalogDetail, AgentCatalogSummary } from '../types/agents';
+import { agentDiscoveryService } from '../../../services/agentDiscoveryService';
+import type { AgentCatalogDetail, AgentCatalogSummary } from '../../../types/agents';
 import { AgentCard, AgentCardSkeleton } from '../components/AgentCard';
-import { AgentDetailSplitView } from '../components/agent/AgentDetailSplitView';
+import { AgentDetailSplitView } from '../components/AgentDetailSplitView';
 
 type AgentsLoadState =
   | { status: 'loading' }

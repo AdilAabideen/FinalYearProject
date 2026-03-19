@@ -1,4 +1,4 @@
-import { SectionHeader } from '../components/layout/SectionHeader';
+import { SectionHeader } from '../../../components/layout/SectionHeader';
 
 export function HomePage() {
   return (

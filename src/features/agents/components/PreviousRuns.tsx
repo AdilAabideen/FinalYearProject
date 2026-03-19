@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { cn } from '../../shared/lib/cn';
-import { agentRunService } from '../../services/agentRunService';
-import type { AgentRunRead } from '../../types/agentRuns';
+import { cn } from '../../../shared/lib/cn';
+import { agentRunService } from '../../../services/agentRunService';
+import type { AgentRunRead } from '../../../types/agentRuns';
 import { AgentRunReview } from './AgentRunReview';
-import { Badge } from '../../shared/ui/Badge';
-import { JsonInspector } from '../../shared/ui/JsonInspector';
+import { Badge } from '../../../shared/ui/Badge';
+import { JsonInspector } from '../../../shared/ui/JsonInspector';
 import { IoIosRefresh } from 'react-icons/io';
 
 type PreviousRunsProps = {
