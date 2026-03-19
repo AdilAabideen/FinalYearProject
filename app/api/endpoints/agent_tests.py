@@ -10,6 +10,7 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.agentic.model_registry import validate_model_for_agent
 from app.agentic.registry import get_agent_spec, supported_agent_names
 from app.api.endpoints.agent_runs import _execute_agent_run_and_persist
 from app.config import settings
@@ -180,6 +181,16 @@ def start_test_run(payload: AgentTestRunStartRequest, db: Session = Depends(get_
         raise HTTPException(status_code=400, detail="case_ids must be non-empty")
 
     spec = _get_spec_or_400(payload.agent_name)
+    model_id = payload.model_id or settings.OPENAI_MODEL
+    try:
+        validate_model_for_agent(
+            model_id=model_id,
+            agent_name=payload.agent_name,
+            requires_tools=bool(spec.tools),
+            requires_structured_output=spec.output_model is not None,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
     stmt = (
         select(AgentTestCase)
@@ -214,7 +225,7 @@ def start_test_run(payload: AgentTestRunStartRequest, db: Session = Depends(get_
         agent_name=payload.agent_name,
         name=payload.name,
         status="created",
-        model_name=settings.OPENAI_MODEL,
+        model_name=model_id,
         selected_case_ids_json=payload.case_ids,
         metrics_json=None,
         started_at=None,
@@ -324,6 +335,17 @@ def stream_test_run(
                 evaluator.validate_expected(c.expected_json)
             except ValueError as e:
                 raise HTTPException(status_code=400, detail=f"Invalid expected_json for case_id={c.id}: {e}")
+
+    model_id = run.model_name or settings.OPENAI_MODEL
+    try:
+        validate_model_for_agent(
+            model_id=model_id,
+            agent_name=run.agent_name,
+            requires_tools=bool(spec.tools),
+            requires_structured_output=spec.output_model is not None,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
     def _sse(event: str, data: dict, event_id: Optional[int] = None) -> str:
         payload = json.dumps(data, ensure_ascii=False)

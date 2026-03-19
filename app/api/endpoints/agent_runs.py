@@ -23,7 +23,9 @@ from app.schemas.agent_runs import (
     AgentRunRead,
     RunStatus,
 )
+from app.agentic.model_registry import get_chat_model, validate_model_for_agent
 from app.agentic.registry import get_agent_spec, supported_agent_names
+from app.agentic.runtime import AgentRuntime
 
 router = APIRouter()
 
@@ -185,8 +187,21 @@ def _run_agent_and_persist(db: Session, run: AgentRun, seq: int) -> Tuple[int, O
         spec = get_agent_spec(run.agent_name)
     except KeyError as e:
         raise RuntimeError(f"Unsupported agent_name '{run.agent_name}'") from e
+
+    model_id = run.model_name or settings.OPENAI_MODEL
+    model_spec = validate_model_for_agent(
+        model_id=model_id,
+        agent_name=run.agent_name,
+        requires_tools=bool(spec.tools),
+        requires_structured_output=spec.output_model is not None,
+    )
     validated_input = spec.input_model.model_validate(run.input_json)
-    agent = spec.build()
+    runtime = AgentRuntime(
+        model_id=model_id,
+        model_spec=model_spec,
+        model=get_chat_model(model_id),
+    )
+    agent = spec.build(runtime)
     payload = {"messages": [("user", validated_input.model_dump_json())]}
 
     output_json: Optional[dict] = None
@@ -283,13 +298,25 @@ def create_agent_run(payload: AgentRunCreateRequest, db: Session = Depends(get_d
             detail=f"Unsupported agent_name '{payload.agent_name}'. Supported: {sorted(supported)}",
         )
 
+    spec = get_agent_spec(payload.agent_name)
+    model_id = payload.model_id or settings.OPENAI_MODEL
+    try:
+        validate_model_for_agent(
+            model_id=model_id,
+            agent_name=payload.agent_name,
+            requires_tools=bool(spec.tools),
+            requires_structured_output=spec.output_model is not None,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+
     run_id = str(uuid.uuid4())
     now = datetime.utcnow()
     run = AgentRun(
         id=run_id,
         agent_name=payload.agent_name,
         status="created",
-        model_name=settings.OPENAI_MODEL,
+        model_name=model_id,
         input_json=payload.input,
         started_at=None,
         finished_at=None,
@@ -315,13 +342,25 @@ def start_agent_run(
             detail=f"Unsupported agent_name '{payload.agent_name}'. Supported: {sorted(supported)}",
         )
 
+    spec = get_agent_spec(payload.agent_name)
+    model_id = payload.model_id or settings.OPENAI_MODEL
+    try:
+        validate_model_for_agent(
+            model_id=model_id,
+            agent_name=payload.agent_name,
+            requires_tools=bool(spec.tools),
+            requires_structured_output=spec.output_model is not None,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+
     run_id = str(uuid.uuid4())
     now = datetime.utcnow()
     run = AgentRun(
         id=run_id,
         agent_name=payload.agent_name,
         status="running",
-        model_name=settings.OPENAI_MODEL,
+        model_name=model_id,
         input_json=payload.input,
         started_at=now,
         finished_at=None,

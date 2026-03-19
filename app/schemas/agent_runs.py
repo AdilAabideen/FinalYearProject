@@ -20,6 +20,10 @@ EventType = Literal[
 
 class AgentRunCreateRequest(BaseModel):
     agent_name: str = Field(description="Which agent to run (e.g. 'vitals_agent').")
+    model_id: Optional[str] = Field(
+        default=None,
+        description="Optional model id (e.g. 'gpt-4o-mini', 'medgemma-4b-it').",
+    )
     input: dict[str, Any] = Field(description="JSON payload passed to the agent.")
 
 
@@ -61,4 +65,3 @@ class AgentEventsPage(BaseModel):
     run_id: str
     events: list[AgentEventRead]
     next_after_seq: int
-

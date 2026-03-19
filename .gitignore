@@ -12,3 +12,7 @@ app.db
 app.db-journal
 app.db-shm
 app.db-wal
+
+docs/
+
+.env

@@ -27,6 +27,10 @@ class Settings(BaseSettings):
     OPENAI_API_KEY: Optional[str] = None
     OPENAI_MODEL: str = "gpt-4o-mini"
 
+    # Dr7 settings
+    DR7_API_KEY: Optional[str] = None
+    DR7_MEDICAL_BASE_URL: str = "https://dr7.ai/api/v1/medical"
+
     #LangSmith settings
     # LANGSMITH_API_KEY: Optional[str] = None
     # LANGSMITH_PROJECT: Optional[str] = None

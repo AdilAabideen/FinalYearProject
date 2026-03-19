@@ -42,6 +42,10 @@ class AgentTestCaseRead(BaseModel):
 class AgentTestRunStartRequest(BaseModel):
     agent_name: str
     name: Optional[str] = Field(default=None, description="Optional label for UI (e.g. 'demo-1').")
+    model_id: Optional[str] = Field(
+        default=None,
+        description="Optional model id to use for all cases in this run (defaults to server config).",
+    )
     case_ids: list[str] = Field(description="IDs of the test cases to run, in execution order.")
 
 
@@ -79,4 +83,3 @@ class AgentTestCaseRunRead(BaseModel):
 class AgentTestRunDetailRead(BaseModel):
     run: AgentTestRunRead
     case_runs: list[AgentTestCaseRunRead]
-
