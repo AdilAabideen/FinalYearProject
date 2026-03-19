@@ -1,13 +1,12 @@
-import { useEffect, useId, useState } from 'react';
+import { useId, useState } from 'react';
 import type { AgentCatalogDetail } from '../../../types/agents';
 import { agentRunService } from '../../../services/agentRunService';
-import { modelService } from '../../../services/modelService';
 import { cn } from '../../../shared/lib/cn';
 import { AgentInputForm } from './AgentInputForm';
 import { AgentTracesComponent } from './AgentTracesComponent';
 import { SegmentedTabs } from '../../../shared/ui/SegmentedTabs';
 import { JsonInspector } from '../../../shared/ui/JsonInspector';
-import type { ModelSpec } from '../../../types/models';
+import { useModels } from '../hooks/useModels';
 
 type OutputTabKey = 'traces' | 'results';
 
@@ -146,31 +145,7 @@ export default function RunAgentTab({ agent }: RunAgentTabProps) {
   const [resultsLoading, setResultsLoading] = useState(false);
   const [startError, setStartError] = useState<string | null>(null);
   const [starting, setStarting] = useState(false);
-  const [models, setModels] = useState<ModelSpec[]>([]);
-  const [modelsStatus, setModelsStatus] = useState<'loading' | 'error' | 'success'>('loading');
-  const [selectedModelId, setSelectedModelId] = useState<string>('');
-
-  useEffect(() => {
-    const ac = new AbortController();
-
-    async function loadModels() {
-      setModelsStatus('loading');
-      try {
-        const items = await modelService.listModels(ac.signal);
-        if (ac.signal.aborted) return;
-        setModels(items);
-        setModelsStatus('success');
-        setSelectedModelId((prev) => prev || items[0]?.id || '');
-      } catch {
-        if (ac.signal.aborted) return;
-        setModelsStatus('error');
-        setModels([]);
-      }
-    }
-
-    loadModels();
-    return () => ac.abort();
-  }, []);
+  const { models, status: modelsStatus, selectedModelId, setSelectedModelId } = useModels();
 
   async function refreshRunResults(targetRunId: string) {
     let done = false;

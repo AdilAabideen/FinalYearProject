@@ -3,8 +3,7 @@ import type { AgentTestCaseRead } from '../../../types/agentTests';
 import { API_BASE_URL } from '../../../config/env';
 import { AgentTracesComponent } from './AgentTracesComponent';
 import { SegmentedTabs } from '../../../shared/ui/SegmentedTabs';
-import { modelService } from '../../../services/modelService';
-import type { ModelSpec } from '../../../types/models';
+import { useModels } from '../hooks/useModels';
 
 type HarnessTabKey = 'cases' | 'results';
 type CaseStatus = 'pending' | 'running' | 'passed' | 'failed';
@@ -105,9 +104,7 @@ export default function AgentTestRunDrawer({
   const [caseStates, setCaseStates] = useState<Record<string, { status: CaseStatus; testCaseId?: string }>>({});
   const [runMetrics, setRunMetrics] = useState<RunMetrics | null>(null);
   const [runPhase, setRunPhase] = useState<RunPhase>('idle');
-  const [models, setModels] = useState<ModelSpec[]>([]);
-  const [modelsStatus, setModelsStatus] = useState<'loading' | 'error' | 'success'>('loading');
-  const [selectedModelId, setSelectedModelId] = useState<string>('');
+  const { models, status: modelsStatus, selectedModelId, setSelectedModelId } = useModels();
 
   const [agentRuns, setAgentRuns] = useState<{ testCaseId: string; agentRunId: string }[]>([]);
 
@@ -131,28 +128,6 @@ export default function AgentTestRunDrawer({
     }
     resetSelection();
   }, [selectedCases]);
-
-  useEffect(() => {
-    const ac = new AbortController();
-
-    async function loadModels() {
-      setModelsStatus('loading');
-      try {
-        const items = await modelService.listModels(ac.signal);
-        if (ac.signal.aborted) return;
-        setModels(items);
-        setModelsStatus('success');
-        setSelectedModelId((prev) => prev || items[0]?.id || '');
-      } catch {
-        if (ac.signal.aborted) return;
-        setModelsStatus('error');
-        setModels([]);
-      }
-    }
-
-    loadModels();
-    return () => ac.abort();
-  }, []);
 
   const activeAgentRunId = useMemo(
     () => agentRuns.find((r) => r.testCaseId === activeCaseId)?.agentRunId ?? null,
