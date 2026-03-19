@@ -17,15 +17,6 @@ def _round_or_none(v: Optional[float], ndigits: int = 4) -> Optional[float]:
 
 
 class VitalsUptriageEvaluator:
-    """
-    Binary evaluator for vitals_agent:
-
-    - y_true comes from expected_json.recommendation.consider_uptriage
-    - y_pred comes from actual_json.recommendation.consider_uptriage
-
-    Free-text fields (reasoning) are intentionally ignored.
-    """
-
     label_name = "recommendation.consider_uptriage"
 
     def validate_expected(self, expected_json: Dict[str, Any]) -> None:
@@ -91,7 +82,7 @@ class VitalsUptriageEvaluator:
                 },
             )
 
-        passed = (y_pred == y_true)
+        passed = y_pred == y_true
         confusion: Confusion
         if y_true and y_pred:
             confusion = "tp"
@@ -170,4 +161,3 @@ class VitalsUptriageEvaluator:
                 "other": other_excluded,
             },
         }
-

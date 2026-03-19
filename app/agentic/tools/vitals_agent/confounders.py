@@ -1,9 +1,10 @@
-from typing import Any, Dict, List, Optional
-import json
-from pydantic import BaseModel, Field
-from app.api.endpoints.medrecon import get_medrecons_by_subject
-from app.neo4j_db import get_neo4j_driver
 from datetime import datetime
+from typing import Any, Dict
+
+from pydantic import BaseModel, Field
+
+from app.api.services.medrecon_service import get_medrecons_by_subject_with_new_session
+from app.neo4j_db import get_neo4j_driver
 
 from langchain.tools import tool
 
@@ -41,14 +42,13 @@ def get_vitals_confounders(
     """
 
 
-    medrecons = get_medrecons_by_subject(
+    medrecons = get_medrecons_by_subject_with_new_session(
         subject_id=subject_id,
         charttime_start=None,
         charttime_end=in_time,
         limit=1000,
         offset=0,
         order="asc",
-        db=__import__("app.database", fromlist=["SessionLocal"]).SessionLocal(),
     )
 
     etccodes = list(dict.fromkeys([medrecon.etccode for medrecon in medrecons if medrecon.etccode is not None]))

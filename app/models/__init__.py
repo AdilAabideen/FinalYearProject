@@ -6,15 +6,4 @@ from app.models.agent_test_case import AgentTestCase
 from app.models.agent_test_run import AgentTestRun
 from app.models.agent_test_case_run import AgentTestCaseRun
 
-
 # Import all models here so Alembic can detect them
-__all__ = [
-    "Base",
-    "TimestampMixin",
-    "Medrecon",
-    "AgentRun",
-    "AgentEvent",
-    "AgentTestCase",
-    "AgentTestRun",
-    "AgentTestCaseRun",
-]

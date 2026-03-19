@@ -1,51 +1,33 @@
 from __future__ import annotations
+
 import json
 import os
 import sys
 import uuid
 
+from langchain_core.messages import AIMessage, ToolMessage
+from langgraph.prebuilt import create_react_agent
+
+from app.agentic.agents.base.spec import AgentSpec
 from app.agentic.model_registry import get_chat_model, resolve_model_spec
 from app.agentic.runtime import AgentRuntime
 from app.config import settings
-from langchain_core.messages import AIMessage, ToolMessage
-from langgraph.prebuilt import create_react_agent
-from app.agentic.prompts.vitals_agent_prompt import SYSTEM_PROMPT
-from app.schemas.vitals_agent import VitalsAgentInput
+from app.agentic.agents.vitals.schema import VitalsAgentInput, VitalsAgentOutput
 
-from app.agentic.tools.vitals_agent.confounders import get_vitals_confounders
-from app.agentic.tools.vitals_agent.compute_esi_danger_zone import compute_esi_danger_zone
-from app.agentic.tools.vitals_agent.compute_shock_index import compute_shock_index
-from app.agentic.tools.vitals_agent.ault_bp_temp_triggers import adult_bp_temp_triggers
-from app.agentic.tools.log_thought import log_thought
+from .evaluator import VitalsUptriageEvaluator
+from .prompt import SYSTEM_PROMPT
+from .tools import TOOLS
 
-from app.schemas.vitals_agent import VitalsAgentOutput
-
-from app.agentic.agent_spec import AgentSpec
-from app.agentic.evaluators.vitals_uptriage import VitalsUptriageEvaluator
-
-
-TOOLS = [
-    get_vitals_confounders,
-    compute_esi_danger_zone,
-    compute_shock_index,
-    adult_bp_temp_triggers,
-    log_thought,
-]
-
-# TOOLS = []
 
 def build_vitals_agent(runtime: AgentRuntime):
-    """
-    Build Simple React Agent for Vital Signs Analysis
-    """
+    """Build the vitals LangGraph ReAct agent."""
     try:
-        agent = create_react_agent(
+        return create_react_agent(
             model=runtime.model,
             tools=TOOLS,
             prompt=SYSTEM_PROMPT,
             response_format=VitalsAgentOutput,
         )
-        return agent
     except Exception as e:
         raise Exception(f"Error building vitals agent: {e}")
 
@@ -74,10 +56,7 @@ def _maybe_pretty_json(text: str) -> str:
 
 
 def run_vitals_agent(input: VitalsAgentInput, *, verbose: bool = True):
-    """
-    Run Vital Signs Analysis
-    """
-    
+    """Run the vitals LangGraph agent with optional verbose stream logging."""
     try:
         model_id = settings.OPENAI_MODEL
         model_spec = resolve_model_spec(model_id)
@@ -162,7 +141,7 @@ def run_vitals_agent(input: VitalsAgentInput, *, verbose: bool = True):
                             )
                     elif isinstance(msg, ToolMessage):
                         tool_name = getattr(msg, "name", None) or "tool"
-                        status = getattr(msg, "status", None) or "ok"
+                        tool_status = getattr(msg, "status", None) or "ok"
                         tool_call_id = getattr(msg, "tool_call_id", None)
                         content = (getattr(msg, "content", "") or "").strip()
                         suffix = f" ({tool_call_id})" if tool_call_id else ""
@@ -174,7 +153,7 @@ def run_vitals_agent(input: VitalsAgentInput, *, verbose: bool = True):
                             )
                         else:
                             _log_block(
-                                f"{_c('RESULT', BOLD, CYAN)} {_c(tool_name, BOLD)} {_c(f'({status})', _status_color(status))}{_c(suffix, DIM, GRAY)}",
+                                f"{_c('RESULT', BOLD, CYAN)} {_c(tool_name, BOLD)} {_c(f'({tool_status})', _status_color(tool_status))}{_c(suffix, DIM, GRAY)}",
                                 _maybe_pretty_json(content),
                             )
 
@@ -182,5 +161,3 @@ def run_vitals_agent(input: VitalsAgentInput, *, verbose: bool = True):
         return final_state if final_state is not None else agent.invoke(payload)
     except Exception as e:
         raise Exception(f"Error running vitals agent: {e}")
-
-    

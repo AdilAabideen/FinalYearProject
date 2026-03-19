@@ -12,14 +12,6 @@ from app.agentic.runtime import AgentRuntime
 
 @dataclass(frozen=True)
 class AgentSpec:
-    """
-    Single source of truth for an agent's:
-    - identity (name/title/description)
-    - validated input schema (Pydantic model)
-    - available tools (LangChain tools)
-    - build function (returns a runnable/graph you can invoke/stream)
-    """
-
     name: str
     title: str
     description: str
