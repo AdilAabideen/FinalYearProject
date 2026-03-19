@@ -242,6 +242,7 @@ export function AgentTracesComponent({ runId, onDone }: AgentTracesComponentProp
     const source = new EventSource(streamUrl);
     sourceRef.current = source;
 
+
     source.onopen = handleOpen;
     source.onerror = handleError;
     source.addEventListener('agent_event', handleAgentEvent as EventListener);

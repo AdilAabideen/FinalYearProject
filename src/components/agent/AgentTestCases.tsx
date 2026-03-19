@@ -114,7 +114,7 @@ export default function AgentTestCases({ agentName }: AgentTestCasesProps) {
     setRunDrawerOpen(true);
   }
 
-  async function startRun() {
+  async function startRun(modelId?: string) {
     if (!lastRunCases.length) return;
     setRunError(null);
     setRunBusy(true);
@@ -123,6 +123,8 @@ export default function AgentTestCases({ agentName }: AgentTestCasesProps) {
       const run = await agentTestService.startTestRun(
         agentName,
         lastRunCases.map((c) => c.id),
+        undefined,
+        modelId,
       );
       setLastRunId(run.id);
     } catch (e: unknown) {

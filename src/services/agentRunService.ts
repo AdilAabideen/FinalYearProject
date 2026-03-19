@@ -15,6 +15,7 @@ export type AgentRunService = {
   startAgentRun: (
     agentName: string,
     input: Record<string, unknown>,
+    modelId?: string,
     signal?: AbortSignal,
   ) => Promise<{ runId: string; status: RunStatus }>;
 };
@@ -88,14 +89,14 @@ export const agentRunService: AgentRunService = {
     };
   },
 
-  async startAgentRun(agentName, input, signal) {
+  async startAgentRun(agentName, input, modelId, signal) {
     const response = await fetch(`${API_BASE_URL}/api/agent-runs/start`, {
       method: 'POST',
       headers: {
         Accept: 'application/json',
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ agent_name: agentName, input }),
+      body: JSON.stringify({ agent_name: agentName, model_id: modelId ?? null, input }),
       signal,
     });
 
