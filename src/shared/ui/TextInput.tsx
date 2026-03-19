@@ -1,5 +1,5 @@
 import { useId, type InputHTMLAttributes } from 'react';
-import { cn } from '../../lib/cn';
+import { cn } from '../lib/cn';
 
 type TextInputProps = InputHTMLAttributes<HTMLInputElement> & {
   srLabel: string;

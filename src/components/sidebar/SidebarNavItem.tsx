@@ -1,5 +1,5 @@
 import { forwardRef } from 'react';
-import { cn } from '../../lib/cn';
+import { cn } from '../../shared/lib/cn';
 
 type SidebarNavItemProps = {
   iconSrc: string;

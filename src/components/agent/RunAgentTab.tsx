@@ -2,11 +2,11 @@ import { useEffect, useId, useState } from 'react';
 import type { AgentCatalogDetail } from '../../types/agents';
 import { agentRunService } from '../../services/agentRunService';
 import { modelService } from '../../services/modelService';
-import { cn } from '../../lib/cn';
+import { cn } from '../../shared/lib/cn';
 import { AgentInputForm } from './AgentInputForm';
 import { AgentTracesComponent } from './AgentTracesComponent';
-import { SegmentedTabs } from '../ui/SegmentedTabs';
-import { JsonInspector } from '../ui/JsonInspector';
+import { SegmentedTabs } from '../../shared/ui/SegmentedTabs';
+import { JsonInspector } from '../../shared/ui/JsonInspector';
 import type { ModelSpec } from '../../types/models';
 
 type OutputTabKey = 'traces' | 'results';

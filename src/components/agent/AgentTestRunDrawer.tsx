@@ -2,7 +2,7 @@ import { useEffect, useId, useMemo, useState } from 'react';
 import type { AgentTestCaseRead } from '../../types/agentTests';
 import { API_BASE_URL } from '../../config/env';
 import { AgentTracesComponent } from './AgentTracesComponent';
-import { SegmentedTabs } from '../ui/SegmentedTabs';
+import { SegmentedTabs } from '../../shared/ui/SegmentedTabs';
 import { modelService } from '../../services/modelService';
 import type { ModelSpec } from '../../types/models';
 

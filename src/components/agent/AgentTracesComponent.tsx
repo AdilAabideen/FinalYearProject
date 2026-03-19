@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { API_BASE_URL } from '../../config/env';
-import { JsonInspector } from '../ui/JsonInspector';
+import { JsonInspector } from '../../shared/ui/JsonInspector';
 
 type AgentTracesComponentProps = {
   runId: string;

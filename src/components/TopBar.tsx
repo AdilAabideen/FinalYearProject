@@ -1,4 +1,4 @@
-import { TextInput } from './ui/TextInput';
+import { TextInput } from '../shared/ui/TextInput';
 
 type BackAction = {
   label?: string;

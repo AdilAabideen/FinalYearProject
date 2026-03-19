@@ -1,6 +1,6 @@
 import { useId, useState } from 'react';
 import type { AgentCatalogDetail } from '../../types/agents';
-import { SegmentedTabs } from '../ui/SegmentedTabs';
+import { SegmentedTabs } from '../../shared/ui/SegmentedTabs';
 import RunAgentTab from './RunAgentTab';
 import PreviousRuns from './PreviousRuns';
 import AgentTestCases from './AgentTestCases';

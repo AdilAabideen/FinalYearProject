@@ -1,9 +1,9 @@
 import { useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { cn } from '../../lib/cn';
-import { formatJson } from '../../lib/formatJson';
+import { cn } from '../../shared/lib/cn';
+import { formatJson } from '../../shared/lib/formatJson';
 import type { AgentCatalogDetail, ToolCatalogItem } from '../../types/agents';
-import { Badge } from '../ui/Badge';
-import { CodeBlock } from '../ui/CodeBlock';
+import { Badge } from '../../shared/ui/Badge';
+import { CodeBlock } from '../../shared/ui/CodeBlock';
 
 type AgentDiagramProps = {
   agent: AgentCatalogDetail;
