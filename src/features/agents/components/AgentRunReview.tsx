@@ -3,10 +3,13 @@ import { agentEventService } from '../../../services/agentEventService';
 import { agentRunService } from '../../../services/agentRunService';
 import type { AgentEventRead } from '../../../types/agentEvents';
 import type { AgentRunRead } from '../../../types/agentRuns';
-import { cn } from '../../../shared/lib/cn';
 import { SegmentedTabs } from '../../../shared/ui/SegmentedTabs';
 import { JsonInspector } from '../../../shared/ui/JsonInspector';
 import { RunStatusBadge } from './RunStatusBadge';
+import { ToolStatusBadge } from './ToolStatusBadge';
+import { TraceOutputHoverBadge } from './TraceOutputHoverBadge';
+import { classifyToolStatus, type ToolStatus } from '../utils/status';
+import { prettifyToolName, truncateText, tryParseJson } from '../utils/trace';
 
 type OutputTabKey = 'traces' | 'results';
 
@@ -14,8 +17,6 @@ const outputTabs: Array<{ key: OutputTabKey; label: string }> = [
   { key: 'traces', label: 'Agent Traces' },
   { key: 'results', label: 'Results' },
 ];
-
-type ToolStatus = 'succeeded' | 'error' | 'unknown';
 
 type TraceEntry =
   | { id: string; kind: 'thinking'; text: string }
@@ -39,90 +40,10 @@ type LoadState<T> =
   | { status: 'error'; message: string }
   | { status: 'success'; value: T };
 
-function classifyStatus(status: string | null | undefined): ToolStatus {
-  if (!status) return 'unknown';
-  const normalized = status.toLowerCase();
-  if (
-    normalized.includes('succeed') ||
-    normalized.includes('success') ||
-    normalized.includes('complete') ||
-    normalized.includes('done')
-  ) {
-    return 'succeeded';
-  }
-  if (normalized.includes('error') || normalized.includes('fail')) return 'error';
-  return 'unknown';
-}
-
-function prettifyToolName(toolName: string) {
-  return toolName
-    .replace(/[_-]+/g, ' ')
-    .split(' ')
-    .filter(Boolean)
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-    .join(' ');
-}
-
-function tryParseJson(value: string) {
-  try {
-    return JSON.parse(value) as unknown;
-  } catch {
-    return value;
-  }
-}
-
 function getEventPayload(event: AgentEventRead): unknown {
   if (event.payloadJson != null) return event.payloadJson;
   if (event.payloadText != null) return tryParseJson(event.payloadText);
   return null;
-}
-
-function truncateText(value: string, max: number) {
-  if (value.length <= max) return value;
-  return `${value.slice(0, max)}…`;
-}
-
-function OutputHoverBadge({ value }: { value: unknown }) {
-  const hasValue = value != null && (typeof value !== 'string' || value.trim().length > 0);
-
-  return (
-    <span className="group relative inline-flex">
-      <span className="inline-flex cursor-default items-center rounded-full bg-sky-50 px-2.5 py-1 text-xs font-semibold text-sky-700 ring-1 ring-sky-200">
-        Output
-      </span>
-
-      <div className="absolute left-0 top-full z-20 mt-2 hidden w-140 rounded-2xl border border-slate-200 bg-white p-3 shadow-xl group-hover:block group-focus-within:block">
-        {hasValue ? (
-          <div className="max-h-80 overflow-auto rounded-2xl border border-slate-200 bg-slate-50 p-3">
-            <JsonInspector value={value} />
-          </div>
-        ) : (
-          <p className="text-xs text-slate-500">No output.</p>
-        )}
-      </div>
-    </span>
-  );
-}
-
-function StatusBadge({ status }: { status: ToolStatus }) {
-  const label = status === 'succeeded' ? 'succeeded' : status === 'error' ? 'error' : 'unknown';
-  const className =
-    status === 'succeeded'
-      ? 'bg-emerald-50 text-emerald-700 ring-emerald-200'
-      : status === 'error'
-        ? 'bg-rose-50 text-rose-700 ring-rose-200'
-        : 'bg-slate-100 text-slate-700 ring-slate-200';
-
-  return (
-    <span
-      className={cn(
-        'inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold ring-1',
-        className,
-      )}
-    >
-      {label.charAt(0).toUpperCase() + label.slice(1)}
-    </span>
-  );
 }
 
 async function loadAllEvents(runId: string, signal: AbortSignal) {
@@ -157,7 +78,7 @@ function toTraceEntries(events: AgentEventRead[]): TraceEntry[] {
         id,
         kind: 'action',
         toolName,
-        status: classifyStatus(event.status),
+        status: classifyToolStatus(event.status),
         output: payload,
       };
     }
@@ -173,7 +94,7 @@ function toTraceEntries(events: AgentEventRead[]): TraceEntry[] {
       kind: 'event',
       eventType: event.eventType,
       title,
-      status: classifyStatus(event.status),
+      status: classifyToolStatus(event.status),
       payload,
     };
   });
@@ -327,8 +248,8 @@ export function AgentRunReview({ runId, onBack }: AgentRunReviewProps) {
                             {prettifyToolName(entry.toolName)}
                           </p>
                           <div className="flex flex-wrap items-center gap-2">
-                            <StatusBadge status={entry.status} />
-                            <OutputHoverBadge value={entry.output} />
+                            <ToolStatusBadge status={entry.status} />
+                            <TraceOutputHoverBadge value={entry.output} />
                           </div>
                         </div>
                       );

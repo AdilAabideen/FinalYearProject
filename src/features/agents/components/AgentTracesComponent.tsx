@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { API_BASE_URL } from '../../../config/env';
-import { JsonInspector } from '../../../shared/ui/JsonInspector';
+import { TraceOutputHoverBadge } from './TraceOutputHoverBadge';
+import { ToolStatusBadge } from './ToolStatusBadge';
+import { classifyToolStatus, type ToolStatus } from '../utils/status';
+import { isLogThoughtTool, prettifyToolName, truncateText, tryParseJson } from '../utils/trace';
 
 type AgentTracesComponentProps = {
   runId: string;
@@ -20,8 +23,6 @@ type AgentEventPayload = {
   payload_text?: string;
   created_at?: string;
 };
-
-type ToolStatus = 'succeeded' | 'error' | 'unknown';
 
 type TraceEntry =
   | {
@@ -56,93 +57,10 @@ function asAgentEventPayload(value: unknown): AgentEventPayload {
   };
 }
 
-function isLogThoughtTool(toolName: string) {
-  const normalized = toolName.toLowerCase().replace(/[\s_-]+/g, '');
-  return normalized.includes('logthought');
-}
-
-function truncateText(value: string, max: number) {
-  if (value.length <= max) return value;
-  return `${value.slice(0, max)}…`;
-}
-
-function prettifyToolName(toolName: string) {
-  return toolName
-    .replace(/[_-]+/g, ' ')
-    .split(' ')
-    .filter(Boolean)
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-    .join(' ');
-}
-
-function classifyStatus(status: string | undefined): ToolStatus {
-  if (!status) return 'unknown';
-  const normalized = status.toLowerCase();
-  if (
-    normalized.includes('succeed') ||
-    normalized.includes('success') ||
-    normalized.includes('complete') ||
-    normalized.includes('done')
-  ) {
-    return 'succeeded';
-  }
-  if (normalized.includes('error') || normalized.includes('fail')) return 'error';
-  return 'unknown';
-}
-
-function tryParseJson(value: string) {
-  try {
-    return JSON.parse(value) as unknown;
-  } catch {
-    return value;
-  }
-}
-
 function getToolOutputValue(payload: AgentEventPayload) {
   if (payload.payload_json != null) return payload.payload_json;
   if (payload.payload_text != null) return tryParseJson(payload.payload_text);
   return null;
-}
-
-function StatusBadge({ status }: { status: ToolStatus }) {
-  const label = status === 'succeeded' ? 'succeeded' : status === 'error' ? 'error' : 'unknown';
-  const className =
-    status === 'succeeded'
-      ? 'bg-emerald-50 text-emerald-700 ring-emerald-200'
-      : status === 'error'
-        ? 'bg-rose-50 text-rose-700 ring-rose-200'
-        : 'bg-slate-100 text-slate-700 ring-slate-200';
-
-  return (
-    <span
-      className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold ring-1 ${className}`}
-    >
-      {label.charAt(0).toUpperCase() + label.slice(1)}
-    </span>
-  );
-}
-
-function OutputHoverBadge({ value }: { value: unknown }) {
-  const hasValue =
-    value != null && (typeof value !== 'string' || value.trim().length > 0);
-
-  return (
-    <span className="group relative inline-flex ">
-      <span className="inline-flex cursor-default items-center rounded-full bg-sky-50 px-2.5 py-1 text-xs font-semibold text-sky-700 ring-1 ring-sky-200">
-        Output
-      </span>
-
-      <div className="absolute left-0 top-full z-20 mt-2 hidden w-140 rounded-2xl border border-slate-200 bg-white p-3 shadow-xl group-hover:block group-focus-within:block">
-        {hasValue ? (
-          <div className="max-h-80 overflow-auto rounded-2xl border border-slate-200 bg-slate-50 p-3">
-            <JsonInspector value={value} />
-          </div>
-        ) : (
-          <p className="text-xs text-slate-500">No output.</p>
-        )}
-      </div>
-    </span>
-  );
 }
 
 export function AgentTracesComponent({ runId, onDone }: AgentTracesComponentProps) {
@@ -198,7 +116,7 @@ export function AgentTracesComponent({ runId, onDone }: AgentTracesComponentProp
       if (!payload.tool_name) return;
 
       const output = getToolOutputValue(payload);
-      const status = classifyStatus(payload.status);
+      const status = classifyToolStatus(payload.status);
 
       const hasOutput = output != null && (typeof output !== 'string' || output.trim().length > 0);
 
@@ -283,8 +201,8 @@ export function AgentTracesComponent({ runId, onDone }: AgentTracesComponentProp
                     {prettifyToolName(entry.toolName)}
                   </p>
                   <div className="flex flex-wrap items-center gap-2">
-                    <StatusBadge status={entry.status} />
-                    <OutputHoverBadge value={entry.output} />
+                    <ToolStatusBadge status={entry.status} />
+                    <TraceOutputHoverBadge value={entry.output} />
                   </div>
                 </div>
               );
