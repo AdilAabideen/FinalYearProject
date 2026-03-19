@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
-import { Sidebar, type NavKey } from '../Sidebar';
-import { TopBar } from '../TopBar';
+import { Sidebar, type NavKey } from '../navigation/Sidebar';
+import { TopBar } from '../navigation/TopBar';
 import { PageContainer } from './PageContainer';
 
 type BackAction = {

@@ -1,9 +1,9 @@
 import { useLayoutEffect, useRef, useState } from 'react';
-import agentsIcon from '../assets/figma/icon-agents.png';
-import homeIcon from '../assets/figma/icon-home.png';
-import { SidebarBrand } from './sidebar/SidebarBrand';
-import { SidebarFooterButton } from './sidebar/SidebarFooterButton';
-import { SidebarNavItem } from './sidebar/SidebarNavItem';
+import agentsIcon from '../../assets/figma/icon-agents.png';
+import homeIcon from '../../assets/figma/icon-home.png';
+import { SidebarBrand } from './SidebarBrand';
+import { SidebarFooterButton } from './SidebarFooterButton';
+import { SidebarNavItem } from './SidebarNavItem';
 
 export type NavKey = 'home' | 'agents';
 
