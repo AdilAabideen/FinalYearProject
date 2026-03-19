@@ -6,6 +6,7 @@ import type { AgentRunRead } from '../../../types/agentRuns';
 import { cn } from '../../../shared/lib/cn';
 import { SegmentedTabs } from '../../../shared/ui/SegmentedTabs';
 import { JsonInspector } from '../../../shared/ui/JsonInspector';
+import { RunStatusBadge } from './RunStatusBadge';
 
 type OutputTabKey = 'traces' | 'results';
 
@@ -37,24 +38,6 @@ type LoadState<T> =
   | { status: 'loading' }
   | { status: 'error'; message: string }
   | { status: 'success'; value: T };
-
-function statusBadgeClass(status: string) {
-  const normalized = status.toLowerCase();
-  if (
-    normalized.includes('success') ||
-    normalized.includes('succeed') ||
-    normalized.includes('complete')
-  ) {
-    return 'bg-emerald-50 text-emerald-700 ring-emerald-200';
-  }
-  if (normalized.includes('fail') || normalized.includes('error')) {
-    return 'bg-rose-50 text-rose-700 ring-rose-200';
-  }
-  if (normalized.includes('run')) {
-    return 'bg-amber-50 text-amber-700 ring-amber-200';
-  }
-  return 'bg-slate-100 text-slate-700 ring-slate-200';
-}
 
 function classifyStatus(status: string | null | undefined): ToolStatus {
   if (!status) return 'unknown';
@@ -283,14 +266,7 @@ export function AgentRunReview({ runId, onBack }: AgentRunReviewProps) {
       <div className="mt-3 text-xs font-semibold text-slate-500">
         Run ID: <span className="font-mono text-slate-700">{runId}</span>
         {runState.status === 'success' ? (
-          <span
-            className={cn(
-              'ml-2 inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold ring-1',
-              statusBadgeClass(runState.value.status),
-            )}
-          >
-            {runState.value.status.charAt(0).toUpperCase() + runState.value.status.slice(1)}
-          </span>
+          <RunStatusBadge status={runState.value.status} className="ml-2" />
         ) : null}
       </div>
 
@@ -398,4 +374,3 @@ export function AgentRunReview({ runId, onBack }: AgentRunReviewProps) {
     </div>
   );
 }
-

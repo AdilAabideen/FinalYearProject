@@ -1,12 +1,12 @@
 import { useId, useState } from 'react';
 import type { AgentCatalogDetail } from '../../../types/agents';
 import { agentRunService } from '../../../services/agentRunService';
-import { cn } from '../../../shared/lib/cn';
 import { AgentInputForm } from './AgentInputForm';
 import { AgentTracesComponent } from './AgentTracesComponent';
 import { SegmentedTabs } from '../../../shared/ui/SegmentedTabs';
 import { JsonInspector } from '../../../shared/ui/JsonInspector';
 import { useModels } from '../hooks/useModels';
+import { RunStatusBadge } from './RunStatusBadge';
 
 type OutputTabKey = 'traces' | 'results';
 
@@ -18,20 +18,6 @@ const outputTabs: Array<{ key: OutputTabKey; label: string }> = [
 type RunAgentTabProps = {
   agent: AgentCatalogDetail;
 };
-
-function statusBadgeClass(status: string) {
-  const normalized = status.toLowerCase();
-  if (normalized.includes('succeed') || normalized.includes('success') || normalized.includes('complete')) {
-    return 'bg-emerald-50 text-emerald-700 ring-emerald-200';
-  }
-  if (normalized.includes('fail') || normalized.includes('error')) {
-    return 'bg-rose-50 text-rose-700 ring-rose-200';
-  }
-  if (normalized.includes('run')) {
-    return 'bg-amber-50 text-amber-700 ring-amber-200';
-  }
-  return 'bg-slate-100 text-slate-700 ring-slate-200';
-}
 
 function getDefaultInputs(agent: AgentCatalogDetail): Record<string, unknown> {
   if (agent.name !== 'vitals_agent') return {};
@@ -276,16 +262,7 @@ export default function RunAgentTab({ agent }: RunAgentTabProps) {
 
           <div className="mt-3 text-xs font-semibold text-slate-500">
             Run ID: <span className="font-mono text-slate-700">{runId ?? '—'}</span>
-            {runStatus ? (
-              <span
-                className={cn(
-                  'ml-2 inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold ring-1',
-                  statusBadgeClass(runStatus),
-                )}
-              >
-                {runStatus.charAt(0).toUpperCase() + runStatus.slice(1)}
-              </span>
-            ) : null}
+            {runStatus ? <RunStatusBadge status={runStatus} className="ml-2" /> : null}
           </div>
 
           <div className="mt-4 flex-1 min-h-0">

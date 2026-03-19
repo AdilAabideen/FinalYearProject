@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { cn } from '../../../shared/lib/cn';
 import { agentRunService } from '../../../services/agentRunService';
 import type { AgentRunRead } from '../../../types/agentRuns';
 import { AgentRunReview } from './AgentRunReview';
 import { Badge } from '../../../shared/ui/Badge';
 import { JsonInspector } from '../../../shared/ui/JsonInspector';
 import { IoIosRefresh } from 'react-icons/io';
+import { RunStatusBadge } from './RunStatusBadge';
 
 type PreviousRunsProps = {
   agentName: string;
@@ -22,24 +22,6 @@ function formatTimestamp(value: string) {
   return new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' }).format(
     date,
   );
-}
-
-function statusBadgeClass(status: string) {
-  const normalized = status.toLowerCase();
-  if (
-    normalized.includes('success') ||
-    normalized.includes('succeed') ||
-    normalized.includes('complete')
-  ) {
-    return 'bg-emerald-50 text-emerald-700 ring-emerald-200';
-  }
-  if (normalized.includes('fail') || normalized.includes('error')) {
-    return 'bg-rose-50 text-rose-700 ring-rose-200';
-  }
-  if (normalized.includes('run')) {
-    return 'bg-amber-50 text-amber-700 ring-amber-200';
-  }
-  return 'bg-slate-100 text-slate-700 ring-slate-200';
 }
 
 export default function PreviousRuns({ agentName }: PreviousRunsProps) {
@@ -193,9 +175,7 @@ export default function PreviousRuns({ agentName }: PreviousRunsProps) {
                           >
                             View Traces
                           </button>
-                          <Badge className={cn('shrink-0', statusBadgeClass(run.status))}>
-                            {run.status.charAt(0).toUpperCase() + run.status.slice(1)}
-                          </Badge>
+                          <RunStatusBadge status={run.status} className="shrink-0" />
                         </div>
                       </div>
 
