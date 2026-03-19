@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from app.agentic.agents.vitals_agent import VITALS_AGENT_SPEC
-from app.agentic.agent_spec import AgentSpec
+from app.agentic.agents.base.spec import AgentSpec
+from app.agentic.agents.vitals.spec import VITALS_AGENT_SPEC
 
 
 AGENTS: dict[str, AgentSpec] = {
@@ -19,4 +19,3 @@ def supported_agent_names() -> set[str]:
 
 def get_agent_spec(agent_name: str) -> AgentSpec:
     return AGENTS[agent_name]
-
