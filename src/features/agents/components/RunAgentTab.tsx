@@ -7,6 +7,7 @@ import { SegmentedTabs } from '../../../shared/ui/SegmentedTabs';
 import { JsonInspector } from '../../../shared/ui/JsonInspector';
 import { useModels } from '../hooks/useModels';
 import { RunStatusBadge } from './RunStatusBadge';
+import { coerceInputForRun, getDefaultInputs } from '../utils/runInput';
 
 type OutputTabKey = 'traces' | 'results';
 
@@ -18,105 +19,6 @@ const outputTabs: Array<{ key: OutputTabKey; label: string }> = [
 type RunAgentTabProps = {
   agent: AgentCatalogDetail;
 };
-
-function getDefaultInputs(agent: AgentCatalogDetail): Record<string, unknown> {
-  if (agent.name !== 'vitals_agent') return {};
-
-  return {
-    temperature: '98.3',
-    heartrate: '75',
-    resprate: '14',
-    o2sat: '100',
-    sbp: '138',
-    dbp: '90',
-    pain: '7',
-    subject_id: '19880634',
-    intime: '2199-10-08T16:40',
-    age_years: '49.7',
-    chiefcomplaint: 'Left Abdominal Pain',
-  };
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
-function getStringFormat(schema: unknown): string | undefined {
-  if (!isRecord(schema)) return undefined;
-  return typeof schema.format === 'string' && schema.format.trim().length ? schema.format : undefined;
-}
-
-function getTypeCandidates(schema: unknown): string[] {
-  if (!isRecord(schema)) return [];
-  const types: string[] = [];
-
-  const directType = schema.type;
-  if (typeof directType === 'string') types.push(directType);
-  if (Array.isArray(directType)) {
-    for (const t of directType) if (typeof t === 'string') types.push(t);
-  }
-
-  const unions = schema.anyOf ?? schema.oneOf;
-  if (Array.isArray(unions)) {
-    for (const option of unions) types.push(...getTypeCandidates(option));
-  }
-
-  return Array.from(new Set(types));
-}
-
-function getPrimaryType(schema: unknown): string | undefined {
-  const types = getTypeCandidates(schema).filter((t) => t !== 'null');
-  return types[0];
-}
-
-function coerceInputForRun(inputSchema: Record<string, unknown>, raw: Record<string, unknown>) {
-  const properties = isRecord(inputSchema.properties) ? inputSchema.properties : {};
-  const required = new Set(
-    Array.isArray(inputSchema.required)
-      ? inputSchema.required.filter((k): k is string => typeof k === 'string' && k.length > 0)
-      : [],
-  );
-
-  const output: Record<string, unknown> = {};
-
-  for (const [key, schema] of Object.entries(properties)) {
-    const rawValue = raw[key];
-
-    if (rawValue == null || rawValue === '') {
-      if (required.has(key)) throw new Error(`Missing required field: ${key}`);
-      continue;
-    }
-
-    const primaryType = getPrimaryType(schema);
-    const stringFormat = getStringFormat(schema);
-
-    if ((primaryType === 'number' || primaryType === 'integer') && typeof rawValue === 'string') {
-      const num = Number(rawValue);
-      if (!Number.isFinite(num)) throw new Error(`Invalid number for ${key}`);
-      output[key] = primaryType === 'integer' ? Math.trunc(num) : num;
-      continue;
-    }
-
-    if (primaryType === 'integer' && typeof rawValue === 'number') {
-      output[key] = Math.trunc(rawValue);
-      continue;
-    }
-
-    if (primaryType === 'number' && typeof rawValue === 'number') {
-      output[key] = rawValue;
-      continue;
-    }
-
-    if (primaryType === 'string' && stringFormat === 'date-time' && typeof rawValue === 'string') {
-      output[key] = rawValue;
-      continue;
-    }
-
-    output[key] = rawValue;
-  }
-
-  return output;
-}
 
 export default function RunAgentTab({ agent }: RunAgentTabProps) {
   const outputTabsId = useId();
