@@ -4,7 +4,9 @@ import os
 import sys
 import uuid
 
-from app.agentic.llm import get_chat_model
+from app.agentic.model_registry import get_chat_model, resolve_model_spec
+from app.agentic.runtime import AgentRuntime
+from app.config import settings
 from langchain_core.messages import AIMessage, ToolMessage
 from langgraph.prebuilt import create_react_agent
 from app.agentic.prompts.vitals_agent_prompt import SYSTEM_PROMPT
@@ -32,13 +34,13 @@ TOOLS = [
 
 # TOOLS = []
 
-def build_vitals_agent():
+def build_vitals_agent(runtime: AgentRuntime):
     """
     Build Simple React Agent for Vital Signs Analysis
     """
     try:
         agent = create_react_agent(
-            model=get_chat_model(),
+            model=runtime.model,
             tools=TOOLS,
             prompt=SYSTEM_PROMPT,
             response_format=VitalsAgentOutput,
@@ -77,7 +79,14 @@ def run_vitals_agent(input: VitalsAgentInput, *, verbose: bool = True):
     """
     
     try:
-        agent = build_vitals_agent()
+        model_id = settings.OPENAI_MODEL
+        model_spec = resolve_model_spec(model_id)
+        runtime = AgentRuntime(
+            model_id=model_id,
+            model_spec=model_spec,
+            model=get_chat_model(model_id),
+        )
+        agent = build_vitals_agent(runtime)
         payload = {"messages": [("user", input.model_dump_json())]}
 
         if not verbose:

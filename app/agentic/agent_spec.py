@@ -7,6 +7,7 @@ from langchain_core.tools import BaseTool
 from pydantic import BaseModel
 
 from app.agentic.eval_types import AgentEvaluator
+from app.agentic.runtime import AgentRuntime
 
 
 @dataclass(frozen=True)
@@ -24,6 +25,6 @@ class AgentSpec:
     description: str
     input_model: Type[BaseModel]
     tools: Sequence[BaseTool]
-    build: Callable[[], Any]
+    build: Callable[[AgentRuntime], Any]
     output_model: Optional[Type[BaseModel]] = None
     evaluator: Optional[AgentEvaluator] = None

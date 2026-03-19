@@ -3,6 +3,7 @@ from app.api.endpoints import (
     agent_catalog,
     agent_tests,
     agent_runs,
+    models,
     medrecon,
     vitals_agent,
 )
@@ -16,3 +17,4 @@ api_router.include_router(
 api_router.include_router(agent_runs.router, prefix="/agent-runs", tags=["agent-runs"])
 api_router.include_router(agent_catalog.router, prefix="/agents", tags=["agents"])
 api_router.include_router(agent_tests.router, prefix="/tests", tags=["tests"])
+api_router.include_router(models.router, prefix="/models", tags=["models"])

@@ -1,34 +1,15 @@
 from __future__ import annotations
-import inspect
-from functools import lru_cache
+
+from typing import Optional
+
+from app.agentic.model_registry import get_chat_model as get_chat_model_by_id
 from app.config import settings
 
 
-@lru_cache
-def get_chat_model():
+def get_chat_model(model_id: Optional[str] = None):
     """
-    Lazily construct and cache the chat model.
+    Backwards-compatible helper for constructing the default chat model.
 
-    Keeps imports optional so the rest of the API can run without LangChain deps
-    installed until you actually start using agentic features.
+    New code should prefer `app.agentic.model_registry.get_chat_model(model_id)`.
     """
-    if not settings.OPENAI_API_KEY:
-        raise RuntimeError(
-            "OPENAI_API_KEY is not set. Add it to `.env` (see `.env.example`)."
-        )
-
-    try:
-        from langchain_openai import ChatOpenAI  # type: ignore
-    except ImportError as e:  # pragma: no cover
-        raise ImportError(
-            "Missing dependency `langchain-openai`. Install it to use the agentic stack."
-        ) from e
-
-    kwargs = {"model": settings.OPENAI_MODEL}
-    parameters = inspect.signature(ChatOpenAI).parameters
-    if "api_key" in parameters:
-        kwargs["api_key"] = settings.OPENAI_API_KEY
-    elif "openai_api_key" in parameters:
-        kwargs["openai_api_key"] = settings.OPENAI_API_KEY
-
-    return ChatOpenAI(**kwargs)
+    return get_chat_model_by_id(model_id or settings.OPENAI_MODEL)
