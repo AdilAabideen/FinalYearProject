@@ -18,14 +18,15 @@ from .evaluator import VitalsUptriageEvaluator
 from .prompt import SYSTEM_PROMPT
 from .tools import TOOLS
 
+from app.agentic.HandRolledAgent import SSEHandrolledAgent
 
 def build_vitals_agent(runtime: AgentRuntime):
     """Build the vitals LangGraph ReAct agent."""
     try:
-        return create_react_agent(
+        return SSEHandrolledAgent(
             model=runtime.model,
             tools=TOOLS,
-            prompt=SYSTEM_PROMPT,
+            system_prompt=SYSTEM_PROMPT,
             response_format=VitalsAgentOutput,
         )
     except Exception as e:
