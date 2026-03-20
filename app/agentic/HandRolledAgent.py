@@ -10,7 +10,7 @@ from typing import Any, AsyncGenerator, Iterable, Sequence
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage, ToolMessage
 from langchain_core.tools import BaseTool, tool as lc_tool
 from langchain_openai import ChatOpenAI
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 
 class SSEHandrolledAgent:
@@ -35,13 +35,20 @@ class SSEHandrolledAgent:
     ) -> None:
         self.model = self._build_model(model=model, llm_kwargs=llm_kwargs)
         self.tools: list[BaseTool] = self._coerce_tools(tools or [])
-        self.tools_by_name: dict[str, BaseTool] = {t.name: t for t in self.tools}
 
         self.system_prompt = (
             system_prompt if isinstance(system_prompt, str) and system_prompt.strip() else "You are a helpful assistant."
         )
         self.response_format = response_format
         self.final_answer_tool_name = final_answer_tool_name
+
+        # Ensure final_answer is available as an actual tool when structured output is requested.
+        if self.final_answer_tool_name and self.response_format is not None:
+            existing = {t.name for t in self.tools}
+            if self.final_answer_tool_name not in existing:
+                self.tools.append(self._build_final_answer_tool())
+
+        self.tools_by_name: dict[str, BaseTool] = {t.name: t for t in self.tools}
         self.agent_node_name = agent_node_name
         self.tools_node_name = tools_node_name
 
@@ -70,6 +77,35 @@ class SSEHandrolledAgent:
             else:
                 raise TypeError(f"Unsupported tool type: {type(t)!r}")
         return normalized
+
+    @staticmethod
+    def _fallback_final_answer_schema() -> type[BaseModel]:
+        class FinalAnswerPayload(BaseModel):
+            model_config = ConfigDict(extra="allow")
+
+        return FinalAnswerPayload
+
+    def _build_final_answer_tool(self) -> BaseTool:
+        if not self.final_answer_tool_name:
+            raise ValueError("final_answer_tool_name must be set to build final_answer tool.")
+
+        strict_schema = isinstance(self.response_format, type) and issubclass(self.response_format, BaseModel)
+        schema_model = self.response_format if strict_schema else self._fallback_final_answer_schema()
+        tool_name = self.final_answer_tool_name
+
+        @lc_tool(tool_name, args_schema=schema_model)
+        def _final_answer(**kwargs: Any) -> dict[str, Any]:
+            """Signal completion and return the final structured payload."""
+            if not kwargs:
+                raise ValueError("final_answer requires a non-empty JSON object.")
+
+            if strict_schema:
+                validated = schema_model.model_validate(kwargs)
+                return validated.model_dump()
+
+            return dict(kwargs)
+
+        return _final_answer
 
     def _render_system_prompt(self) -> str:
         if self.response_format is None:
