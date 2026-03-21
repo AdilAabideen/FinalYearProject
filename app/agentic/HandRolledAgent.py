@@ -467,10 +467,20 @@ class SSEHandrolledAgent:
                 done = True
                 break
 
-            tool_msgs = await asyncio.gather(*[self._execute_tool_call(tc) for tc in tool_calls])
-            for tm in tool_msgs:
+            async def _execute_indexed_tool_call(idx: int, tc: dict[str, Any]) -> tuple[int, ToolMessage]:
+                return idx, await self._execute_tool_call(tc)
+
+            indexed_tasks = [
+                asyncio.create_task(_execute_indexed_tool_call(idx, tc))
+                for idx, tc in enumerate(tool_calls)
+            ]
+            tool_msgs_by_index: dict[int, ToolMessage] = {}
+
+            for task in asyncio.as_completed(indexed_tasks):
+                idx, tm = await task
+                tool_msgs_by_index[idx] = tm
                 streamed_messages.append(tm)
-                scratchpad.append(tm)
+
                 content = str(getattr(tm, "content", "") or "").strip()
                 parsed, raw = self._json_from_text(content)
                 tool_name = getattr(tm, "name", None)
@@ -484,10 +494,18 @@ class SSEHandrolledAgent:
                     payload_text=raw if parsed is None else None,
                 )
 
-            if "updates" in modes:
-                yield "updates", {self.tools_node_name: {"messages": tool_msgs}}
-            if "values" in modes:
-                yield "values", self._values_state(streamed_messages, iteration, False, None)
+                if "updates" in modes:
+                    yield "updates", {self.tools_node_name: {"messages": [tm]}}
+                if "values" in modes:
+                    yield "values", self._values_state(streamed_messages, iteration, False, None)
+
+            tool_msgs = [
+                tool_msgs_by_index[idx]
+                for idx in range(len(tool_calls))
+                if idx in tool_msgs_by_index
+            ]
+            for tm in tool_msgs:
+                scratchpad.append(tm)
 
             if self.final_answer_tool_name:
                 for tc, tm in zip(tool_calls, tool_msgs):
