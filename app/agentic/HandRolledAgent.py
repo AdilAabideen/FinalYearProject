@@ -5,7 +5,7 @@ import json
 import threading
 import uuid
 from queue import Queue
-from typing import Any, AsyncGenerator, Iterable, Sequence
+from typing import Any, AsyncGenerator, Callable, Iterable, Sequence
 
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage, ToolMessage
 from langchain_core.tools import BaseTool, tool as lc_tool
@@ -32,6 +32,7 @@ class SSEHandrolledAgent:
         llm_kwargs: dict[str, Any] | None = None,
         agent_node_name: str = "agent",
         tools_node_name: str = "tools",
+        event_handlers: Sequence[Callable[[dict[str, Any]], None]] | None = None,
     ) -> None:
         self.model = self._build_model(model=model, llm_kwargs=llm_kwargs)
         self.tools: list[BaseTool] = self._coerce_tools(tools or [])
@@ -51,6 +52,10 @@ class SSEHandrolledAgent:
         self.tools_by_name: dict[str, BaseTool] = {t.name: t for t in self.tools}
         self.agent_node_name = agent_node_name
         self.tools_node_name = tools_node_name
+        self._event_handlers: list[Callable[[dict[str, Any]], None]] = list(event_handlers or [])
+        self._event_run_id: str | None = None
+        self._event_agent_name: str | None = None
+        self._event_seq: int = 0
 
         if self.tools:
             self.bound_model = self.model.bind_tools(self.tools, tool_choice="any")
@@ -316,6 +321,55 @@ class SSEHandrolledAgent:
             "output": output_json,
         }
 
+    def set_event_context(self, *, run_id: str, agent_name: str, start_seq: int = 0) -> None:
+        self._event_run_id = str(run_id)
+        self._event_agent_name = str(agent_name)
+        self._event_seq = int(start_seq)
+
+    def set_event_handlers(self, handlers: Sequence[Callable[[dict[str, Any]], None]] | None) -> None:
+        self._event_handlers = list(handlers or [])
+
+    def add_event_handler(self, handler: Callable[[dict[str, Any]], None]) -> None:
+        self._event_handlers.append(handler)
+
+    @staticmethod
+    def _parsed_to_payload_json(parsed: Any) -> dict[str, Any] | None:
+        if parsed is None:
+            return None
+        if isinstance(parsed, dict):
+            return parsed
+        return {"value": parsed}
+
+    def _emit_event(
+        self,
+        *,
+        event_type: str,
+        node_name: str | None = None,
+        tool_name: str | None = None,
+        tool_call_id: str | None = None,
+        status: str | None = None,
+        payload_json: dict[str, Any] | None = None,
+        payload_text: str | None = None,
+    ) -> None:
+        if not self._event_handlers or self._event_run_id is None or self._event_agent_name is None:
+            return
+
+        self._event_seq += 1
+        event = {
+            "run_id": self._event_run_id,
+            "agent_name": self._event_agent_name,
+            "seq": self._event_seq,
+            "event_type": event_type,
+            "node_name": node_name,
+            "tool_name": tool_name,
+            "tool_call_id": tool_call_id,
+            "status": status,
+            "payload_json": payload_json,
+            "payload_text": payload_text,
+        }
+        for handler in self._event_handlers:
+            handler(event)
+
     async def astream(
         self,
         payload: Any,
@@ -378,12 +432,32 @@ class SSEHandrolledAgent:
             streamed_messages.append(ai_msg)
             scratchpad.append(ai_msg)
 
+            for tc in tool_calls:
+                if not isinstance(tc, dict):
+                    continue
+                self._emit_event(
+                    event_type="tool_call",
+                    node_name=self.agent_node_name,
+                    tool_name=tc.get("name"),
+                    tool_call_id=tc.get("id"),
+                    payload_json={"args": tc.get("args")},
+                )
+
             if "updates" in modes:
                 yield "updates", {self.agent_node_name: {"messages": [ai_msg]}}
             if "values" in modes:
                 yield "values", self._values_state(streamed_messages, iteration, False, None)
 
             if not tool_calls:
+                content = str(ai_msg.content or "").strip()
+                if content:
+                    parsed, raw = self._json_from_text(content)
+                    self._emit_event(
+                        event_type="assistant",
+                        node_name=self.agent_node_name,
+                        payload_json=self._parsed_to_payload_json(parsed),
+                        payload_text=raw if parsed is None else None,
+                    )
                 structured = await self._generate_structured_response(_messages_for_finalization())
                 if structured is not None:
                     final_output = self._normalize_final_output(structured)
@@ -397,6 +471,18 @@ class SSEHandrolledAgent:
             for tm in tool_msgs:
                 streamed_messages.append(tm)
                 scratchpad.append(tm)
+                content = str(getattr(tm, "content", "") or "").strip()
+                parsed, raw = self._json_from_text(content)
+                tool_name = getattr(tm, "name", None)
+                self._emit_event(
+                    event_type="tool_result",
+                    node_name=self.tools_node_name,
+                    tool_name=tool_name,
+                    tool_call_id=getattr(tm, "tool_call_id", None),
+                    status=getattr(tm, "status", None),
+                    payload_json={"result": parsed} if parsed is not None else None,
+                    payload_text=raw if parsed is None else None,
+                )
 
             if "updates" in modes:
                 yield "updates", {self.tools_node_name: {"messages": tool_msgs}}
@@ -416,6 +502,13 @@ class SSEHandrolledAgent:
                     )
                     final_msg = AIMessage(content=final_text)
                     streamed_messages.append(final_msg)
+                    final_parsed, final_raw = self._json_from_text(final_text)
+                    self._emit_event(
+                        event_type="assistant",
+                        node_name=self.agent_node_name,
+                        payload_json=self._parsed_to_payload_json(final_parsed),
+                        payload_text=final_raw if final_parsed is None else None,
+                    )
                     if "updates" in modes:
                         yield "updates", {self.agent_node_name: {"messages": [final_msg]}}
                     done = True
@@ -425,6 +518,13 @@ class SSEHandrolledAgent:
             final_output = {"ok": False, "error": "no_output"}
             final_msg = AIMessage(content=json.dumps(final_output, ensure_ascii=False))
             streamed_messages.append(final_msg)
+            final_parsed, final_raw = self._json_from_text(str(final_msg.content or ""))
+            self._emit_event(
+                event_type="assistant",
+                node_name=self.agent_node_name,
+                payload_json=self._parsed_to_payload_json(final_parsed),
+                payload_text=final_raw if final_parsed is None else None,
+            )
             if "updates" in modes:
                 yield "updates", {self.agent_node_name: {"messages": [final_msg]}}
 

@@ -4,7 +4,7 @@ import json
 import uuid
 from datetime import datetime
 from time import sleep
-from typing import Optional, Tuple
+from typing import Any, Optional, Tuple
 
 from fastapi import BackgroundTasks, HTTPException, Request, status
 from fastapi.responses import StreamingResponse
@@ -75,6 +75,25 @@ def _append_event(
         payload_text=_safe_text(payload_text) if payload_text else None,
         created_at=datetime.utcnow(),
     )
+
+
+def _coerce_output_json(value: Any) -> Optional[dict]:
+    if value is None:
+        return None
+    if isinstance(value, dict):
+        return value
+    if hasattr(value, "model_dump") and callable(value.model_dump):
+        try:
+            dumped = value.model_dump()
+            if isinstance(dumped, dict):
+                return dumped
+            return {"value": dumped}
+        except Exception:
+            pass
+    if isinstance(value, str):
+        parsed, _ = _try_parse_json(value)
+        return parsed
+    return {"value": value}
 
 
 def _ensure_run_start_event(db: Session, run: AgentRun) -> int:
@@ -173,75 +192,108 @@ def _run_agent_and_persist(db: Session, run: AgentRun, seq: int) -> Tuple[int, O
     agent = spec.build(runtime)
     payload = {"messages": [("user", validated_input.model_dump_json())]}
 
-    output_json: Optional[dict] = None
+    def _normalize_payload_json(raw: Any) -> Optional[dict]:
+        if raw is None:
+            return None
+        if isinstance(raw, dict):
+            return raw
+        return {"value": raw}
 
-    for mode, data in agent.stream(payload, stream_mode=["updates", "values"]):
-        if mode != "updates" or not isinstance(data, dict):
-            continue
+    def _persist_callback_event(item: dict[str, Any]) -> None:
+        event_seq = int(item.get("seq"))
+        _append_event(
+            db=db,
+            run=run,
+            seq=event_seq,
+            event_type=str(item.get("event_type") or ""),
+            node_name=item.get("node_name"),
+            tool_name=item.get("tool_name"),
+            tool_call_id=item.get("tool_call_id"),
+            status=item.get("status"),
+            payload_json=_normalize_payload_json(item.get("payload_json")),
+            payload_text=item.get("payload_text"),
+        )
 
-        for node_name, node_update in data.items():
-            if not isinstance(node_update, dict):
-                continue
-            messages = node_update.get("messages")
-            if not isinstance(messages, list):
-                continue
+    supports_callbacks = all(
+        hasattr(agent, attr) for attr in ("set_event_context", "set_event_handlers")
+    )
+    if supports_callbacks:
+        agent.set_event_context(run_id=run.id, agent_name=run.agent_name, start_seq=seq)
+        agent.set_event_handlers([_persist_callback_event])
+        output = agent.invoke(payload)
+        output_json = _coerce_output_json(output)
+        seq = agent_runs_repository.get_last_event_seq(db, run.id)
+        return seq, output_json
 
-            for msg in messages:
-                tool_calls = getattr(msg, "tool_calls", None) or []
-                if tool_calls:
-                    for tc in tool_calls:
-                        if not isinstance(tc, dict):
-                            continue
-                        seq += 1
-                        _append_event(
-                            db=db,
-                            run=run,
-                            seq=seq,
-                            event_type="tool_call",
-                            node_name=node_name,
-                            tool_name=tc.get("name"),
-                            tool_call_id=tc.get("id"),
-                            payload_json={"args": tc.get("args")},
-                        )
+    # output_json: Optional[dict] = None
 
-                tool_name = getattr(msg, "name", None)
-                tool_call_id = getattr(msg, "tool_call_id", None)
-                tool_status = getattr(msg, "status", None)
-                content = (getattr(msg, "content", "") or "").strip()
+    # # Legacy fallback for agent implementations that do not expose callback handlers.
+    # for mode, data in agent.stream(payload, stream_mode=["updates", "values"]):
+    #     if mode != "updates" or not isinstance(data, dict):
+    #         continue
 
-                if tool_name and tool_call_id:
-                    seq += 1
-                    parsed, raw = _try_parse_json(content)
-                    event_type = "thought" if tool_name == "log_thought" else "tool_result"
-                    _append_event(
-                        db=db,
-                        run=run,
-                        seq=seq,
-                        event_type=event_type,
-                        node_name=node_name,
-                        tool_name=tool_name,
-                        tool_call_id=tool_call_id,
-                        status=tool_status,
-                        payload_json={"result": parsed} if parsed is not None else None,
-                        payload_text=raw,
-                    )
+    #     for node_name, node_update in data.items():
+    #         if not isinstance(node_update, dict):
+    #             continue
+    #         messages = node_update.get("messages")
+    #         if not isinstance(messages, list):
+    #             continue
 
-                if content and not tool_name:
-                    parsed, raw = _try_parse_json(content)
-                    seq += 1
-                    _append_event(
-                        db=db,
-                        run=run,
-                        seq=seq,
-                        event_type="assistant",
-                        node_name=node_name,
-                        payload_json=parsed,
-                        payload_text=raw,
-                    )
-                    if parsed is not None:
-                        output_json = parsed
+    #         for msg in messages:
+    #             tool_calls = getattr(msg, "tool_calls", None) or []
+    #             if tool_calls:
+    #                 for tc in tool_calls:
+    #                     if not isinstance(tc, dict):
+    #                         continue
+    #                     seq += 1
+    #                     _append_event(
+    #                         db=db,
+    #                         run=run,
+    #                         seq=seq,
+    #                         event_type="tool_call",
+    #                         node_name=node_name,
+    #                         tool_name=tc.get("name"),
+    #                         tool_call_id=tc.get("id"),
+    #                         payload_json={"args": tc.get("args")},
+    #                     )
 
-    return seq, output_json
+    #             tool_name = getattr(msg, "name", None)
+    #             tool_call_id = getattr(msg, "tool_call_id", None)
+    #             tool_status = getattr(msg, "status", None)
+    #             content = (getattr(msg, "content", "") or "").strip()
+
+    #             if tool_name and tool_call_id:
+    #                 seq += 1
+    #                 parsed, raw = _try_parse_json(content)
+    #                 _append_event(
+    #                     db=db,
+    #                     run=run,
+    #                     seq=seq,
+    #                     event_type="tool_result",
+    #                     node_name=node_name,
+    #                     tool_name=tool_name,
+    #                     tool_call_id=tool_call_id,
+    #                     status=tool_status,
+    #                     payload_json={"result": parsed} if parsed is not None else None,
+    #                     payload_text=raw,
+    #                 )
+
+    #             if content and not tool_name:
+    #                 parsed, raw = _try_parse_json(content)
+    #                 seq += 1
+    #                 _append_event(
+    #                     db=db,
+    #                     run=run,
+    #                     seq=seq,
+    #                     event_type="assistant",
+    #                     node_name=node_name,
+    #                     payload_json=parsed,
+    #                     payload_text=raw,
+    #                 )
+    #                 if parsed is not None:
+    #                     output_json = parsed
+
+    # return seq, output_json
 
 
 def _execute_run_in_background(run_id: str) -> None:
