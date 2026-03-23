@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Optional
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Query, Request
@@ -11,6 +12,8 @@ from app.schemas.agent_runs import (
     AgentEventsPage,
     AgentRunCreateRequest,
     AgentRunCreateResponse,
+    AgentRunMetricsDetail,
+    AgentRunMetricsSummary,
     AgentRunRead,
     RunStatus,
 )
@@ -32,9 +35,37 @@ def start_agent_run(
     return agent_runs_service.start_agent_run(payload, background_tasks, db)
 
 
+@router.get("/metrics/summary", response_model=AgentRunMetricsSummary)
+def get_metrics_summary(
+    agent_system: Optional[str] = Query(default=None),
+    agent_name: Optional[str] = Query(default=None),
+    model_name: Optional[str] = Query(default=None),
+    created_from: Optional[datetime] = Query(default=None),
+    created_to: Optional[datetime] = Query(default=None),
+    limit: int = Query(default=1000, ge=1, le=10000),
+    offset: int = Query(default=0, ge=0),
+    db: Session = Depends(get_db),
+):
+    return agent_runs_service.get_metrics_summary(
+        agent_system=agent_system,
+        agent_name=agent_name,
+        model_name=model_name,
+        created_from=created_from,
+        created_to=created_to,
+        limit=limit,
+        offset=offset,
+        db=db,
+    )
+
+
 @router.get("/{run_id}", response_model=AgentRunRead)
 def get_agent_run(run_id: str, db: Session = Depends(get_db)):
     return agent_runs_service.get_agent_run(run_id, db)
+
+
+@router.get("/{run_id}/metrics", response_model=AgentRunMetricsDetail)
+def get_agent_run_metrics(run_id: str, db: Session = Depends(get_db)):
+    return agent_runs_service.get_agent_run_metrics(run_id, db)
 
 
 @router.get("/{run_id}/events", response_model=AgentEventsPage)

@@ -32,6 +32,67 @@ class AgentRunCreateResponse(BaseModel):
     status: RunStatus
 
 
+class AgentLLMCallRead(BaseModel):
+    id: int
+    run_id: str
+    call_index: int
+    agent_system: str
+    agent_name: str
+    model_name: Optional[str] = None
+    call_kind: str
+    started_at: datetime
+    ended_at: datetime
+    latency_ms: int
+    input_tokens: int
+    output_tokens: int
+    tokens_total: int
+    usage_source: str
+    cost_usd: Optional[float] = None
+    error_text: Optional[str] = None
+
+
+class AgentRunMetricsRead(BaseModel):
+    run_id: str
+    agent_system: str
+    agent_name: str
+    model_name: Optional[str] = None
+    status: RunStatus
+    failure_reason: Optional[str] = None
+    duration_ms: Optional[int] = None
+    llm_call_count: int
+    tool_call_count: int
+    tool_error_count: int
+    input_tokens_total: int
+    output_tokens_total: int
+    tokens_total: int
+    cost_usd_total: Optional[float] = None
+    schema_valid: Optional[bool] = None
+    created_at: datetime
+    updated_at: Optional[datetime] = None
+
+
+class AgentRunMetricsDetail(BaseModel):
+    run_id: str
+    metrics: Optional[AgentRunMetricsRead] = None
+    llm_calls: list[AgentLLMCallRead]
+
+
+class AgentRunMetricsSummary(BaseModel):
+    total_runs: int
+    successful_runs: int
+    success_rate: float
+    schema_valid_rate: Optional[float] = None
+    tool_error_rate: float
+    timeout_or_stuck_rate: float
+    p50_duration_ms: Optional[float] = None
+    p95_duration_ms: Optional[float] = None
+    p50_llm_call_count: Optional[float] = None
+    p95_llm_call_count: Optional[float] = None
+    p50_tokens_total: Optional[float] = None
+    p95_tokens_total: Optional[float] = None
+    cost_per_successful_run: Optional[float] = None
+
+
 class AgentRunRead(BaseModel):
     id: str
     agent_name: str
@@ -44,6 +105,7 @@ class AgentRunRead(BaseModel):
     finished_at: Optional[datetime] = None
     created_at: datetime
     updated_at: datetime
+    metrics: Optional[AgentRunMetricsRead] = None
 
 
 class AgentEventRead(BaseModel):

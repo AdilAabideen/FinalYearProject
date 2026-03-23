@@ -46,6 +46,7 @@ _MODEL_REGISTRY: dict[str, ModelSpec] = {
         supports_tools=True,
         supports_structured_output=True,
         default_temperature=0.7,
+        pricing=ModelPricing(input_per_1k=0.001, output_per_1k=0.002),
     ),
     # Dr7
     "medgemma-4b-it": ModelSpec(
@@ -56,7 +57,7 @@ _MODEL_REGISTRY: dict[str, ModelSpec] = {
         ),
         context_length=8192,
         max_tokens=4096,
-        pricing=ModelPricing(input_per_1k=0.001, output_per_1k=0.002),
+        pricing=ModelPricing(input_per_1k=0.00015, output_per_1k=0.00060),
         capabilities=[
             "medical_text_analysis",
             "symptom_analysis",
