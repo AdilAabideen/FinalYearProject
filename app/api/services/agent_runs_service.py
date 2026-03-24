@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import uuid
 from datetime import datetime
@@ -19,12 +20,16 @@ from app.models.agent_run import AgentRun
 from app.schemas.agent_runs import (
     AgentEventsPage,
     AgentEventRead,
+    AgentLLMCallRead,
     AgentRunCreateRequest,
     AgentRunCreateResponse,
+    AgentRunMetricsDetail,
+    AgentRunMetricsRead,
+    AgentRunMetricsSummary,
     AgentRunRead,
     RunStatus,
 )
-from app.api.repository import agent_runs_repository
+from app.api.repository import agent_metrics_repository, agent_runs_repository
 
 MAX_EVENT_TEXT_LEN = 50_000
 
@@ -96,6 +101,106 @@ def _coerce_output_json(value: Any) -> Optional[dict]:
     return {"value": value}
 
 
+def _resolve_agent_system(agent: Any) -> str:
+    if all(hasattr(agent, attr) for attr in ("set_event_context", "set_event_handlers")):
+        return "handrolled_callback"
+    return "legacy_stream"
+
+
+def _cost_from_tokens(
+    *,
+    model_spec: Any,
+    input_tokens: int,
+    output_tokens: int,
+) -> Optional[float]:
+    pricing = getattr(model_spec, "pricing", None)
+    if pricing is None:
+        return None
+    input_price = getattr(pricing, "input_per_1k", None)
+    output_price = getattr(pricing, "output_per_1k", None)
+    if input_price is None and output_price is None:
+        return None
+    in_cost = (max(0, int(input_tokens)) / 1000.0) * float(input_price or 0.0)
+    out_cost = (max(0, int(output_tokens)) / 1000.0) * float(output_price or 0.0)
+    return in_cost + out_cost
+
+
+def _schema_valid_for_run(run: AgentRun) -> Optional[bool]:
+    if run.output_json is None:
+        return None
+    try:
+        spec = get_agent_spec(run.agent_name)
+    except Exception:
+        return None
+    if spec.output_model is None:
+        return None
+    try:
+        spec.output_model.model_validate(run.output_json)
+        return True
+    except Exception:
+        return False
+
+
+def _persist_run_metrics(db: Session, run: AgentRun, *, agent_system: str) -> None:
+    llm_calls = agent_metrics_repository.list_llm_calls(db, run.id)
+    input_tokens_total = sum(int(c.input_tokens or 0) for c in llm_calls)
+    output_tokens_total = sum(int(c.output_tokens or 0) for c in llm_calls)
+    tokens_total = sum(int(c.tokens_total or 0) for c in llm_calls)
+    cost_values = [c.cost_usd for c in llm_calls if c.cost_usd is not None]
+    cost_usd_total = sum(cost_values) if cost_values else None
+    llm_call_count = len(llm_calls)
+    tool_call_count, tool_error_count = agent_metrics_repository.count_tool_events(db, run.id)
+
+    duration_ms: Optional[int] = None
+    if run.started_at and run.finished_at:
+        duration_ms = int((run.finished_at - run.started_at).total_seconds() * 1000)
+
+    failure_reason: Optional[str] = None
+    if run.status == "failed":
+        err = (run.error_text or "").lower()
+        failure_reason = "timeout" if "timeout" in err else "execution_error"
+
+    agent_metrics_repository.upsert_run_metrics(
+        db,
+        run_id=run.id,
+        agent_system=agent_system,
+        agent_name=run.agent_name,
+        model_name=run.model_name,
+        status=run.status,
+        failure_reason=failure_reason,
+        duration_ms=duration_ms,
+        llm_call_count=llm_call_count,
+        tool_call_count=tool_call_count,
+        tool_error_count=tool_error_count,
+        input_tokens_total=input_tokens_total,
+        output_tokens_total=output_tokens_total,
+        tokens_total=tokens_total,
+        cost_usd_total=cost_usd_total,
+        schema_valid=_schema_valid_for_run(run),
+    )
+
+
+def _build_run_read(run: AgentRun, db: Session) -> AgentRunRead:
+    metrics = agent_metrics_repository.get_run_metrics(db, run.id)
+    model = AgentRunRead.model_validate(run.__dict__)
+    if metrics is not None:
+        model.metrics = AgentRunMetricsRead.model_validate(metrics.__dict__)
+    return model
+
+
+def _percentile(values: list[float], pct: float) -> Optional[float]:
+    if not values:
+        return None
+    if len(values) == 1:
+        return float(values[0])
+    ordered = sorted(values)
+    rank = (pct / 100.0) * (len(ordered) - 1)
+    lower = int(rank)
+    upper = min(lower + 1, len(ordered) - 1)
+    frac = rank - lower
+    return float(ordered[lower] * (1 - frac) + ordered[upper] * frac)
+
+
 def _ensure_run_start_event(db: Session, run: AgentRun) -> int:
     seq = agent_runs_repository.get_last_event_seq(db, run.id)
     if seq > 0:
@@ -121,9 +226,10 @@ def _ensure_run_start_event(db: Session, run: AgentRun) -> int:
 
 def execute_agent_run_and_persist(db: Session, run: AgentRun) -> Optional[dict]:
     seq = _ensure_run_start_event(db, run)
+    agent_system = "unknown"
 
     try:
-        seq, output_json = _run_agent_and_persist(db, run, seq)
+        seq, output_json, agent_system = _run_agent_and_persist(db, run, seq)
 
         now = datetime.utcnow()
         run.status = "succeeded"
@@ -140,6 +246,7 @@ def execute_agent_run_and_persist(db: Session, run: AgentRun) -> Optional[dict]:
             event_type="run_end",
             payload_json={"status": run.status},
         )
+        _persist_run_metrics(db, run, agent_system=agent_system)
         return output_json
     except Exception as e:
         now = datetime.utcnow()
@@ -167,10 +274,11 @@ def execute_agent_run_and_persist(db: Session, run: AgentRun) -> Optional[dict]:
             event_type="run_end",
             payload_json={"status": run.status},
         )
+        _persist_run_metrics(db, run, agent_system=agent_system)
         return None
 
 
-def _run_agent_and_persist(db: Session, run: AgentRun, seq: int) -> Tuple[int, Optional[dict]]:
+def _run_agent_and_persist(db: Session, run: AgentRun, seq: int) -> Tuple[int, Optional[dict], str]:
     try:
         spec = get_agent_spec(run.agent_name)
     except KeyError as e:
@@ -190,6 +298,7 @@ def _run_agent_and_persist(db: Session, run: AgentRun, seq: int) -> Tuple[int, O
         model=get_chat_model(model_id),
     )
     agent = spec.build(runtime)
+    agent_system = _resolve_agent_system(agent)
     payload = {"messages": [("user", validated_input.model_dump_json())]}
 
     def _normalize_payload_json(raw: Any) -> Optional[dict]:
@@ -214,86 +323,49 @@ def _run_agent_and_persist(db: Session, run: AgentRun, seq: int) -> Tuple[int, O
             payload_text=item.get("payload_text"),
         )
 
-    supports_callbacks = all(
-        hasattr(agent, attr) for attr in ("set_event_context", "set_event_handlers")
-    )
-    if supports_callbacks:
-        agent.set_event_context(run_id=run.id, agent_name=run.agent_name, start_seq=seq)
-        agent.set_event_handlers([_persist_callback_event])
-        output = agent.invoke(payload)
-        output_json = _coerce_output_json(output)
-        seq = agent_runs_repository.get_last_event_seq(db, run.id)
-        return seq, output_json
+    def _persist_llm_call(item: dict[str, Any]) -> None:
+        input_tokens = int(item.get("input_tokens") or 0)
+        output_tokens = int(item.get("output_tokens") or 0)
+        total_tokens = int(item.get("tokens_total") or (input_tokens + output_tokens))
+        cost_usd = _cost_from_tokens(
+            model_spec=model_spec,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+        )
+        agent_metrics_repository.append_llm_call(
+            db,
+            run_id=run.id,
+            call_index=int(item.get("call_index") or 0),
+            agent_system=agent_system,
+            agent_name=run.agent_name,
+            model_name=item.get("model_name") or run.model_name,
+            call_kind=str(item.get("call_kind") or "main_loop"),
+            started_at=item.get("started_at") or datetime.utcnow(),
+            ended_at=item.get("ended_at") or datetime.utcnow(),
+            latency_ms=int(item.get("latency_ms") or 0),
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            tokens_total=total_tokens,
+            usage_source=str(item.get("usage_source") or "estimated"),
+            cost_usd=cost_usd,
+            error_text=item.get("error_text"),
+        )
 
-    # output_json: Optional[dict] = None
+    supports_callbacks = all(hasattr(agent, attr) for attr in ("set_event_context", "set_event_handlers"))
+    if not supports_callbacks:
+        raise RuntimeError("Agent does not support callback event persistence")
 
-    # # Legacy fallback for agent implementations that do not expose callback handlers.
-    # for mode, data in agent.stream(payload, stream_mode=["updates", "values"]):
-    #     if mode != "updates" or not isinstance(data, dict):
-    #         continue
+    agent.set_event_context(run_id=run.id, agent_name=run.agent_name, start_seq=seq)
+    agent.set_event_handlers([_persist_callback_event])
+    if hasattr(agent, "set_llm_call_handlers"):
+        agent.set_llm_call_handlers([_persist_llm_call])
+    if hasattr(agent, "run_timeout_s"):
+        agent.run_timeout_s = float(settings.AGENT_RUN_TIMEOUT_S)
 
-    #     for node_name, node_update in data.items():
-    #         if not isinstance(node_update, dict):
-    #             continue
-    #         messages = node_update.get("messages")
-    #         if not isinstance(messages, list):
-    #             continue
-
-    #         for msg in messages:
-    #             tool_calls = getattr(msg, "tool_calls", None) or []
-    #             if tool_calls:
-    #                 for tc in tool_calls:
-    #                     if not isinstance(tc, dict):
-    #                         continue
-    #                     seq += 1
-    #                     _append_event(
-    #                         db=db,
-    #                         run=run,
-    #                         seq=seq,
-    #                         event_type="tool_call",
-    #                         node_name=node_name,
-    #                         tool_name=tc.get("name"),
-    #                         tool_call_id=tc.get("id"),
-    #                         payload_json={"args": tc.get("args")},
-    #                     )
-
-    #             tool_name = getattr(msg, "name", None)
-    #             tool_call_id = getattr(msg, "tool_call_id", None)
-    #             tool_status = getattr(msg, "status", None)
-    #             content = (getattr(msg, "content", "") or "").strip()
-
-    #             if tool_name and tool_call_id:
-    #                 seq += 1
-    #                 parsed, raw = _try_parse_json(content)
-    #                 _append_event(
-    #                     db=db,
-    #                     run=run,
-    #                     seq=seq,
-    #                     event_type="tool_result",
-    #                     node_name=node_name,
-    #                     tool_name=tool_name,
-    #                     tool_call_id=tool_call_id,
-    #                     status=tool_status,
-    #                     payload_json={"result": parsed} if parsed is not None else None,
-    #                     payload_text=raw,
-    #                 )
-
-    #             if content and not tool_name:
-    #                 parsed, raw = _try_parse_json(content)
-    #                 seq += 1
-    #                 _append_event(
-    #                     db=db,
-    #                     run=run,
-    #                     seq=seq,
-    #                     event_type="assistant",
-    #                     node_name=node_name,
-    #                     payload_json=parsed,
-    #                     payload_text=raw,
-    #                 )
-    #                 if parsed is not None:
-    #                     output_json = parsed
-
-    # return seq, output_json
+    output = asyncio.run(agent.ainvoke(payload))
+    output_json = _coerce_output_json(output)
+    seq = agent_runs_repository.get_last_event_seq(db, run.id)
+    return seq, output_json, agent_system
 
 
 def _execute_run_in_background(run_id: str) -> None:
@@ -400,7 +472,101 @@ def get_agent_run(run_id: str, db: Session) -> AgentRunRead:
     run = agent_runs_repository.get_run(db, run_id)
     if run is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Run not found")
-    return AgentRunRead.model_validate(run.__dict__)
+    return _build_run_read(run, db)
+
+
+def get_agent_run_metrics(run_id: str, db: Session) -> AgentRunMetricsDetail:
+    run = agent_runs_repository.get_run(db, run_id)
+    if run is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Run not found")
+    metrics_row = agent_metrics_repository.get_run_metrics(db, run_id)
+    llm_calls = agent_metrics_repository.list_llm_calls(db, run_id)
+    return AgentRunMetricsDetail(
+        run_id=run_id,
+        metrics=(
+            AgentRunMetricsRead.model_validate(metrics_row.__dict__)
+            if metrics_row is not None
+            else None
+        ),
+        llm_calls=[AgentLLMCallRead.model_validate(c.__dict__) for c in llm_calls],
+    )
+
+
+def get_metrics_summary(
+    *,
+    agent_system: Optional[str],
+    agent_name: Optional[str],
+    model_name: Optional[str],
+    created_from: Optional[datetime],
+    created_to: Optional[datetime],
+    limit: int,
+    offset: int,
+    db: Session,
+) -> AgentRunMetricsSummary:
+    rows = agent_metrics_repository.list_run_metrics(
+        db,
+        agent_system=agent_system,
+        agent_name=agent_name,
+        model_name=model_name,
+        created_from=created_from,
+        created_to=created_to,
+        limit=limit,
+        offset=offset,
+    )
+    total_runs = len(rows)
+    if total_runs == 0:
+        return AgentRunMetricsSummary(
+            total_runs=0,
+            successful_runs=0,
+            success_rate=0.0,
+            schema_valid_rate=None,
+            tool_error_rate=0.0,
+            timeout_or_stuck_rate=0.0,
+            p50_duration_ms=None,
+            p95_duration_ms=None,
+            p50_llm_call_count=None,
+            p95_llm_call_count=None,
+            p50_tokens_total=None,
+            p95_tokens_total=None,
+            cost_per_successful_run=None,
+        )
+
+    successful_runs = sum(1 for r in rows if r.status == "succeeded")
+    schema_known = [r.schema_valid for r in rows if r.schema_valid is not None]
+    schema_valid_rate = (
+        sum(1 for v in schema_known if v) / len(schema_known)
+        if schema_known
+        else None
+    )
+
+    total_tool_calls = sum(int(r.tool_call_count or 0) for r in rows)
+    total_tool_errors = sum(int(r.tool_error_count or 0) for r in rows)
+    tool_error_rate = (
+        (total_tool_errors / total_tool_calls) if total_tool_calls > 0 else 0.0
+    )
+    timeout_runs = sum(1 for r in rows if (r.failure_reason or "") == "timeout")
+
+    durations = [float(r.duration_ms) for r in rows if r.duration_ms is not None]
+    llm_counts = [float(r.llm_call_count) for r in rows]
+    token_totals = [float(r.tokens_total) for r in rows]
+    success_costs = [r.cost_usd_total for r in rows if r.status == "succeeded" and r.cost_usd_total is not None]
+    cost_per_success = (sum(success_costs) / len(success_costs)) if success_costs else None
+
+    return AgentRunMetricsSummary(
+        total_runs=total_runs,
+        successful_runs=successful_runs,
+        success_rate=successful_runs / total_runs,
+        schema_valid_rate=schema_valid_rate,
+        tool_error_rate=tool_error_rate,
+        timeout_or_stuck_rate=timeout_runs / total_runs,
+        p50_duration_ms=_percentile(durations, 50),
+        p95_duration_ms=_percentile(durations, 95),
+        p50_llm_call_count=_percentile(llm_counts, 50),
+        p95_llm_call_count=_percentile(llm_counts, 95),
+        p50_tokens_total=_percentile(token_totals, 50),
+        p95_tokens_total=_percentile(token_totals, 95),
+        cost_per_successful_run=cost_per_success,
+    )
 
 
 def list_agent_events(
@@ -524,4 +690,4 @@ def list_agent_runs(
         offset=offset,
         order=order,
     )
-    return [AgentRunRead.model_validate(r.__dict__) for r in runs]
+    return [_build_run_read(r, db) for r in runs]

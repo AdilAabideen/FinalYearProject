@@ -3,7 +3,9 @@ from __future__ import annotations
 import asyncio
 import json
 import threading
+import time
 import uuid
+from datetime import datetime
 from queue import Queue
 from typing import Any, AsyncGenerator, Callable, Iterable, Sequence
 
@@ -11,6 +13,11 @@ from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, System
 from langchain_core.tools import BaseTool, tool as lc_tool
 from langchain_openai import ChatOpenAI
 from pydantic import BaseModel, ConfigDict
+
+try:
+    import tiktoken
+except Exception:  # pragma: no cover - optional dependency at runtime
+    tiktoken = None
 
 
 class SSEHandrolledAgent:
@@ -32,7 +39,9 @@ class SSEHandrolledAgent:
         llm_kwargs: dict[str, Any] | None = None,
         agent_node_name: str = "agent",
         tools_node_name: str = "tools",
+        run_timeout_s: float | None = None,
         event_handlers: Sequence[Callable[[dict[str, Any]], None]] | None = None,
+        llm_call_handlers: Sequence[Callable[[dict[str, Any]], None]] | None = None,
     ) -> None:
         self.model = self._build_model(model=model, llm_kwargs=llm_kwargs)
         self.tools: list[BaseTool] = self._coerce_tools(tools or [])
@@ -52,10 +61,13 @@ class SSEHandrolledAgent:
         self.tools_by_name: dict[str, BaseTool] = {t.name: t for t in self.tools}
         self.agent_node_name = agent_node_name
         self.tools_node_name = tools_node_name
+        self.run_timeout_s = None if run_timeout_s is None else float(run_timeout_s)
         self._event_handlers: list[Callable[[dict[str, Any]], None]] = list(event_handlers or [])
+        self._llm_call_handlers: list[Callable[[dict[str, Any]], None]] = list(llm_call_handlers or [])
         self._event_run_id: str | None = None
         self._event_agent_name: str | None = None
         self._event_seq: int = 0
+        self._llm_call_index: int = 0
 
         if self.tools:
             self.bound_model = self.model.bind_tools(self.tools, tool_choice="any")
@@ -188,13 +200,25 @@ class SSEHandrolledAgent:
                 pass
         return value
 
-    async def _generate_structured_response(self, messages: list[BaseMessage]) -> Any | None:
+    async def _generate_structured_response(
+        self,
+        messages: list[BaseMessage],
+        *,
+        timeout_s: float | None = None,
+    ) -> Any | None:
         if self.response_format is None:
             return None
         try:
             structured_model = self.model.with_structured_output(self.response_format)
-            response = await structured_model.ainvoke(messages)
+            response = await self._ainvoke_with_telemetry(
+                call_kind="structured_output",
+                messages=messages,
+                invoke_fn=lambda: structured_model.ainvoke(messages),
+                timeout_s=timeout_s,
+            )
             return self._structured_to_jsonable(response)
+        except TimeoutError:
+            raise
         except Exception:
             return None
 
@@ -325,12 +349,19 @@ class SSEHandrolledAgent:
         self._event_run_id = str(run_id)
         self._event_agent_name = str(agent_name)
         self._event_seq = int(start_seq)
+        self._llm_call_index = 0
 
     def set_event_handlers(self, handlers: Sequence[Callable[[dict[str, Any]], None]] | None) -> None:
         self._event_handlers = list(handlers or [])
 
     def add_event_handler(self, handler: Callable[[dict[str, Any]], None]) -> None:
         self._event_handlers.append(handler)
+
+    def set_llm_call_handlers(self, handlers: Sequence[Callable[[dict[str, Any]], None]] | None) -> None:
+        self._llm_call_handlers = list(handlers or [])
+
+    def add_llm_call_handler(self, handler: Callable[[dict[str, Any]], None]) -> None:
+        self._llm_call_handlers.append(handler)
 
     @staticmethod
     def _parsed_to_payload_json(parsed: Any) -> dict[str, Any] | None:
@@ -339,6 +370,161 @@ class SSEHandrolledAgent:
         if isinstance(parsed, dict):
             return parsed
         return {"value": parsed}
+
+    @staticmethod
+    def _estimate_token_count(text: str) -> int:
+        content = text or ""
+        if not content:
+            return 0
+        if tiktoken is not None:
+            try:
+                enc = tiktoken.get_encoding("cl100k_base")
+                return len(enc.encode(content))
+            except Exception:
+                pass
+        return max(1, len(content) // 4)
+
+    def _estimate_messages_tokens(self, messages: list[BaseMessage]) -> int:
+        chunks: list[str] = []
+        for msg in messages:
+            role = type(msg).__name__
+            content = getattr(msg, "content", "")
+            chunks.append(f"{role}:{content}")
+        return self._estimate_token_count("\n".join(chunks))
+
+    @staticmethod
+    def _usage_from_obj(obj: Any) -> tuple[int | None, int | None, int | None, str | None]:
+        usage = getattr(obj, "usage_metadata", None)
+        if isinstance(usage, dict):
+            in_tok = usage.get("input_tokens")
+            out_tok = usage.get("output_tokens")
+            tot_tok = usage.get("total_tokens")
+            if in_tok is not None or out_tok is not None or tot_tok is not None:
+                return (
+                    int(in_tok or 0),
+                    int(out_tok or 0),
+                    int(tot_tok) if tot_tok is not None else int((in_tok or 0) + (out_tok or 0)),
+                    "provider",
+                )
+
+        response_meta = getattr(obj, "response_metadata", None)
+        if isinstance(response_meta, dict):
+            token_usage = response_meta.get("token_usage")
+            if isinstance(token_usage, dict):
+                in_tok = token_usage.get("prompt_tokens", token_usage.get("input_tokens"))
+                out_tok = token_usage.get("completion_tokens", token_usage.get("output_tokens"))
+                tot_tok = token_usage.get("total_tokens")
+                if in_tok is not None or out_tok is not None or tot_tok is not None:
+                    return (
+                        int(in_tok or 0),
+                        int(out_tok or 0),
+                        int(tot_tok) if tot_tok is not None else int((in_tok or 0) + (out_tok or 0)),
+                        "provider",
+                    )
+
+        return None, None, None, None
+
+    def _emit_llm_call(
+        self,
+        *,
+        call_kind: str,
+        model_name: str | None,
+        started_at: datetime,
+        ended_at: datetime,
+        latency_ms: int,
+        input_tokens: int,
+        output_tokens: int,
+        tokens_total: int,
+        usage_source: str,
+        error_text: str | None = None,
+    ) -> None:
+        if not self._llm_call_handlers or self._event_run_id is None or self._event_agent_name is None:
+            return
+
+        self._llm_call_index += 1
+        payload = {
+            "run_id": self._event_run_id,
+            "agent_name": self._event_agent_name,
+            "call_index": self._llm_call_index,
+            "model_name": model_name,
+            "call_kind": call_kind,
+            "started_at": started_at,
+            "ended_at": ended_at,
+            "latency_ms": latency_ms,
+            "input_tokens": max(0, int(input_tokens)),
+            "output_tokens": max(0, int(output_tokens)),
+            "tokens_total": max(0, int(tokens_total)),
+            "usage_source": usage_source,
+            "error_text": error_text,
+        }
+        for handler in self._llm_call_handlers:
+            handler(payload)
+
+    async def _ainvoke_with_telemetry(
+        self,
+        *,
+        call_kind: str,
+        messages: list[BaseMessage],
+        invoke_fn: Callable[[], Any],
+        timeout_s: float | None = None,
+    ) -> Any:
+        started_at = datetime.utcnow()
+        t0 = time.perf_counter()
+        model_name = getattr(self.model, "model_name", None) or getattr(self.model, "model", None)
+
+        try:
+            if timeout_s is None:
+                response = await invoke_fn()
+            else:
+                response = await asyncio.wait_for(invoke_fn(), timeout=timeout_s)
+            ended_at = datetime.utcnow()
+            latency_ms = int((time.perf_counter() - t0) * 1000)
+
+            in_tok, out_tok, tot_tok, source = self._usage_from_obj(response)
+            if in_tok is None or out_tok is None or tot_tok is None:
+                if isinstance(response, AIMessage):
+                    output_text = str(response.content or "")
+                else:
+                    output_text = self._tool_output_to_text(response)
+                in_tok = self._estimate_messages_tokens(messages)
+                out_tok = self._estimate_token_count(output_text)
+                tot_tok = in_tok + out_tok
+                source = "estimated"
+
+            self._emit_llm_call(
+                call_kind=call_kind,
+                model_name=str(model_name) if model_name else None,
+                started_at=started_at,
+                ended_at=ended_at,
+                latency_ms=latency_ms,
+                input_tokens=in_tok,
+                output_tokens=out_tok,
+                tokens_total=tot_tok,
+                usage_source=source or "estimated",
+            )
+            return response
+        except Exception as exc:
+            normalized_exc: Exception
+            if isinstance(exc, TimeoutError):
+                normalized_exc = TimeoutError(str(exc) or "run_timeout_exceeded")
+            else:
+                normalized_exc = exc
+            ended_at = datetime.utcnow()
+            latency_ms = int((time.perf_counter() - t0) * 1000)
+            in_tok = self._estimate_messages_tokens(messages)
+            self._emit_llm_call(
+                call_kind=call_kind,
+                model_name=str(model_name) if model_name else None,
+                started_at=started_at,
+                ended_at=ended_at,
+                latency_ms=latency_ms,
+                input_tokens=in_tok,
+                output_tokens=0,
+                tokens_total=in_tok,
+                usage_source="estimated",
+                error_text=str(normalized_exc),
+            )
+            raise normalized_exc
 
     def _emit_event(
         self,
@@ -386,11 +572,20 @@ class SSEHandrolledAgent:
         final_output: Any = None
         done = False
         iteration = 0
+        run_started_t = time.perf_counter()
 
         def _messages_for_finalization() -> list[BaseMessage]:
             msgs: list[BaseMessage] = [SystemMessage(content=self._render_system_prompt()), human_msg]
             msgs.extend(scratchpad)
             return msgs
+
+        def _remaining_timeout_s() -> float | None:
+            if self.run_timeout_s is None:
+                return None
+            remaining = self.run_timeout_s - (time.perf_counter() - run_started_t)
+            if remaining <= 0:
+                raise TimeoutError("run_timeout_exceeded")
+            return remaining
 
         while not done:
             iteration += 1
@@ -398,7 +593,12 @@ class SSEHandrolledAgent:
             call_messages: list[BaseMessage] = [SystemMessage(content=self._render_system_prompt()), human_msg]
             call_messages.extend(scratchpad)
 
-            ai_msg = await self.bound_model.ainvoke(call_messages)
+            ai_msg = await self._ainvoke_with_telemetry(
+                call_kind="main_loop",
+                messages=call_messages,
+                invoke_fn=lambda: self.bound_model.ainvoke(call_messages),
+                timeout_s=_remaining_timeout_s(),
+            )
             tool_calls = list(getattr(ai_msg, "tool_calls", []) or [])
 
             if not tool_calls:
@@ -458,7 +658,10 @@ class SSEHandrolledAgent:
                         payload_json=self._parsed_to_payload_json(parsed),
                         payload_text=raw if parsed is None else None,
                     )
-                structured = await self._generate_structured_response(_messages_for_finalization())
+                structured = await self._generate_structured_response(
+                    _messages_for_finalization(),
+                    timeout_s=_remaining_timeout_s(),
+                )
                 if structured is not None:
                     final_output = self._normalize_final_output(structured)
                 else:
@@ -476,28 +679,39 @@ class SSEHandrolledAgent:
             ]
             tool_msgs_by_index: dict[int, ToolMessage] = {}
 
-            for task in asyncio.as_completed(indexed_tasks):
-                idx, tm = await task
-                tool_msgs_by_index[idx] = tm
-                streamed_messages.append(tm)
-
-                content = str(getattr(tm, "content", "") or "").strip()
-                parsed, raw = self._json_from_text(content)
-                tool_name = getattr(tm, "name", None)
-                self._emit_event(
-                    event_type="tool_result",
-                    node_name=self.tools_node_name,
-                    tool_name=tool_name,
-                    tool_call_id=getattr(tm, "tool_call_id", None),
-                    status=getattr(tm, "status", None),
-                    payload_json={"result": parsed} if parsed is not None else None,
-                    payload_text=raw if parsed is None else None,
+            try:
+                remaining = _remaining_timeout_s()
+                iterator = (
+                    asyncio.as_completed(indexed_tasks)
+                    if remaining is None
+                    else asyncio.as_completed(indexed_tasks, timeout=remaining)
                 )
+                for task in iterator:
+                    idx, tm = await task
+                    tool_msgs_by_index[idx] = tm
+                    streamed_messages.append(tm)
 
-                if "updates" in modes:
-                    yield "updates", {self.tools_node_name: {"messages": [tm]}}
-                if "values" in modes:
-                    yield "values", self._values_state(streamed_messages, iteration, False, None)
+                    content = str(getattr(tm, "content", "") or "").strip()
+                    parsed, raw = self._json_from_text(content)
+                    tool_name = getattr(tm, "name", None)
+                    self._emit_event(
+                        event_type="tool_result",
+                        node_name=self.tools_node_name,
+                        tool_name=tool_name,
+                        tool_call_id=getattr(tm, "tool_call_id", None),
+                        status=getattr(tm, "status", None),
+                        payload_json={"result": parsed} if parsed is not None else None,
+                        payload_text=raw if parsed is None else None,
+                    )
+
+                    if "updates" in modes:
+                        yield "updates", {self.tools_node_name: {"messages": [tm]}}
+                    if "values" in modes:
+                        yield "values", self._values_state(streamed_messages, iteration, False, None)
+            except TimeoutError:
+                for task in indexed_tasks:
+                    task.cancel()
+                raise TimeoutError("run_timeout_exceeded")
 
             tool_msgs = [
                 tool_msgs_by_index[idx]

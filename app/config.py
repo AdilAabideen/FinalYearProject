@@ -31,6 +31,9 @@ class Settings(BaseSettings):
     DR7_API_KEY: Optional[str] = None
     DR7_MEDICAL_BASE_URL: str = "https://dr7.ai/api/v1/medical"
 
+    # Agent runtime safety
+    AGENT_RUN_TIMEOUT_S: float = 120.0
+
     #LangSmith settings
     # LANGSMITH_API_KEY: Optional[str] = None
     # LANGSMITH_PROJECT: Optional[str] = None
