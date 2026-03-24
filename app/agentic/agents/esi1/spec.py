@@ -15,6 +15,7 @@ from app.config import settings
 
 from .prompt import SYSTEM_PROMPT
 from .tools import TOOLS
+from .evaluator import ES1AcuityEvaluator
 
 from app.agentic.HandRolledAgent import SSEHandrolledAgent
 from .schema import ES1AgentInput, ES1AgentOutput
@@ -40,6 +41,7 @@ ESI1_AGENT_SPEC = AgentSpec(
     output_model=ES1AgentOutput,
     tools=TOOLS,
     build=build_es1_agent,
+    evaluator=ES1AcuityEvaluator(),
 )
 
 

@@ -2,10 +2,12 @@ from __future__ import annotations
 
 from app.agentic.agents.base.spec import AgentSpec
 from app.agentic.agents.vitals.spec import VITALS_AGENT_SPEC
+from app.agentic.agents.esi1.spec import ESI1_AGENT_SPEC
 
 
 AGENTS: dict[str, AgentSpec] = {
     VITALS_AGENT_SPEC.name: VITALS_AGENT_SPEC,
+    ESI1_AGENT_SPEC.name: ESI1_AGENT_SPEC,
 }
 
 

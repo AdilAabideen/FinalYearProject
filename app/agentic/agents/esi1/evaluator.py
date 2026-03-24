@@ -16,31 +16,58 @@ def _round_or_none(v: Optional[float], ndigits: int = 4) -> Optional[float]:
     return None if v is None else round(v, ndigits)
 
 
-class VitalsUptriageEvaluator:
-    label_name = "recommendation.consider_uptriage"
+def _coerce_to_bool(value: Any) -> Optional[bool]:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        if value == 1:
+            return True
+        if value == 0:
+            return False
+        return None
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        if normalized in {"true", "t", "yes", "y", "1", "esi1", "esi-1"}:
+            return True
+        if normalized in {"false", "f", "no", "n", "0", "not_esi1", "not-esi1", "not esi1"}:
+            return False
+    return None
+
+
+class ES1AcuityEvaluator:
+    """
+    Binary ESI-1 evaluator derived from expected acuity.
+
+    Ground truth rule:
+    - acuity == 1  -> expected is_esi1 = True
+    - acuity != 1  -> expected is_esi1 = False
+    """
+
+    label_name = "is_esi1_from_acuity"
 
     def validate_expected(self, expected_json: Dict[str, Any]) -> None:
-        if set(expected_json.keys()) != {"recommendation"}:
-            raise ValueError(
-                "expected_json must only contain: recommendation.consider_uptriage"
-            )
-        rec = expected_json.get("recommendation")
-        if not isinstance(rec, dict) or set(rec.keys()) != {"consider_uptriage"}:
-            raise ValueError(
-                "expected_json.recommendation must only contain: consider_uptriage"
-            )
-        if not isinstance(rec.get("consider_uptriage"), bool):
-            raise ValueError(
-                "expected_json.recommendation.consider_uptriage must be boolean"
-            )
+        if set(expected_json.keys()) != {"acuity"}:
+            raise ValueError("expected_json must only contain: acuity")
+        acuity = expected_json.get("acuity")
+        if not isinstance(acuity, int):
+            raise ValueError("expected_json.acuity must be an integer")
+        if acuity < 1 or acuity > 5:
+            raise ValueError("expected_json.acuity must be between 1 and 5")
 
     def _y_true(self, expected_json: Dict[str, Any]) -> bool:
         self.validate_expected(expected_json)
-        return bool(expected_json["recommendation"]["consider_uptriage"])
+        return int(expected_json["acuity"]) == 1
 
     def _y_pred(self, actual_json: Dict[str, Any]) -> Optional[bool]:
-        val = (actual_json.get("recommendation") or {}).get("consider_uptriage")
-        return val if isinstance(val, bool) else None
+        # Primary output contract requested by user.
+        if "is_esi1" in actual_json:
+            return _coerce_to_bool(actual_json.get("is_esi1"))
+
+        # Backward-compatible fallback if old field still appears.
+        if "provisional_esi" in actual_json:
+            return _coerce_to_bool(actual_json.get("provisional_esi"))
+
+        return None
 
     def evaluate(
         self,
@@ -50,14 +77,21 @@ class VitalsUptriageEvaluator:
         agent_status: str,
     ) -> EvalResult:
         y_true = self._y_true(expected_json)
+        expected_acuity = int(expected_json["acuity"])
 
         if agent_status != "succeeded" or actual_json is None:
             return EvalResult(
                 passed=False,
                 score=0.0,
-                diff_json={"error": "exec_failed_or_missing_output", "agent_status": agent_status},
+                diff_json={
+                    "error": "exec_failed_or_missing_output",
+                    "agent_status": agent_status,
+                    "expected_acuity": expected_acuity,
+                    "expected_is_esi1": y_true,
+                },
                 metrics_json={
                     "label": self.label_name,
+                    "expected_acuity": expected_acuity,
                     "y_true": y_true,
                     "y_pred": None,
                     "confusion": None,
@@ -71,9 +105,14 @@ class VitalsUptriageEvaluator:
             return EvalResult(
                 passed=False,
                 score=0.0,
-                diff_json={"error": "missing_or_invalid_prediction"},
+                diff_json={
+                    "error": "missing_or_invalid_prediction",
+                    "expected_acuity": expected_acuity,
+                    "expected_is_esi1": y_true,
+                },
                 metrics_json={
                     "label": self.label_name,
+                    "expected_acuity": expected_acuity,
                     "y_true": y_true,
                     "y_pred": None,
                     "confusion": None,
@@ -96,9 +135,18 @@ class VitalsUptriageEvaluator:
         return EvalResult(
             passed=passed,
             score=1.0 if passed else 0.0,
-            diff_json={} if passed else {"expected": y_true, "actual": y_pred},
+            diff_json=(
+                {}
+                if passed
+                else {
+                    "expected_acuity": expected_acuity,
+                    "expected_is_esi1": y_true,
+                    "actual_is_esi1": y_pred,
+                }
+            ),
             metrics_json={
                 "label": self.label_name,
+                "expected_acuity": expected_acuity,
                 "y_true": y_true,
                 "y_pred": y_pred,
                 "confusion": confusion,

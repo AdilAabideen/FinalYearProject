@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Literal
+from typing import Literal, List
 
 from pydantic import BaseModel, Field
 
@@ -17,10 +17,10 @@ class ES1AgentInput(BaseModel):
 
 
 
-class SubmitOutput(BaseModel):
-    provisional_esi: int = Field(
+class ES1AgentOutput(BaseModel):
+    is_esi1: bool = Field(
         ...,
-        description="The predicted provisional ESI score, usually 1 to 5."
+        description="Whether the case is ESI-1 or NOT ESI-1"
     )
     confidence: float = Field(
         ...,

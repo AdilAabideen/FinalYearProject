@@ -1,5 +1,7 @@
 from langchain.tools import tool
-from pydantic import BaseModel, Field, Literal
+from pydantic import BaseModel, Field
+
+from typing import Literal
 
 class LogStructuredEventInput(BaseModel):
     event_type: Literal[
