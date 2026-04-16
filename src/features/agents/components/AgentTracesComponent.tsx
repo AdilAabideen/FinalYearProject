@@ -186,65 +186,117 @@ export function AgentTracesComponent({ runId, onDone }: AgentTracesComponentProp
         {entries.length ? (
           <div className="space-y-8 py-1">
             {entries.map((entry) => {
-              
+              if (entry.kind === 'action' && entry.toolName === 'create_plan') {
+                const parsedOutput = isRecord(entry.output) ? entry.output : {};
+                const parsedResult = isRecord(parsedOutput.result) ? parsedOutput.result : {};
+                const notes = typeof parsedResult.notes === 'string' ? parsedResult.notes : '';
+                const objective =
+                  typeof parsedResult.objective === 'string'
+                    ? parsedResult.objective
+                    : typeof parsedResult.objectives === 'string'
+                      ? parsedResult.objectives
+                      : '';
+                const steps = Array.isArray(parsedResult.steps)
+                  ? parsedResult.steps.filter((step): step is string => typeof step === 'string')
+                  : [];
+
+                return (
+                  <div key={entry.id} className="space-y-1">
+                    <p className="text-xs font-semibold tracking-wide text-PrimaryBlue">PLAN</p>
+                    <div className="flex flex-wrap items-center flex-row">
+                      <p className="text-sm text-slate-800 font-semibold">Notes :&nbsp;</p>
+                      <p className="text-sm text-slate-800">
+                        {truncateText(notes, 2000)}
+                      </p>
+                    </div>
+                    <div className="flex flex-wrap items-center flex-row">
+                      <p className="text-sm text-slate-800 font-semibold">Objective :&nbsp;</p>
+                      <p className="text-sm text-slate-800">
+                        {truncateText(objective, 2000)}
+                      </p>
+                    </div>
+                    <p className="text-sm font-semibold text-slate-900">Steps :</p>
+                    {steps.length ? (
+                      <ul className="list-disc space-y-1 pl-6 text-sm text-slate-800">
+                        {steps.map((step, index) => (
+                          <li key={`${entry.id}-step-${index}`}>{truncateText(step, 2000)}</li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <p className="text-sm text-slate-500">No steps provided.</p>
+                    )}
+                  </div>
+                );
+              }
+
               if (entry.kind === 'thinking') {
                 return (
                   <div key={entry.id} className="space-y-2">
-                    <p className="text-xs font-semibold tracking-wide text-slate-900">THINKING</p>
+                    <p className="text-xs font-semibold tracking-wide text-PrimaryBlue">THINKING</p>
                     <p className="text-sm text-slate-800">{truncateText(entry.text, 2000)}</p>
                   </div>
                 );
               }
 
               if (entry.toolName === 'log_structured_event') {
-                const output = (entry.output as { result: { step: string, summary: string, event_type: string, tag: string } }).result;
+                const output = (entry.output as {
+                  result: { step: string; summary: string; event_type: string; tag: string };
+                }).result;
                 return (
                   <div key={entry.id} className="space-y-1">
-                    <p className="text-xs font-semibold tracking-wide text-slate-900">STRUCTURED THINKING</p>
-                    <p className="text-sm text-PrimaryBlue font-semibold">{prettifyToolName(output.event_type)}</p>
+                    <p className="text-xs font-semibold tracking-wide text-PrimaryBlue">STRUCTURED THINKING</p>
+                    <p className="text-sm text-slate-900 font-semibold">
+                      {prettifyToolName(output.event_type)}
+                    </p>
                     <div className="flex flex-wrap items-center flex-row">
-                      <p className="text-sm text-slate-800 font-semibold">Step:</p>
-                      <p className="text-sm text-slate-800">{truncateText(output.step, 2000)}</p>
+                      <p className="text-sm text-slate-800 font-semibold">Step :&nbsp;</p>
+                      <p className="text-sm text-slate-800">
+                        {truncateText(output.step, 2000)}
+                      </p>
                     </div>
                     <div className="flex flex-wrap items-center flex-row">
-                      <p className="text-sm text-slate-800 font-semibold">Summary:</p>
-                      <p className="text-sm text-slate-800">{truncateText(output.summary, 2000)}</p>
+                      <p className="text-sm text-slate-800 font-semibold">Summary :&nbsp;</p>
+                      <p className="text-sm text-slate-800">
+                        {truncateText(output.summary, 2000)}
+                      </p>
                     </div>
                     <div className="flex flex-wrap items-center gap-2 mt-2 flex-row">
                       <p className="text-sm text-slate-800">Tag:</p>
                       <div className="flex flex-wrap items-center gap-2">
-                        <Badge className="bg-PrimaryBlue/10 text-PrimaryBlue">{prettifyToolName(output.tag)}</Badge>
+                        <Badge className="bg-PrimaryBlue/10 text-PrimaryBlue">
+                          {prettifyToolName(output.tag)}
+                        </Badge>
                         <ToolStatusBadge status={entry.status} />
-                        </div>
                       </div>
                     </div>
-                    );
+                  </div>
+                );
               }
 
-                    return (
-                    <div key={entry.id} className="space-y-2">
-                      <p className="text-xs font-semibold tracking-wide text-slate-900">ACTION</p>
-                      <p className="text-sm font-semibold text-PrimaryBlue">
-                        {prettifyToolName(entry.toolName)}
-                      </p>
-                      <div className="flex flex-wrap items-center gap-2">
-                        <ToolStatusBadge status={entry.status} />
-                        <TraceOutputHoverBadge value={entry.output} />
-                      </div>
-                    </div>
-                    );
-            })}
+              return (
+                <div key={entry.id} className="space-y-2">
+                  <p className="text-xs font-semibold tracking-wide text-PrimaryBlue">ACTION</p>
+                  <p className="text-sm font-semibold text-slate-900">
+                    {prettifyToolName(entry.toolName)}
+                  </p>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <ToolStatusBadge status={entry.status} />
+                    <TraceOutputHoverBadge value={entry.output} />
                   </div>
-                ) : (
-            <div className="text-sm text-slate-600">
-              {streamState === 'connecting'
-                ? 'Connecting…'
-                : streamState === 'error'
-                  ? 'Stream error.'
-                  : 'Waiting for tool output…'}
-            </div>
-        )}
+                </div>
+              );
+            })}
           </div>
+        ) : (
+          <div className="text-sm text-slate-600">
+            {streamState === 'connecting'
+              ? 'Connecting…'
+              : streamState === 'error'
+                ? 'Stream error.'
+                : 'Waiting for tool output…'}
+          </div>
+        )}
+      </div>
     </div>
-      );
+  );
 }

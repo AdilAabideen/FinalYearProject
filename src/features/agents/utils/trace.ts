@@ -3,9 +3,10 @@ export function isLogThoughtTool(toolName: string) {
   return normalized.includes('logthought');
 }
 
-export function truncateText(value: string, max: number) {
-  if (value.length <= max) return value;
-  return `${value.slice(0, max)}…`;
+export function truncateText(value: unknown, max: number) {
+  const text = typeof value === 'string' ? value : String(value ?? '');
+  if (text.length <= max) return text;
+  return `${text.slice(0, max)}…`;
 }
 
 export function prettifyToolName(toolName: string) {
