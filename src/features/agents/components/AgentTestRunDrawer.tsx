@@ -99,7 +99,7 @@ export default function AgentTestRunDrawer({
 
   const baseId = useId();
   const modelSelectId = useId();
-  const [activeTab, setActiveTab] = useState<HarnessTabKey>('results');
+  const [activeTab, setActiveTab] = useState<HarnessTabKey>('cases');
   const [activeCaseId, setActiveCaseId] = useState<string | null>(null);
   const [caseStates, setCaseStates] = useState<Record<string, { status: CaseStatus; testCaseId?: string }>>({});
   const [runMetrics, setRunMetrics] = useState<RunMetrics | null>(null);
