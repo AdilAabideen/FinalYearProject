@@ -8,6 +8,7 @@ import { JsonInspector } from '../../../shared/ui/JsonInspector';
 import { useModels } from '../hooks/useModels';
 import { RunStatusBadge } from './RunStatusBadge';
 import { coerceInputForRun, getDefaultInputs } from '../utils/runInput';
+import type { AgentRunMetrics } from '../../../types/agentRuns';
 
 type OutputTabKey = 'traces' | 'results';
 
@@ -29,6 +30,7 @@ export default function RunAgentTab({ agent }: RunAgentTabProps) {
   const [runId, setRunId] = useState<string | null>(null);
   const [runStatus, setRunStatus] = useState<string | null>(null);
   const [runOutput, setRunOutput] = useState<Record<string, unknown> | null>(null);
+  const [runMetrics, setRunMetrics] = useState<AgentRunMetrics | null>(null);
   const [runError, setRunError] = useState<string | null>(null);
   const [resultsLoading, setResultsLoading] = useState(false);
   const [startError, setStartError] = useState<string | null>(null);
@@ -43,6 +45,10 @@ export default function RunAgentTab({ agent }: RunAgentTabProps) {
 
     try {
       const run = await agentRunService.getAgentRun(targetRunId);
+      if (run.outputJson) {
+        const metrics = await agentRunService.getAgentRunMetrics(targetRunId);
+        setRunMetrics(metrics);
+      }
       setRunStatus(run.status);
       setRunOutput(run.outputJson ?? null);
       setRunError(run.errorText ?? null);
@@ -101,10 +107,10 @@ export default function RunAgentTab({ agent }: RunAgentTabProps) {
                 {modelsStatus === 'error' ? <option value="">Unavailable</option> : null}
                 {modelsStatus === 'success'
                   ? models.map((model) => (
-                      <option key={model.id} value={model.id}>
-                        {model.id} ({model.provider})
-                      </option>
-                    ))
+                    <option key={model.id} value={model.id}>
+                      {model.id} ({model.provider})
+                    </option>
+                  ))
                   : null}
               </select>
             </div>
@@ -218,11 +224,26 @@ export default function RunAgentTab({ agent }: RunAgentTabProps) {
                   <p className="mt-2 text-sm text-slate-600">No output yet.</p>
                 )}
               </div>
+
+              {runMetrics ? (
+                <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <h4 className="text-sm font-semibold text-slate-900">Metrics</h4>
+                    {resultsLoading ? (
+                      <span className="inline-flex items-center rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-700 ring-1 ring-slate-200">
+                        Loading…
+                      </span>
+                    ) : null}
+                  </div>
+                  <div className="mt-3 max-h-[min(28rem,60vh)] overflow-auto rounded-2xl border border-slate-200 bg-slate-50 p-3">
+                    <JsonInspector value={runMetrics} />
+                  </div>
+                </div>
+              ) : null}
             </div>
           </div>
         </div>
       )}
-
     </div>
   );
 }
