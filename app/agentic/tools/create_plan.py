@@ -1,6 +1,8 @@
+from __future__ import annotations
+
 from langchain.tools import tool
 from pydantic import BaseModel, Field
-from typing import List
+from typing import List, Optional
 
 class CreatePlanInput(BaseModel):
     objective: str = Field(
@@ -11,7 +13,7 @@ class CreatePlanInput(BaseModel):
         ...,
         description="A short ordered list of lightweight execution steps."
     )
-    notes: str | None = Field(
+    notes: Optional[str] = Field(
         default=None,
         description="Optional brief note for the plan. Keep short."
     )
@@ -21,7 +23,7 @@ class CreatePlanInput(BaseModel):
 def create_plan(
     objective: str,
     steps: List[str],
-    notes: str | None = None,
+    notes: Optional[str] = None,
 ) -> dict:
     """
     Create a lightweight structured plan for the current case.

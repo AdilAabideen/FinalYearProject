@@ -3,7 +3,7 @@ from pydantic import BaseModel, Field
 
 class LogThoughtInput(BaseModel):
     thought: str = Field(
-        description="Short plan/justification. No diagnosis, no treatment. <= 25 words."
+        description="Short reasoning trace line for observability. No final diagnosis, no treatment recommendation, no long explanations. <= 25 words."
     )
 
 @tool("log_thought", args_schema=LogThoughtInput)
