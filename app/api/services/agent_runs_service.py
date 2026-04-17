@@ -11,15 +11,16 @@ from fastapi import BackgroundTasks, HTTPException, Request, status
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
-from app.agentic.model_registry import get_chat_model, validate_model_for_agent
 from app.agentic.agents.agents import get_agent_spec, supported_agent_names
+from app.agentic.model_registry import get_chat_model, validate_model_for_agent
 from app.agentic.runtime import AgentRuntime
+from app.api.repository import agent_metrics_repository, agent_runs_repository
 from app.config import settings
 from app.database import SessionLocal
 from app.models.agent_run import AgentRun
 from app.schemas.agent_runs import (
-    AgentEventsPage,
     AgentEventRead,
+    AgentEventsPage,
     AgentLLMCallRead,
     AgentRunCreateRequest,
     AgentRunCreateResponse,
@@ -27,9 +28,9 @@ from app.schemas.agent_runs import (
     AgentRunMetricsRead,
     AgentRunMetricsSummary,
     AgentRunRead,
+    AgentToolCallRead,
     RunStatus,
 )
-from app.api.repository import agent_metrics_repository, agent_runs_repository
 
 MAX_EVENT_TEXT_LEN = 50_000
 
@@ -201,6 +202,19 @@ def _percentile(values: list[float], pct: float) -> Optional[float]:
     return float(ordered[lower] * (1 - frac) + ordered[upper] * frac)
 
 
+def _normalize_tool_names(raw: Any) -> list[str]:
+    if isinstance(raw, list):
+        return [str(name) for name in raw if name is not None]
+    if isinstance(raw, str):
+        try:
+            parsed = json.loads(raw)
+            if isinstance(parsed, list):
+                return [str(name) for name in parsed if name is not None]
+        except Exception:
+            return []
+    return []
+
+
 def _ensure_run_start_event(db: Session, run: AgentRun) -> int:
     seq = agent_runs_repository.get_last_event_seq(db, run.id)
     if seq > 0:
@@ -340,6 +354,7 @@ def _run_agent_and_persist(db: Session, run: AgentRun, seq: int) -> Tuple[int, O
             agent_name=run.agent_name,
             model_name=item.get("model_name") or run.model_name,
             call_kind=str(item.get("call_kind") or "main_loop"),
+            iteration=(int(item.get("iteration")) if item.get("iteration") is not None else None),
             started_at=item.get("started_at") or datetime.utcnow(),
             ended_at=item.get("ended_at") or datetime.utcnow(),
             latency_ms=int(item.get("latency_ms") or 0),
@@ -348,6 +363,26 @@ def _run_agent_and_persist(db: Session, run: AgentRun, seq: int) -> Tuple[int, O
             tokens_total=total_tokens,
             usage_source=str(item.get("usage_source") or "estimated"),
             cost_usd=cost_usd,
+            had_tool_calls=(bool(item.get("had_tool_calls")) if item.get("had_tool_calls") is not None else None),
+            tool_call_count=(int(item.get("tool_call_count")) if item.get("tool_call_count") is not None else None),
+            tool_names=_normalize_tool_names(item.get("tool_names")),
+            error_text=item.get("error_text"),
+        )
+
+    def _persist_tool_call(item: dict[str, Any]) -> None:
+        agent_metrics_repository.append_tool_call(
+            db,
+            run_id=run.id,
+            agent_name=run.agent_name,
+            iteration=int(item.get("iteration") or 0),
+            tool_call_id=(str(item.get("tool_call_id")) if item.get("tool_call_id") else None),
+            tool_name=str(item.get("tool_name") or "tool"),
+            started_at=item.get("started_at") or datetime.utcnow(),
+            ended_at=item.get("ended_at") or datetime.utcnow(),
+            latency_ms=int(item.get("latency_ms") or 0),
+            status=str(item.get("status") or "error"),
+            result_char_count=int(item.get("result_char_count") or 0),
+            result_estimated_tokens=int(item.get("result_estimated_tokens") or 0),
             error_text=item.get("error_text"),
         )
 
@@ -359,6 +394,8 @@ def _run_agent_and_persist(db: Session, run: AgentRun, seq: int) -> Tuple[int, O
     agent.set_event_handlers([_persist_callback_event])
     if hasattr(agent, "set_llm_call_handlers"):
         agent.set_llm_call_handlers([_persist_llm_call])
+    if hasattr(agent, "set_tool_call_handlers"):
+        agent.set_tool_call_handlers([_persist_tool_call])
     if hasattr(agent, "run_timeout_s"):
         agent.run_timeout_s = float(settings.AGENT_RUN_TIMEOUT_S)
 
@@ -479,8 +516,39 @@ def get_agent_run_metrics(run_id: str, db: Session) -> AgentRunMetricsDetail:
     run = agent_runs_repository.get_run(db, run_id)
     if run is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Run not found")
+
     metrics_row = agent_metrics_repository.get_run_metrics(db, run_id)
     llm_calls = agent_metrics_repository.list_llm_calls(db, run_id)
+    tool_calls = agent_metrics_repository.list_tool_calls(db, run_id)
+
+    llm_items = [
+        AgentLLMCallRead(
+            id=c.id,
+            run_id=c.run_id,
+            call_index=c.call_index,
+            agent_system=c.agent_system,
+            agent_name=c.agent_name,
+            model_name=c.model_name,
+            call_kind=c.call_kind,
+            iteration=c.iteration,
+            started_at=c.started_at,
+            ended_at=c.ended_at,
+            latency_ms=c.latency_ms,
+            input_tokens=c.input_tokens,
+            output_tokens=c.output_tokens,
+            tokens_total=c.tokens_total,
+            usage_source=c.usage_source,
+            had_tool_calls=c.had_tool_calls,
+            tool_call_count=c.tool_call_count,
+            tool_names=_normalize_tool_names(c.tool_names_json),
+            cost_usd=c.cost_usd,
+            error_text=c.error_text,
+        )
+        for c in llm_calls
+    ]
+
+    tool_items = [AgentToolCallRead.model_validate(t.__dict__) for t in tool_calls]
+
     return AgentRunMetricsDetail(
         run_id=run_id,
         metrics=(
@@ -488,7 +556,8 @@ def get_agent_run_metrics(run_id: str, db: Session) -> AgentRunMetricsDetail:
             if metrics_row is not None
             else None
         ),
-        llm_calls=[AgentLLMCallRead.model_validate(c.__dict__) for c in llm_calls],
+        llm_calls=llm_items,
+        tool_calls=tool_items,
     )
 
 

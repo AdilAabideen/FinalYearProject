@@ -13,6 +13,7 @@ app.db-journal
 app.db-shm
 app.db-wal
 
-docs/
+docs/*
+!docs/agent_metrics.md
 
 .env

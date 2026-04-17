@@ -1,11 +1,12 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.config import settings
-from app.database import SessionLocal, engine, Base
+from app.database import SessionLocal, engine, Base, ensure_runtime_schema_upgrades
 from app.api.api import api_router
 
 # Create database tables
 Base.metadata.create_all(bind=engine)
+ensure_runtime_schema_upgrades()
 
 # Initialize FastAPI app
 app = FastAPI(

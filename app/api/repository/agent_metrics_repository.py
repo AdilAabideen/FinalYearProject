@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 from app.models.agent_event import AgentEvent
 from app.models.agent_llm_call import AgentLLMCall
 from app.models.agent_run_metrics import AgentRunMetrics
+from app.models.agent_tool_call import AgentToolCall
 
 
 def append_llm_call(
@@ -20,6 +21,7 @@ def append_llm_call(
     agent_name: str,
     model_name: Optional[str],
     call_kind: str,
+    iteration: Optional[int],
     started_at: datetime,
     ended_at: datetime,
     latency_ms: int,
@@ -28,6 +30,9 @@ def append_llm_call(
     tokens_total: int,
     usage_source: str,
     cost_usd: Optional[float],
+    had_tool_calls: Optional[bool],
+    tool_call_count: Optional[int],
+    tool_names: Optional[list[str]],
     error_text: Optional[str] = None,
 ) -> None:
     row = AgentLLMCall(
@@ -37,6 +42,7 @@ def append_llm_call(
         agent_name=agent_name,
         model_name=model_name,
         call_kind=call_kind,
+        iteration=iteration,
         started_at=started_at,
         ended_at=ended_at,
         latency_ms=latency_ms,
@@ -45,6 +51,43 @@ def append_llm_call(
         tokens_total=max(0, int(tokens_total)),
         usage_source=usage_source,
         cost_usd=cost_usd,
+        had_tool_calls=had_tool_calls,
+        tool_call_count=(max(0, int(tool_call_count)) if tool_call_count is not None else None),
+        tool_names_json=tool_names,
+        error_text=error_text,
+    )
+    db.add(row)
+    db.commit()
+
+
+def append_tool_call(
+    db: Session,
+    *,
+    run_id: str,
+    agent_name: str,
+    iteration: int,
+    tool_call_id: Optional[str],
+    tool_name: str,
+    started_at: datetime,
+    ended_at: datetime,
+    latency_ms: int,
+    status: str,
+    result_char_count: int,
+    result_estimated_tokens: int,
+    error_text: Optional[str] = None,
+) -> None:
+    row = AgentToolCall(
+        run_id=run_id,
+        agent_name=agent_name,
+        iteration=max(0, int(iteration)),
+        tool_call_id=tool_call_id,
+        tool_name=tool_name,
+        started_at=started_at,
+        ended_at=ended_at,
+        latency_ms=max(0, int(latency_ms)),
+        status=status,
+        result_char_count=max(0, int(result_char_count)),
+        result_estimated_tokens=max(0, int(result_estimated_tokens)),
         error_text=error_text,
     )
     db.add(row)
@@ -120,6 +163,15 @@ def list_llm_calls(db: Session, run_id: str) -> list[AgentLLMCall]:
         select(AgentLLMCall)
         .where(AgentLLMCall.run_id == run_id)
         .order_by(AgentLLMCall.call_index.asc(), AgentLLMCall.id.asc())
+    )
+    return db.execute(stmt).scalars().all()
+
+
+def list_tool_calls(db: Session, run_id: str) -> list[AgentToolCall]:
+    stmt = (
+        select(AgentToolCall)
+        .where(AgentToolCall.run_id == run_id)
+        .order_by(AgentToolCall.iteration.asc(), AgentToolCall.id.asc())
     )
     return db.execute(stmt).scalars().all()
 

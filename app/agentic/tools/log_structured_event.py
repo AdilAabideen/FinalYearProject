@@ -22,7 +22,7 @@ class LogStructuredEventInput(BaseModel):
         ...,
         description="A short one-sentence summary of what happened."
     )
-    tag: Literal["info", "warning", "important"] = Field(
+    tag: Literal["info", "warning", "important", "completed"] = Field(
         default="info",
         description="A very lightweight general tag for the event."
     )

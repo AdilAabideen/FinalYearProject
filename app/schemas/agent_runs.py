@@ -40,6 +40,7 @@ class AgentLLMCallRead(BaseModel):
     agent_name: str
     model_name: Optional[str] = None
     call_kind: str
+    iteration: Optional[int] = None
     started_at: datetime
     ended_at: datetime
     latency_ms: int
@@ -47,7 +48,26 @@ class AgentLLMCallRead(BaseModel):
     output_tokens: int
     tokens_total: int
     usage_source: str
+    had_tool_calls: Optional[bool] = None
+    tool_call_count: Optional[int] = None
+    tool_names: list[str] = Field(default_factory=list)
     cost_usd: Optional[float] = None
+    error_text: Optional[str] = None
+
+
+class AgentToolCallRead(BaseModel):
+    id: int
+    run_id: str
+    agent_name: str
+    iteration: int
+    tool_call_id: Optional[str] = None
+    tool_name: str
+    started_at: datetime
+    ended_at: datetime
+    latency_ms: int
+    status: str
+    result_char_count: int
+    result_estimated_tokens: int
     error_text: Optional[str] = None
 
 
@@ -75,6 +95,7 @@ class AgentRunMetricsDetail(BaseModel):
     run_id: str
     metrics: Optional[AgentRunMetricsRead] = None
     llm_calls: list[AgentLLMCallRead]
+    tool_calls: list[AgentToolCallRead] = Field(default_factory=list)
 
 
 class AgentRunMetricsSummary(BaseModel):
