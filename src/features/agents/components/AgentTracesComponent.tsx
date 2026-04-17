@@ -29,7 +29,10 @@ type TraceEntry =
   | {
     id: string;
     kind: 'thinking';
-    text: string;
+    output: {
+      step: string;
+      thought: string;
+    } | null;
   }
   | {
     id: string;
@@ -110,10 +113,9 @@ export function AgentTracesComponent({ runId, onDone }: AgentTracesComponentProp
         if (seenEventIdsRef.current.has(eventId)) return;
         seenEventIdsRef.current.add(eventId);
       }
-
       const parsed = JSON.parse(event.data) as unknown;
       const payload = asAgentEventPayload(parsed);
-      console.log("Payload", payload);
+  
       if (payload.event_type !== 'tool_result' && payload.event_type !== 'thought') return;
       if (!payload.tool_name) return;
 
@@ -127,13 +129,15 @@ export function AgentTracesComponent({ runId, onDone }: AgentTracesComponentProp
       const entryId = `${idSuffix}-${entryIdRef.current}`;
 
       if (payload.event_type === 'thought' || isLogThoughtTool(payload.tool_name)) {
-        const text = payload.payload_text?.trim();
-        if (!text) return;
-        setEntries((prev) => [...prev, { id: entryId, kind: 'thinking', text }]);
+
+        const result = payload.payload_json as { result: { step: string, thought: string } };
+        if (!result) return;
+        setEntries((prev) => [...prev, { id: entryId, kind: 'thinking', output: { step: result.result.step, thought: result.result.thought } }]);
         return;
       }
 
       if (!hasOutput && status === 'unknown') return;
+
 
       setEntries((prev) => [
         ...prev,
@@ -232,9 +236,9 @@ export function AgentTracesComponent({ runId, onDone }: AgentTracesComponentProp
 
               if (entry.kind === 'thinking') {
                 return (
-                  <div key={entry.id} className="space-y-2">
+                  <div key={entry.id} className="space-y-1">
                     <p className="text-xs font-semibold tracking-wide text-PrimaryBlue">THINKING</p>
-                    <p className="text-sm text-slate-800">{truncateText(entry.text, 2000)}</p>
+                    <p><span className="text-sm text-slate-900 font-bold">{truncateText(entry.output?.step, 2000)}</span>: <span className="text-sm text-slate-800">{truncateText(entry.output?.thought, 2000)}</span></p>
                   </div>
                 );
               }

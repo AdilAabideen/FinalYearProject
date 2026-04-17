@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useId, useMemo, useState } from 'react';
+import { useCallback, useEffect, useId, useMemo, useState, type ReactElement } from 'react';
 import type { AgentTestCaseRead } from '../../../types/agentTests';
 import { API_BASE_URL } from '../../../config/env';
 import { agentRunService } from '../../../services/agentRunService';
@@ -9,7 +9,7 @@ import { Badge } from '../../../shared/ui/Badge';
 import { useModels } from '../hooks/useModels';
 
 type HarnessTabKey = 'cases' | 'results';
-type ViewerTabKey = 'case_details' | 'test_traces' | 'outputs' | 'metrics';
+type ViewerTabKey = 'case_details' | 'test_traces' | 'outputs' | 'diff' | 'metrics';
 type CaseStatus = 'pending' | 'running' | 'passed' | 'failed';
 type RunPhase = 'idle' | 'running' | 'done';
 
@@ -54,6 +54,13 @@ type CaseMetricsState = {
   error?: string;
 }
 
+type CaseDiffState = {
+  status: 'idle' | 'loading' | 'ready' | 'error';
+  agentRunId?: string;
+  diff?: Record<string, unknown> | null;
+  error?: string;
+}
+
 type CaseResultViewModel = {
   decisionLabel: string;
   decisionTone: 'positive' | 'danger' | 'neutral';
@@ -64,15 +71,24 @@ type CaseResultViewModel = {
   missingInformation: string[];
 };
 
+type StatCardProps = {
+  label: string;
+  value: string;
+  tone?: 'default' | 'accent' | 'positive' | 'danger';
+};
+
+type DiffRenderer = (diff: Record<string, unknown>) => ReactElement;
+
 const harnessTabs: Array<{ key: HarnessTabKey; label: string }> = [
   { key: 'cases', label: 'Test Cases' },
   { key: 'results', label: 'Test Results' },
 ];
 
 const viewerTabs: Array<{ key: ViewerTabKey; label: string }> = [
-  { key: 'case_details', label: 'Case Details' },
+  { key: 'case_details', label: 'Details' },
   { key: 'test_traces', label: 'Test Traces' },
   { key: 'outputs', label: 'Outputs' },
+  { key: 'diff', label: 'Diff' },
   { key: 'metrics', label: 'Metrics' },
 ];
 
@@ -184,6 +200,15 @@ function extractMetrics(payload: Record<string, unknown>) {
   return null;
 }
 
+function extractDiff(payload: Record<string, unknown>) {
+
+  if (isRecord(payload.diff_json)) return payload.diff_json;
+  if (isRecord(payload.result) && isRecord(payload.result.diff_json)) return payload.result.diff_json;
+  if (isRecord(payload.payload_json) && isRecord(payload.payload_json.diff_json)) return payload.payload_json.diff_json;
+
+  return null;
+}
+
 function normalizeKey(key: string) {
   return key.toLowerCase().replace(/[^a-z0-9]/g, '');
 }
@@ -243,6 +268,137 @@ function titleCaseKey(key: string) {
     .join(' ');
 }
 
+function formatInteger(value: number | null) {
+  if (value == null) return '—';
+  return new Intl.NumberFormat(undefined, { maximumFractionDigits: 0 }).format(value);
+}
+
+function formatDuration(seconds: number | null) {
+  if (seconds == null) return '—';
+  if (seconds < 1) return `${Math.round(seconds * 1000)} ms`;
+  return `${seconds.toFixed(seconds < 10 ? 2 : 1)} s`;
+}
+
+function formatCurrency(value: number | null) {
+  if (value == null) return '—';
+  return new Intl.NumberFormat(undefined, {
+    style: 'currency',
+    currency: 'USD',
+    maximumFractionDigits: 4,
+  }).format(value);
+}
+
+function StatCard({ label, value, tone = 'default' }: StatCardProps) {
+  const toneClass =
+    tone === 'positive'
+      ? 'border-emerald-200 bg-emerald-50/70'
+      : tone === 'danger'
+        ? 'border-rose-200 bg-rose-50/70'
+        : tone === 'accent'
+          ? 'border-sky-200 bg-sky-50/70'
+          : 'border-slate-200 bg-white';
+
+  return (
+    <div className={`rounded-xl border p-3 ${toneClass}`}>
+      <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">{label}</p>
+      <p className="mt-1 text-base font-semibold text-slate-900">{value}</p>
+    </div>
+  );
+}
+
+function normalizeAgentName(name: string) {
+  return name.trim().toLowerCase().replace(/[\s_-]+/g, '');
+}
+
+function renderGenericDiff(diff: Record<string, unknown>) {
+  return (
+    <div className="rounded-2xl border border-slate-200 bg-white p-4">
+      <p className="text-sm font-semibold text-slate-900">Diff</p>
+      <p className="mt-1 text-xs text-slate-600">No agent-specific renderer configured for this agent.</p>
+      <details className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-3">
+        <summary className="cursor-pointer select-none text-xs font-semibold uppercase tracking-wide text-slate-600">
+          Raw Diff JSON
+        </summary>
+        <div className="mt-3 max-h-[min(24rem,50vh)] overflow-auto rounded-2xl border border-slate-200 bg-white p-3">
+          <JsonInspector value={diff} />
+        </div>
+      </details>
+    </div>
+  );
+}
+
+function renderEsiDiff(diff: Record<string, unknown>) {
+  const expectedAnswer = isRecord(diff.expected_answer) ? diff.expected_answer : {};
+  const agentAnswer = isRecord(diff.agent_answer) ? diff.agent_answer : {};
+
+  const expectedAcuity = asNumber(expectedAnswer.acuity);
+  const isEsi1 = parseDecision(agentAnswer.is_esi1);
+  const confidence = asNumber(agentAnswer.confidence);
+
+  const isMatch = diff.passed
+
+  const verdictLabel = isMatch == null ? 'Not enough data' : isMatch ? 'Success' : 'Mismatch';
+  const verdictBadgeClass =
+    isMatch == null
+      ? 'bg-slate-100 text-slate-700 ring-slate-200'
+      : isMatch
+        ? 'bg-emerald-50 text-emerald-700 ring-emerald-200'
+        : 'bg-rose-50 text-rose-700 ring-rose-200';
+  const panelClass =
+    isMatch == null
+      ? 'border-slate-200 bg-white'
+      : isMatch
+        ? 'border-emerald-200 bg-emerald-50/40'
+        : 'border-rose-200 bg-rose-50/40';
+
+  return (
+    <div className="space-y-4 pb-2">
+      <section className={`rounded-2xl border p-4 ${panelClass}`}>
+        <div className="flex items-center justify-between gap-3">
+          <h4 className="text-sm font-semibold text-slate-900">Diff</h4>
+          <Badge className={verdictBadgeClass}>{verdictLabel}</Badge>
+        </div>
+
+        <div className="mt-3 grid gap-3 sm:grid-cols-3">
+          <StatCard
+            label="Agent Response Is ESI-1"
+            value={isEsi1 == null ? '—' : isEsi1 ? 'True' : 'False'}
+            tone={isMatch == null ? 'default' : isMatch ? 'positive' : 'danger'}
+          />
+          <StatCard label="Confidence" value={formatConfidence(confidence)} tone="accent" />
+          <StatCard
+            label="Expected Acuity"
+            value={expectedAcuity == null ? '—' : formatInteger(expectedAcuity)}
+            tone={isMatch == null ? 'default' : isMatch ? 'positive' : 'danger'}
+          />
+        </div>
+      </section>
+
+      <details className="rounded-2xl border border-slate-200 bg-white p-4">
+        <summary className="cursor-pointer select-none text-sm font-semibold text-slate-800">
+          Raw Diff JSON
+        </summary>
+        <div className="mt-3 max-h-[min(24rem,50vh)] overflow-auto rounded-2xl border border-slate-200 bg-slate-50 p-3">
+          <JsonInspector value={diff} />
+        </div>
+      </details>
+    </div>
+  );
+}
+
+const DIFF_RENDERERS: Record<string, DiffRenderer> = {
+  esiagent: renderEsiDiff,
+  esitriageagent: renderEsiDiff,
+};
+
+function resolveDiffRenderer(agentName: string) {
+  const normalized = normalizeAgentName(agentName);
+  const directRenderer = DIFF_RENDERERS[normalized];
+  if (directRenderer) return directRenderer;
+  if (normalized.includes('esi')) return renderEsiDiff;
+  return renderGenericDiff;
+}
+
 export default function AgentTestRunDrawer({
   agentName,
   runId,
@@ -263,6 +419,7 @@ export default function AgentTestRunDrawer({
 
   const [outputsByCaseId, setOutputsByCaseId] = useState<Record<string, CaseOutputState>>({});
   const [metricsByCaseId, setMetricsByCaseId] = useState<Record<string, CaseMetricsState>>({});
+  const [diffByCaseId, setDiffByCaseId] = useState<Record<string, CaseDiffState>>({});
 
   const { models, status: modelsStatus, selectedModelId, setSelectedModelId } = useModels();
 
@@ -274,6 +431,31 @@ export default function AgentTestRunDrawer({
     const running = Object.values(caseStates).filter((c) => c.status === 'running').length;
     return { total, completed, running, queued: Math.max(total - completed - running, 0) };
   }, [caseStates, selectedCases.length]);
+
+
+  const insertDiff = useCallback((caseId: string, agentRunId: string | undefined, diff: Record<string, unknown>) => {
+
+    try {
+      setDiffByCaseId((prev) => ({
+        ...prev,
+        [caseId]: {
+          status: 'ready',
+          agentRunId,
+          diff,
+        },
+      }));
+    } catch (e: unknown) {
+      setDiffByCaseId((prev) => ({
+        ...prev,
+        [caseId]: {
+          status: 'error',
+          agentRunId,
+          error: e instanceof Error ? e.message : 'Failed to load diff',
+        },
+      }));
+    }
+    
+  }, []);
 
   const fetchCaseOutputAndMetrics = useCallback(
     async (caseId: string, agentRunId: string) => {
@@ -338,6 +520,7 @@ export default function AgentTestRunDrawer({
     setAgentRunByCaseId({});
     setOutputsByCaseId({});
     setMetricsByCaseId({});
+    setDiffByCaseId({});
     setActiveViewerTab('case_details');
     setActiveHarnessTab('cases');
   }, [selectedCases, runId]);
@@ -376,6 +559,15 @@ export default function AgentTestRunDrawer({
           status: prev[caseId]?.status === 'ready' ? 'ready' : 'idle',
           agentRunId,
           metrics: prev[caseId]?.metrics,
+          error: prev[caseId]?.error,
+        },
+      }));
+      setDiffByCaseId((prev) => ({
+        ...prev,
+        [caseId]: {
+          status: prev[caseId]?.status === 'ready' ? 'ready' : 'idle',
+          agentRunId,
+          diff: prev[caseId]?.diff,
           error: prev[caseId]?.error,
         },
       }));
@@ -442,8 +634,12 @@ export default function AgentTestRunDrawer({
 
     source.addEventListener('case_done', (event) => {
       const payload = parseEventPayload(event as MessageEvent<string>);
-      console.log("Case Done Payload", payload);
       if (!payload) return;
+      const caseId = extractCaseId(payload);
+      if (!caseId) return;
+      const agentRunId = extractAgentRunId(payload) ?? caseRunMap[caseId];
+      const diff = extractDiff(payload);
+      if (diff) insertDiff(caseId, agentRunId, diff);
       handleCaseDonePayload(payload);
     });
 
@@ -458,13 +654,22 @@ export default function AgentTestRunDrawer({
       const payload = parseEventPayload(event as MessageEvent<string>);
       if (!payload) return;
 
+
       const eventType =
         asString(payload.event_type) ??
         (isRecord(payload.result) ? asString(payload.result.event_type) : undefined) ??
         (isRecord(payload.payload_json) ? asString(payload.payload_json.event_type) : undefined);
 
       if (eventType === 'case_start') handleCaseStartPayload(payload);
-      if (eventType === 'case_done') handleCaseDonePayload(payload);
+      if (eventType === 'case_done') {
+        const caseId = extractCaseId(payload);
+        if (caseId) {
+          const agentRunId = extractAgentRunId(payload) ?? caseRunMap[caseId];
+          const diff = extractDiff(payload);
+          if (diff) insertDiff(caseId, agentRunId, diff);
+        }
+        handleCaseDonePayload(payload);
+      }
       if (eventType === 'run_done') handleRunDonePayload(payload);
     });
 
@@ -481,7 +686,7 @@ export default function AgentTestRunDrawer({
     return () => {
       source.close();
     };
-  }, [runId, fetchCaseOutputAndMetrics]);
+  }, [runId, fetchCaseOutputAndMetrics, insertDiff]);
 
   const activeCase = useMemo(
     () => selectedCases.find((c) => c.id === activeCaseId),
@@ -491,11 +696,21 @@ export default function AgentTestRunDrawer({
   const activeAgentRunId = activeCaseId ? agentRunByCaseId[activeCaseId] ?? null : null;
   const activeOutputState = activeCaseId ? outputsByCaseId[activeCaseId] : undefined;
   const activeMetricsState = activeCaseId ? metricsByCaseId[activeCaseId] : undefined;
+  const activeDiffState = activeCaseId ? diffByCaseId[activeCaseId] : undefined;
   const activeCaseStatus = activeCaseId ? caseStates[activeCaseId]?.status : undefined;
+  const activeMetricsRecord =
+    activeMetricsState?.status === 'ready' && isRecord(activeMetricsState.metrics)
+      ? activeMetricsState.metrics
+      : null;
+  const activeDiffRecord =
+    activeDiffState?.status === 'ready' && isRecord(activeDiffState.diff)
+      ? activeDiffState.diff
+      : null;
   const activeOutputRecord =
     activeOutputState?.status === 'ready' && isRecord(activeOutputState.output)
       ? activeOutputState.output
       : null;
+  const diffRenderer = useMemo(() => resolveDiffRenderer(agentName), [agentName]);
 
   const activeResultView = useMemo<CaseResultViewModel | null>(() => {
     if (!activeOutputRecord) return null;
@@ -718,7 +933,7 @@ export default function AgentTestRunDrawer({
                   className="h-full min-h-0 overflow-auto"
                 >
                   <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-                    <p className="text-xs font-semibold text-slate-900">Case details</p>
+                    <p className="text-xs font-semibold text-slate-900">Details</p>
                     {activeCase ? (
                       <div className="mt-2 space-y-2">
                         <p className="text-sm font-semibold text-slate-900">{titleCase(activeCase.name)}</p>
@@ -928,6 +1143,38 @@ export default function AgentTestRunDrawer({
                 </div>
 
                 <div
+                  id={viewerPanelId('diff')}
+                  role="tabpanel"
+                  aria-labelledby={viewerTabId('diff')}
+                  hidden={activeViewerTab !== 'diff'}
+                  className="h-full min-h-0 overflow-auto"
+                >
+                  {!activeCaseId ? (
+                    <div className="rounded-2xl border border-slate-200 bg-white p-4 text-sm text-slate-700">
+                      Select a test case to view its diff.
+                    </div>
+                  ) : activeDiffState?.status === 'loading' ? (
+                    <div className="rounded-2xl border border-slate-200 bg-white p-4 text-sm text-slate-700">
+                      Loading diff…
+                    </div>
+                  ) : activeDiffState?.status === 'error' ? (
+                    <div className="rounded-2xl border border-slate-200 bg-white p-4 text-sm text-slate-700">
+                      {activeDiffState.error}
+                    </div>
+                  ) : activeDiffState?.status === 'ready' && activeDiffRecord ? (
+                    diffRenderer(activeDiffRecord)
+                  ) : activeCaseStatus === 'passed' || activeCaseStatus === 'failed' ? (
+                    <div className="rounded-2xl border border-slate-200 bg-white p-4 text-sm text-slate-700">
+                      Diff not available for this case.
+                    </div>
+                  ) : (
+                    <div className="rounded-2xl border border-slate-200 bg-white p-4 text-sm text-slate-700">
+                      Diff will appear once this case finishes running.
+                    </div>
+                  )}
+                </div>
+
+                <div
                   id={viewerPanelId('metrics')}
                   role="tabpanel"
                   aria-labelledby={viewerTabId('metrics')}
@@ -943,8 +1190,71 @@ export default function AgentTestRunDrawer({
                       {activeMetricsState.error}
                     </div>
                   ) : activeMetricsState?.status === 'ready' ? (
-                    <div className="rounded-2xl border border-slate-200 bg-white p-4 text-sm text-slate-700">
-                      <JsonInspector value={activeMetricsState.metrics} />
+                    <div className="space-y-4 pb-2">
+                      <div className="rounded-2xl border border-slate-200 bg-white p-4">
+                        <div className="flex items-center justify-between gap-3">
+                          <h4 className="text-sm font-semibold text-slate-900">Metrics</h4>
+                          <Badge className="bg-white text-slate-700 ring-slate-200">
+                            {activeCaseStatus ? `Case: ${activeCaseStatus}` : 'Case status unavailable'}
+                          </Badge>
+                        </div>
+
+                        <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                          <StatCard
+                            label="LLM Calls"
+                            value={formatInteger(asNumber(activeMetricsRecord?.llm_call_count))}
+                            tone="accent"
+                          />
+                          <StatCard
+                            label="Tool Calls"
+                            value={formatInteger(asNumber(activeMetricsRecord?.tool_call_count))}
+                          />
+                          <StatCard
+                            label="Input Tokens"
+                            value={formatInteger(asNumber(activeMetricsRecord?.input_tokens_total))}
+                          />
+                          <StatCard
+                            label="Output Tokens"
+                            value={formatInteger(asNumber(activeMetricsRecord?.output_tokens_total))}
+                          />
+                          <StatCard
+                            label="Total Tokens"
+                            value={formatInteger(asNumber(activeMetricsRecord?.tokens_total))}
+                          />
+                          <StatCard
+                            label="Duration"
+                            value={formatDuration(asNumber(activeMetricsRecord?.duration_seconds))}
+                          />
+                          <StatCard
+                            label="Cost"
+                            value={formatCurrency(asNumber(activeMetricsRecord?.cost_usd_total))}
+                          />
+                          <StatCard
+                            label="Failure Reason"
+                            value={
+                              typeof activeMetricsRecord?.failure_reason === 'string' &&
+                              activeMetricsRecord.failure_reason.trim().length > 0
+                                ? activeMetricsRecord.failure_reason
+                                : 'None'
+                            }
+                            tone={
+                              typeof activeMetricsRecord?.failure_reason === 'string' &&
+                              activeMetricsRecord.failure_reason.trim().length > 0
+                                ? 'danger'
+                                : 'positive'
+                            }
+                          />
+                        </div>
+
+                        <details className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-3">
+                          <summary className="cursor-pointer select-none text-xs font-semibold uppercase tracking-wide text-slate-600">
+                            Raw Metrics JSON
+                          </summary>
+                          <div className="mt-3 max-h-[min(24rem,50vh)] overflow-auto rounded-2xl border border-slate-200 bg-white p-3">
+                            <JsonInspector value={activeMetricsState.metrics} />
+                          </div>
+                        </details>
+                      </div>
                     </div>
                   ) : null}
                 </div>
