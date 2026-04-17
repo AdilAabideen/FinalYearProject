@@ -1,11 +1,14 @@
-import { useEffect, useId, useMemo, useState } from 'react';
+import { useCallback, useEffect, useId, useMemo, useState } from 'react';
 import type { AgentTestCaseRead } from '../../../types/agentTests';
 import { API_BASE_URL } from '../../../config/env';
+import { agentRunService } from '../../../services/agentRunService';
 import { AgentTracesComponent } from './AgentTracesComponent';
 import { SegmentedTabs } from '../../../shared/ui/SegmentedTabs';
+import { JsonInspector } from '../../../shared/ui/JsonInspector';
 import { useModels } from '../hooks/useModels';
 
 type HarnessTabKey = 'cases' | 'results';
+type ViewerTabKey = 'case_details' | 'test_traces' | 'outputs';
 type CaseStatus = 'pending' | 'running' | 'passed' | 'failed';
 type RunPhase = 'idle' | 'running' | 'done';
 
@@ -36,9 +39,22 @@ type RunMetrics = {
   };
 };
 
-const tabs: Array<{ key: HarnessTabKey; label: string }> = [
+type CaseOutputState = {
+  status: 'idle' | 'loading' | 'ready' | 'error';
+  agentRunId?: string;
+  output?: Record<string, unknown> | null;
+  error?: string;
+};
+
+const harnessTabs: Array<{ key: HarnessTabKey; label: string }> = [
   { key: 'cases', label: 'Test Cases' },
   { key: 'results', label: 'Test Results' },
+];
+
+const viewerTabs: Array<{ key: ViewerTabKey; label: string }> = [
+  { key: 'case_details', label: 'Case Details' },
+  { key: 'test_traces', label: 'Test Traces' },
+  { key: 'outputs', label: 'Outputs' },
 ];
 
 const friendlyLabels: Record<string, string> = {
@@ -89,6 +105,57 @@ function titleCase(value: string) {
   return value.replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function asString(value: unknown): string | undefined {
+  return typeof value === 'string' && value.length > 0 ? value : undefined;
+}
+
+function extractCaseId(payload: Record<string, unknown>) {
+  return (
+    asString(payload.test_case_id) ??
+    asString(payload.case_id) ??
+    (isRecord(payload.result)
+      ? asString(payload.result.test_case_id) ?? asString(payload.result.case_id)
+      : undefined) ??
+    (isRecord(payload.payload_json)
+      ? asString(payload.payload_json.test_case_id) ?? asString(payload.payload_json.case_id)
+      : undefined)
+  );
+}
+
+function extractAgentRunId(payload: Record<string, unknown>) {
+  return (
+    asString(payload.agent_run_id) ??
+    asString(payload.run_id) ??
+    (isRecord(payload.result)
+      ? asString(payload.result.agent_run_id) ?? asString(payload.result.run_id)
+      : undefined) ??
+    (isRecord(payload.payload_json)
+      ? asString(payload.payload_json.agent_run_id) ?? asString(payload.payload_json.run_id)
+      : undefined)
+  );
+}
+
+function extractPassed(payload: Record<string, unknown>) {
+  if (typeof payload.passed === 'boolean') return payload.passed;
+  const status =
+    asString(payload.status) ??
+    (isRecord(payload.result) ? asString(payload.result.status) : undefined) ??
+    (isRecord(payload.payload_json) ? asString(payload.payload_json.status) : undefined) ??
+    '';
+  return status.toLowerCase().includes('pass');
+}
+
+function extractMetrics(payload: Record<string, unknown>) {
+  if (isRecord(payload.metrics)) return payload.metrics as RunMetrics;
+  if (isRecord(payload.metrics_json)) return payload.metrics_json as RunMetrics;
+  if (isRecord(payload.result) && isRecord(payload.result.metrics)) return payload.result.metrics as RunMetrics;
+  return null;
+}
+
 export default function AgentTestRunDrawer({
   agentName,
   runId,
@@ -96,17 +163,18 @@ export default function AgentTestRunDrawer({
   error,
   onStart,
 }: AgentTestRunDrawerProps) {
-
-  const baseId = useId();
+  const harnessTabsId = useId();
+  const viewerTabsId = useId();
   const modelSelectId = useId();
-  const [activeTab, setActiveTab] = useState<HarnessTabKey>('cases');
+  const [activeHarnessTab, setActiveHarnessTab] = useState<HarnessTabKey>('cases');
+  const [activeViewerTab, setActiveViewerTab] = useState<ViewerTabKey>('case_details');
   const [activeCaseId, setActiveCaseId] = useState<string | null>(null);
-  const [caseStates, setCaseStates] = useState<Record<string, { status: CaseStatus; testCaseId?: string }>>({});
+  const [caseStates, setCaseStates] = useState<Record<string, { status: CaseStatus }>>({});
   const [runMetrics, setRunMetrics] = useState<RunMetrics | null>(null);
   const [runPhase, setRunPhase] = useState<RunPhase>('idle');
+  const [agentRunByCaseId, setAgentRunByCaseId] = useState<Record<string, string>>({});
+  const [outputsByCaseId, setOutputsByCaseId] = useState<Record<string, CaseOutputState>>({});
   const { models, status: modelsStatus, selectedModelId, setSelectedModelId } = useModels();
-
-  const [agentRuns, setAgentRuns] = useState<{ testCaseId: string; agentRunId: string }[]>([]);
 
   const totals = useMemo(() => {
     const total = selectedCases.length;
@@ -117,120 +185,232 @@ export default function AgentTestRunDrawer({
     return { total, completed, running, queued: Math.max(total - completed - running, 0) };
   }, [caseStates, selectedCases.length]);
 
-  useEffect(() => {
-    function resetSelection() {
-      const initial: Record<string, { status: CaseStatus }> = {};
-      for (const c of selectedCases) initial[c.id] = { status: 'pending' };
-      setCaseStates(initial);
-      setActiveCaseId(selectedCases[0]?.id ?? null);
-      setRunMetrics(null);
-      setRunPhase('idle');
-    }
-    resetSelection();
-  }, [selectedCases]);
+  const fetchCaseOutput = useCallback(
+    async (caseId: string, agentRunId: string) => {
+      if (!agentRunId || !caseId) return;
 
-  const activeAgentRunId = useMemo(
-    () => agentRuns.find((r) => r.testCaseId === activeCaseId)?.agentRunId ?? null,
-    [agentRuns, activeCaseId],
+      try {
+        const run = await agentRunService.getAgentRun(agentRunId);
+        setOutputsByCaseId((prev) => {
+          return {
+            ...prev,
+            [caseId]: {
+              status: 'ready',
+              agentRunId,
+              output: run.outputJson ?? null,
+            },
+          };
+        });
+      }
+      catch(e: unknown) {
+        setOutputsByCaseId((prev) => ({
+          ...prev,
+          [caseId]: {
+            status: 'error',
+            agentRunId,
+            error: e instanceof Error ? e.message : 'Failed to load output',
+          },
+        }));
+      }
+    },
+    [],
   );
 
   useEffect(() => {
+    const initial: Record<string, { status: CaseStatus }> = {};
+    for (const c of selectedCases) initial[c.id] = { status: 'pending' };
+    setCaseStates(initial);
+    setActiveCaseId(selectedCases[0]?.id ?? null);
+    setRunMetrics(null);
+    setRunPhase(runId ? 'running' : 'idle');
+    setAgentRunByCaseId({});
+    setOutputsByCaseId({});
+    setActiveViewerTab('case_details');
+    setActiveHarnessTab('cases');
+  }, [selectedCases, runId]);
+
+  useEffect(() => {
     if (!runId) return undefined;
+
+    const caseRunMap: Record<string, string> = {};
     const url = `${API_BASE_URL}/api/tests/runs/${encodeURIComponent(runId)}/stream`;
     const source = new EventSource(url);
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     setRunPhase('running');
 
-    source.addEventListener('case_start', (evt) => {
-      try {
-        const payload = JSON.parse((evt as MessageEvent<string>).data) as { test_case_id?: string; agent_run_id?: string };
-        const testCaseId = payload.test_case_id;
-        const agentRunId = payload.agent_run_id;
-        if (!testCaseId || !agentRunId) return;
-        setAgentRuns((prev) => [...prev, { testCaseId, agentRunId }]);
-        setCaseStates((prev) => ({
+    const handleCaseStartPayload = (payload: Record<string, unknown>) => {
+      const caseId = extractCaseId(payload);
+      const agentRunId = extractAgentRunId(payload);
+      if (!caseId || !agentRunId) return;
+
+      caseRunMap[caseId] = agentRunId;
+      setAgentRunByCaseId((prev) => ({ ...prev, [caseId]: agentRunId }));
+      setCaseStates((prev) => ({
+        ...prev,
+        [caseId]: { ...(prev[caseId] ?? { status: 'pending' }), status: 'running' },
+      }));
+      setOutputsByCaseId((prev) => ({
+        ...prev,
+        [caseId]: {
+          status: prev[caseId]?.status === 'ready' ? 'ready' : 'idle',
+          agentRunId,
+          output: prev[caseId]?.output,
+          error: prev[caseId]?.error,
+        },
+      }));
+      setActiveCaseId((current) => current ?? caseId);
+    };
+
+    const handleCaseDonePayload = (payload: Record<string, unknown>) => {
+      const caseId = extractCaseId(payload);
+      if (!caseId) return;
+
+      const passed = extractPassed(payload);
+      setCaseStates((prev) => ({
+        ...prev,
+        [caseId]: {
+          ...(prev[caseId] ?? { status: 'pending' }),
+          status: passed ? 'passed' : 'failed',
+        },
+      }));
+
+      const agentRunId = extractAgentRunId(payload) ?? caseRunMap[caseId];
+      if (!agentRunId) {
+        setOutputsByCaseId((prev) => ({
           ...prev,
-          [testCaseId]: { ...(prev[testCaseId] ?? { status: 'pending' }), status: 'running', testCaseId },
+          [caseId]: {
+            status: 'error',
+            error: 'Agent run id not available for this test case.',
+          },
         }));
-        setActiveCaseId((current) => current ?? testCaseId);
-      } catch {
-        // ignore
+        return;
       }
-    });
 
-    source.addEventListener('case_done', (evt) => {
+      caseRunMap[caseId] = agentRunId;
+      setAgentRunByCaseId((prev) => ({ ...prev, [caseId]: agentRunId }));
+      void fetchCaseOutput(caseId, agentRunId);
+    };
+
+    const handleRunDonePayload = (payload: Record<string, unknown>) => {
+      const metrics = extractMetrics(payload);
+      if (metrics) setRunMetrics(metrics);
+      setRunPhase('done');
+    };
+
+    const parseEventPayload = (event: MessageEvent<string>) => {
       try {
-        const payload = JSON.parse((evt as MessageEvent<string>).data) as {
-          test_case_id?: string;
-          passed?: boolean;
-          status?: string;
-        };
-        const caseId = payload.test_case_id;
-        if (!caseId) return;
-        const passed =
-          typeof payload.passed === 'boolean'
-            ? payload.passed
-            : (payload.status ?? '').toLowerCase().includes('pass');
-        setCaseStates((prev) => ({
-          ...prev,
-          [caseId]: { ...(prev[caseId] ?? { status: 'pending' }), status: passed ? 'passed' : 'failed' },
-        }));
+        const parsed = JSON.parse(event.data) as unknown;
+        return isRecord(parsed) ? parsed : null;
       } catch {
-        // ignore
+        return null;
       }
+    };
+
+    source.addEventListener('case_start', (event) => {
+      const payload = parseEventPayload(event as MessageEvent<string>);
+      if (!payload) return;
+      handleCaseStartPayload(payload);
     });
 
-    source.addEventListener('run_done', (evt) => {
-      try {
-        const payload = JSON.parse((evt as MessageEvent<string>).data) as {
-          metrics?: RunMetrics;
-        };
-        if (payload.metrics) setRunMetrics(payload.metrics);
-        setRunPhase('done');
-      } catch {
-        // ignore
-      }
+    source.addEventListener('case_done', (event) => {
+      const payload = parseEventPayload(event as MessageEvent<string>);
+      console.log("Done Payload", payload);
+      if (!payload) return;
+      handleCaseDonePayload(payload);
     });
 
-    source.addEventListener('done', () => source.close());
-    source.onerror = () => source.close();
-    return () => source.close();
-  }, [runId]);
+    source.addEventListener('run_done', (event) => {
+      const payload = parseEventPayload(event as MessageEvent<string>);
+      if (!payload) return;
+      handleRunDonePayload(payload);
+    });
+
+    // Some servers emit only generic messages with an "event_type" field.
+    source.addEventListener('message', (event) => {
+      const payload = parseEventPayload(event as MessageEvent<string>);
+      console.log("Message Payload", payload);
+      if (!payload) return;
+
+      const eventType =
+        asString(payload.event_type) ??
+        (isRecord(payload.result) ? asString(payload.result.event_type) : undefined) ??
+        (isRecord(payload.payload_json) ? asString(payload.payload_json.event_type) : undefined);
+
+      if (eventType === 'case_start') handleCaseStartPayload(payload);
+      if (eventType === 'case_done') handleCaseDonePayload(payload);
+      if (eventType === 'run_done') handleRunDonePayload(payload);
+      console.log("Event Type", eventType);
+    });
+
+    source.addEventListener('done', () => {
+      console.log("Done Event");
+      setRunPhase('done');
+      source.close();
+    });
+
+    // Keep native EventSource retry behavior; mark state for visibility.
+    source.onerror = () => {
+      console.log("Error Event");
+      setRunPhase((prev) => (prev === 'running' ? 'running' : prev));
+    };
+
+    return () => {
+      source.close();
+    };
+  }, [runId, fetchCaseOutput]);
 
   const activeCase = useMemo(
     () => selectedCases.find((c) => c.id === activeCaseId),
     [selectedCases, activeCaseId],
   );
 
-  function tabId(key: HarnessTabKey) {
-    return `${baseId}-tab-${key}`;
+  const activeAgentRunId = activeCaseId ? agentRunByCaseId[activeCaseId] ?? null : null;
+  const activeOutputState = activeCaseId ? outputsByCaseId[activeCaseId] : undefined;
+  const activeCaseStatus = activeCaseId ? caseStates[activeCaseId]?.status : undefined;
+
+  function harnessTabId(key: HarnessTabKey) {
+    return `${harnessTabsId}-tab-${key}`;
   }
 
-  function panelId(key: HarnessTabKey) {
-    return `${baseId}-panel-${key}`;
+  function harnessPanelId(key: HarnessTabKey) {
+    return `${harnessTabsId}-panel-${key}`;
+  }
+
+  function viewerTabId(key: ViewerTabKey) {
+    return `${viewerTabsId}-tab-${key}`;
+  }
+
+  function viewerPanelId(key: ViewerTabKey) {
+    return `${viewerTabsId}-panel-${key}`;
+  }
+
+  function handleRetryOutput() {
+    if (!activeCaseId) return;
+    const agentRunId = activeOutputState?.agentRunId ?? activeAgentRunId;
+    if (!agentRunId) return;
+    void fetchCaseOutput(activeCaseId, agentRunId);
   }
 
   return (
-    <div className="flex min-h-0 flex-col gap-4 h-full overflow-y-hidden">
+    <div className="flex h-full min-h-0 flex-col gap-4 overflow-y-hidden">
       <SegmentedTabs
-        idBase={baseId}
-        tabs={tabs}
-        value={activeTab}
-        onChange={setActiveTab}
+        idBase={harnessTabsId}
+        tabs={harnessTabs}
+        value={activeHarnessTab}
+        onChange={setActiveHarnessTab}
         ariaLabel="Test harness tabs"
         className="max-w-sm"
       />
       <span className="sr-only">{agentName}</span>
 
       <div
-        id={panelId('cases')}
+        id={harnessPanelId('cases')}
         role="tabpanel"
-        aria-labelledby={tabId('cases')}
-        hidden={activeTab !== 'cases'}
-        className="h-full"
+        aria-labelledby={harnessTabId('cases')}
+        hidden={activeHarnessTab !== 'cases'}
+        className="h-full min-h-0"
       >
-        <div className="grid h-full grid-cols-5 grid-rows-8 rounded-2xl border border-slate-200 bg-white overflow-y-hidden">
-          <div className="col-span-3 row-span-8 min-h-0 overflow-auto border-r border-slate-200 pb-6">
+        <div className="grid h-full grid-cols-5 grid-rows-10 overflow-y-hidden rounded-2xl border border-slate-200 bg-white">
+          <div className="col-span-3 row-span-10 min-h-0 overflow-auto border-r border-slate-200 pb-6">
             {selectedCases.length ? (
               <div className="divide-y divide-slate-200">
                 {selectedCases.map((testCase) => {
@@ -241,8 +421,9 @@ export default function AgentTestRunDrawer({
                       key={testCase.id}
                       type="button"
                       onClick={() => setActiveCaseId(testCase.id)}
-                      className={`flex w-full items-center justify-between p-4 text-left transition ${isActive ? 'bg-slate-50' : 'hover:bg-slate-50'
-                        }`}
+                      className={`flex w-full items-center justify-between p-4 text-left transition ${
+                        isActive ? 'bg-slate-50' : 'hover:bg-slate-50'
+                      }`}
                     >
                       <div className="min-w-0 space-y-1">
                         <p className="truncate text-sm font-semibold text-slate-900">
@@ -266,7 +447,7 @@ export default function AgentTestRunDrawer({
             )}
           </div>
 
-          <div className="col-span-2 row-span-2 border-b border-slate-200  px-6 py-4 text-slate-900">
+          <div className="col-span-2 row-span-3 border-b border-slate-200 px-6 py-4 text-slate-900">
             <div className="flex flex-wrap items-center justify-between gap-6">
               <div>
                 <p className="text-[11px] uppercase tracking-[0.3em] text-slate-900/70">Harness panel</p>
@@ -298,19 +479,18 @@ export default function AgentTestRunDrawer({
                   </select>
                 </div>
               </div>
+
               <button
                 type="button"
                 onClick={() => onStart(selectedModelId || undefined)}
                 disabled={runPhase === 'running' || !selectedCases.length}
-                className={`inline-flex items-center gap-2 rounded-2xl px-5 py-2 text-xs font-semibold shadow-slate-900/40 backdrop-blur focus:outline-none focus-visible:ring-2 focus-visible:ring-white transition-all duration-300 ${
+                className={`inline-flex items-center gap-2 rounded-2xl px-5 py-2 text-xs font-semibold shadow-slate-900/40 backdrop-blur transition-all duration-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-white ${
                   runPhase === 'running'
-                    ? 'bg-slate-200 text-slate-600 cursor-not-allowed'
+                    ? 'cursor-not-allowed bg-slate-200 text-slate-600'
                     : 'bg-PrimaryBlue text-white hover:scale-[1.02] hover:bg-PrimaryBlue/90 disabled:cursor-not-allowed disabled:opacity-60'
                 }`}
               >
-                <span>
-                  {runPhase === 'running' ? 'Running' : runPhase === 'done' ? 'Re Run' : 'Start'}
-                </span>
+                <span>{runPhase === 'running' ? 'Running' : runPhase === 'done' ? 'Re Run' : 'Start'}</span>
                 <span
                   className={`inline-flex h-2.5 w-2.5 rounded-full ${
                     runPhase === 'running' ? 'bg-orange-400' : 'bg-emerald-400'
@@ -318,6 +498,7 @@ export default function AgentTestRunDrawer({
                 />
               </button>
             </div>
+
             <div className="mt-4 grid gap-3 sm:grid-cols-4">
               {[
                 { label: 'Total cases', value: totals.total },
@@ -336,39 +517,113 @@ export default function AgentTestRunDrawer({
             </div>
           </div>
 
-          <div className="col-span-2 row-span-6 min-h-0 overflow-hidden p-4">
-            <div className="grid h-full grid-rows-[1fr_1fr_1fr] gap-4">
-              <div className="rounded-xl row-span-1 border border-slate-200 bg-white p-3">
-                <p className="text-xs font-semibold text-slate-900">Case details</p>
-                {activeCase ? (
-                  <div className="mt-2 space-y-2">
-                    <p className="text-sm font-semibold text-slate-900">{titleCase(activeCase.name)}</p>
-                    <p className="font-mono text-[11px] text-slate-500">{activeCase.id}</p>
-                    <div className="flex flex-wrap gap-1">
-                      {Object.entries(activeCase.inputJson).map(([label, value]) => (
-                        <CaseBadge key={label} label={label} value={value as string | number} />
-                      ))}
+          <div className="col-span-2 row-span-7 min-h-0 overflow-hidden p-4">
+            <div className="flex h-full min-h-0 flex-col rounded-xl border border-slate-200 bg-white p-3">
+              <SegmentedTabs
+                idBase={viewerTabsId}
+                tabs={viewerTabs}
+                value={activeViewerTab}
+                onChange={setActiveViewerTab}
+                ariaLabel="Case inspection views"
+                className="max-w-md"
+              />
+
+              <div className="mt-3 min-h-0 flex-1">
+                <div
+                  id={viewerPanelId('case_details')}
+                  role="tabpanel"
+                  aria-labelledby={viewerTabId('case_details')}
+                  hidden={activeViewerTab !== 'case_details'}
+                  className="h-full min-h-0 overflow-auto"
+                >
+                  <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                    <p className="text-xs font-semibold text-slate-900">Case details</p>
+                    {activeCase ? (
+                      <div className="mt-2 space-y-2">
+                        <p className="text-sm font-semibold text-slate-900">{titleCase(activeCase.name)}</p>
+                        <p className="font-mono text-[11px] text-slate-500">{activeCase.id}</p>
+                        <div className="flex flex-wrap gap-1">
+                          {Object.entries(activeCase.inputJson).map(([label, value]) => (
+                            <CaseBadge key={label} label={label} value={value as string | number} />
+                          ))}
+                        </div>
+                      </div>
+                    ) : (
+                      <p className="text-xs text-slate-600">Select a test case to view details.</p>
+                    )}
+                  </div>
+                </div>
+
+                <div
+                  id={viewerPanelId('test_traces')}
+                  role="tabpanel"
+                  aria-labelledby={viewerTabId('test_traces')}
+                  hidden={activeViewerTab !== 'test_traces'}
+                  className="h-full min-h-0 overflow-hidden"
+                >
+                  <div className="flex h-full min-h-0 flex-col rounded-xl border border-slate-200 bg-slate-50 p-3">
+                    <p className="shrink-0 text-xs font-semibold text-slate-900">Test traces</p>
+                    <div className="mt-2 min-h-0 flex-1 overflow-hidden rounded-xl border border-slate-100 bg-white p-3">
+                      {activeAgentRunId ? (
+                        <AgentTracesComponent runId={activeAgentRunId} />
+                      ) : activeCaseId ? (
+                        <p className="text-xs text-slate-600">
+                          {runPhase === 'running'
+                            ? 'Waiting for this case to start streaming traces.'
+                            : 'No agent run yet for this case. Start the run to stream traces.'}
+                        </p>
+                      ) : (
+                        <p className="text-xs text-slate-600">Select a test case to view its traces.</p>
+                      )}
                     </div>
                   </div>
-                ) : (
-                  <p className="text-xs text-slate-600">Select a test case to view details.</p>
-                )}
-              </div>
+                </div>
 
-              <div className="row-span-2 min-h-0 flex flex-col rounded-xl border border-slate-200 bg-white p-3">
-                <p className="shrink-0 text-xs font-semibold text-slate-900">Test traces</p>
-                <div className="mt-2 min-h-0 flex-1 overflow-hidden rounded-xl border border-slate-100 bg-slate-50 p-3 mb-10">
-                  {activeAgentRunId ? (
-                    <AgentTracesComponent runId={activeAgentRunId} />
-                  ) : activeCaseId ? (
-                    <p className="text-xs text-slate-600">
-                      No agent run yet for this case. Start the run to stream traces.
-                    </p>
-                  ) : (
-                    <p className="text-xs text-slate-600">
-                      Select a test case to view its traces.
-                    </p>
-                  )}
+                <div
+                  id={viewerPanelId('outputs')}
+                  role="tabpanel"
+                  aria-labelledby={viewerTabId('outputs')}
+                  hidden={activeViewerTab !== 'outputs'}
+                  className="h-full min-h-0 overflow-hidden"
+                >
+                  <div className="flex h-full min-h-0 flex-col rounded-xl border border-slate-200 bg-slate-50 p-3">
+                    <p className="shrink-0 text-xs font-semibold text-slate-900">Outputs</p>
+                    <div className="mt-2 min-h-0 flex-1 overflow-auto rounded-xl border border-slate-100 bg-white p-3">
+                      {!activeCaseId ? (
+                        <p className="text-xs text-slate-600">Select a test case to view its output.</p>
+                      ) : activeOutputState?.status === 'loading' ? (
+                        <p className="text-xs text-slate-600">Loading output…</p>
+                      ) : activeOutputState?.status === 'error' ? (
+                        <div className="space-y-3">
+                          <p className="text-xs text-rose-700">
+                            {activeOutputState.error ?? 'Failed to load output.'}
+                          </p>
+                          <button
+                            type="button"
+                            onClick={handleRetryOutput}
+                            disabled={!activeOutputState.agentRunId && !activeAgentRunId}
+                            className="inline-flex items-center justify-center rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-PrimaryBlue focus-visible:ring-offset-2 focus-visible:ring-offset-white disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
+                          >
+                            Retry Output Fetch
+                          </button>
+                        </div>
+                      ) : activeOutputState?.status === 'ready' ? (
+                        activeOutputState.output ? (
+                          <JsonInspector value={activeOutputState.output} />
+                        ) : (
+                          <p className="text-xs text-slate-600">No output returned for this case.</p>
+                        )
+                      ) : activeCaseStatus === 'passed' || activeCaseStatus === 'failed' ? (
+                        <p className="text-xs text-slate-600">
+                          Output not available yet for this case. You can retry fetching it.
+                        </p>
+                      ) : (
+                        <p className="text-xs text-slate-600">
+                          Output will appear once this case finishes running.
+                        </p>
+                      )}
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
@@ -377,10 +632,11 @@ export default function AgentTestRunDrawer({
       </div>
 
       <div
-        id={panelId('results')}
+        id={harnessPanelId('results')}
         role="tabpanel"
-        aria-labelledby={tabId('results')}
-        hidden={activeTab !== 'results'}
+        aria-labelledby={harnessTabId('results')}
+        hidden={activeHarnessTab !== 'results'}
+        className="h-full min-h-0 overflow-auto"
       >
         {error ? (
           <div className="rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">
