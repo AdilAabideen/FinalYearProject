@@ -77,6 +77,32 @@ def _evaluate_expected_subset(
     return passed, score, {"diffs": diffs}
 
 
+def _build_case_diff_payload(
+    *,
+    expected_answer: dict[str, Any],
+    agent_answer: Optional[dict[str, Any]],
+    agent_status: str,
+    evaluator_diff: Optional[dict[str, Any]],
+    agent_error_text: Optional[str],
+) -> dict[str, Any]:
+    """
+    Build a frontend-friendly diff payload for `case_done`.
+
+    Keeps evaluator-provided diff keys at top level for backward compatibility,
+    while always exposing both expected and actual outputs for rendering.
+    """
+    payload: dict[str, Any] = {
+        "expected_answer": expected_answer,
+        "agent_answer": agent_answer,
+        "agent_status": agent_status,
+    }
+    if agent_error_text:
+        payload["agent_error_text"] = agent_error_text
+    if isinstance(evaluator_diff, dict):
+        payload.update(evaluator_diff)
+    return payload
+
+
 def list_cases(
     *,
     agent_name: Optional[str],
@@ -451,7 +477,14 @@ def stream_run(run_id: str, db: Session) -> StreamingResponse:
             case_run.status = "failed" if (agent_status == "failed" or not passed) else "succeeded"
             case_run.passed = passed
             case_run.score = score
-            case_run.diff_json = diff_json
+            diff_payload = _build_case_diff_payload(
+                expected_answer=test_case.expected_json,
+                agent_answer=output_json,
+                agent_status=agent_status,
+                evaluator_diff=diff_json,
+                agent_error_text=error_text,
+            )
+            case_run.diff_json = diff_payload
             case_run.error_text = error_text
             case_run.metrics_json = {
                 "latency_ms": int((end_ts - start_ts).total_seconds() * 1000),
@@ -474,7 +507,7 @@ def stream_run(run_id: str, db: Session) -> StreamingResponse:
                     "agent_status": agent_status,
                     "passed": passed,
                     "score": score,
-                    "diff_json": diff_json,
+                    "diff_json": diff_payload,
                 },
                 event_id=event_id,
             )
