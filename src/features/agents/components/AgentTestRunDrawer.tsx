@@ -288,6 +288,13 @@ function formatCurrency(value: number | null) {
   }).format(value);
 }
 
+function formatPercent(value: number | null, digits = 1) {
+  if (value == null || !Number.isFinite(value)) return '—';
+  const ratio = value > 1 ? value / 100 : value;
+  const clamped = Math.max(0, Math.min(1, ratio));
+  return `${(clamped * 100).toFixed(digits)}%`;
+}
+
 function StatCard({ label, value, tone = 'default' }: StatCardProps) {
   const toneClass =
     tone === 'positive'
@@ -302,6 +309,40 @@ function StatCard({ label, value, tone = 'default' }: StatCardProps) {
     <div className={`rounded-xl border p-3 ${toneClass}`}>
       <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">{label}</p>
       <p className="mt-1 text-base font-semibold text-slate-900">{value}</p>
+    </div>
+  );
+}
+
+function ConfusionCell({
+  label,
+  value,
+  tone,
+  maxValue,
+}: {
+  label: string;
+  value: number;
+  tone: 'correct' | 'error';
+  maxValue: number;
+}) {
+  const ratio = maxValue > 0 ? value / maxValue : 0;
+  const strength = ratio > 0.66 ? 'strong' : ratio > 0.33 ? 'medium' : 'soft';
+  const className =
+    tone === 'correct'
+      ? strength === 'strong'
+        ? 'border-emerald-300 bg-emerald-100 text-emerald-900'
+        : strength === 'medium'
+          ? 'border-emerald-200 bg-emerald-50 text-emerald-900'
+          : 'border-emerald-100 bg-emerald-50/40 text-emerald-900'
+      : strength === 'strong'
+        ? 'border-rose-300 bg-rose-100 text-rose-900'
+        : strength === 'medium'
+          ? 'border-rose-200 bg-rose-50 text-rose-900'
+          : 'border-rose-100 bg-rose-50/40 text-rose-900';
+
+  return (
+    <div className={`rounded-xl border p-3 ${className}`}>
+      <p className="text-[11px] font-semibold uppercase tracking-wide">{label}</p>
+      <p className="mt-1 text-xl font-semibold">{formatInteger(value)}</p>
     </div>
   );
 }
@@ -645,6 +686,7 @@ export default function AgentTestRunDrawer({
 
     source.addEventListener('run_done', (event) => {
       const payload = parseEventPayload(event as MessageEvent<string>);
+      console.log(payload);
       if (!payload) return;
       handleRunDonePayload(payload);
     });
@@ -788,6 +830,23 @@ export default function AgentTestRunDrawer({
     if (!agentRunId) return;
     void fetchCaseOutputAndMetrics(activeCaseId, agentRunId);
   }
+
+  const summaryTotal = runMetrics?.total ?? totals.total;
+  const summaryPassed = runMetrics?.passed ?? totals.completed;
+  const summaryFailed = runMetrics?.failed ?? Math.max(summaryTotal - summaryPassed, 0);
+  const summaryExecFailed = runMetrics?.exec_failed ?? 0;
+  const summaryInvalidPred = runMetrics?.invalid_pred ?? 0;
+  const summaryPassRate = runMetrics?.pass_rate ?? (summaryTotal > 0 ? summaryPassed / summaryTotal : null);
+  const summaryPassRateLabel = formatPercent(summaryPassRate);
+  const summaryPassRateTone: StatCardProps['tone'] =
+    summaryPassRate == null ? 'default' : summaryPassRate >= 0.8 ? 'positive' : summaryPassRate >= 0.6 ? 'accent' : 'danger';
+
+  const classification = runMetrics?.classification ?? null;
+  const tp = classification?.tp ?? 0;
+  const tn = classification?.tn ?? 0;
+  const fp = classification?.fp ?? 0;
+  const fn = classification?.fn ?? 0;
+  const confusionMax = Math.max(tp, tn, fp, fn, 1);
 
   return (
     <div className="flex h-full min-h-0 flex-col gap-4 overflow-y-hidden">
@@ -1286,78 +1345,144 @@ export default function AgentTestRunDrawer({
             Currently running test…
           </div>
         ) : runPhase === 'done' ? (
-          <div className="space-y-4">
-            <div className="rounded-2xl border border-slate-200 bg-white p-4">
-              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Run Summary</p>
-              <div className="mt-3 grid gap-3 sm:grid-cols-4">
-                {[
-                  { label: 'Total', value: runMetrics?.total ?? totals.total },
-                  { label: 'Passed', value: runMetrics?.passed ?? totals.completed },
-                  { label: 'Failed', value: runMetrics?.failed ?? 0 },
-                  {
-                    label: 'Pass Rate',
-                    value:
-                      runMetrics?.pass_rate != null
-                        ? `${Math.round(runMetrics.pass_rate * 100)}%`
-                        : totals.total
-                          ? `${Math.round((totals.completed / totals.total) * 100)}%`
-                          : '—',
-                  },
-                ].map((stat) => (
-                  <div key={stat.label} className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-                    <p className="text-[11px] font-semibold text-slate-500">{stat.label}</p>
-                    <p className="text-lg font-semibold text-slate-900">{stat.value}</p>
-                  </div>
-                ))}
+          <div className="space-y-4 pb-3">
+            <section className="rounded-2xl border border-slate-200 bg-[linear-gradient(135deg,rgba(14,165,233,0.08)_0%,rgba(255,255,255,0.98)_42%,rgba(16,185,129,0.08)_100%)] p-4">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Run Summary</p>
+                  <p className="text-sm text-slate-700">Final aggregate metrics for this test harness execution.</p>
+                </div>
+                <Badge
+                  className={
+                    summaryPassRate == null
+                      ? 'bg-white text-slate-700 ring-slate-200'
+                      : summaryPassRate >= 0.8
+                        ? 'bg-emerald-50 text-emerald-700 ring-emerald-200'
+                        : summaryPassRate >= 0.6
+                          ? 'bg-sky-50 text-sky-700 ring-sky-200'
+                          : 'bg-rose-50 text-rose-700 ring-rose-200'
+                  }
+                >
+                  Pass Rate: {summaryPassRateLabel}
+                </Badge>
               </div>
-            </div>
 
-            {runMetrics?.classification ? (
-              <div className="rounded-2xl border border-slate-200 bg-white p-4">
-                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                  Classification ({runMetrics.classification.label ?? 'n/a'})
-                </p>
-                <div className="mt-3 grid gap-3 sm:grid-cols-3">
-                  {[
-                    { label: 'Accuracy', value: runMetrics.classification.accuracy },
-                    { label: 'Precision', value: runMetrics.classification.precision },
-                    { label: 'Recall', value: runMetrics.classification.recall },
-                    { label: 'F1', value: runMetrics.classification.f1 },
-                    { label: 'Specificity', value: runMetrics.classification.specificity },
-                    { label: 'Evaluated', value: runMetrics.classification.n_eval },
-                  ].map((stat) => (
-                    <div key={stat.label} className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-                      <p className="text-[11px] font-semibold text-slate-500">{stat.label}</p>
-                      <p className="text-lg font-semibold text-slate-900">
-                        {stat.value == null
-                          ? '—'
-                          : typeof stat.value === 'number'
-                            ? stat.value.toFixed(3)
-                            : stat.value}
-                      </p>
-                    </div>
-                  ))}
-                </div>
-                <div className="mt-4 grid grid-cols-2 gap-3">
-                  <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-                    <p className="text-[11px] font-semibold text-slate-500">Confusion</p>
-                    <div className="mt-2 grid grid-cols-2 gap-2 text-sm font-semibold text-slate-900">
-                      <span>TP: {runMetrics.classification.tp ?? 0}</span>
-                      <span>TN: {runMetrics.classification.tn ?? 0}</span>
-                      <span>FP: {runMetrics.classification.fp ?? 0}</span>
-                      <span>FN: {runMetrics.classification.fn ?? 0}</span>
-                    </div>
-                  </div>
-                  <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-                    <p className="text-[11px] font-semibold text-slate-500">Excluded</p>
-                    <div className="mt-2 space-y-1 text-sm font-semibold text-slate-900">
-                      <p>Exec failed: {runMetrics.classification.excluded?.exec_failed ?? 0}</p>
-                      <p>Invalid pred: {runMetrics.classification.excluded?.invalid_pred ?? 0}</p>
-                      <p>Other: {runMetrics.classification.excluded?.other ?? 0}</p>
-                    </div>
-                  </div>
-                </div>
+              <div className="mt-3 h-2 w-full overflow-hidden rounded-full bg-slate-200">
+                <div
+                  className={`h-full rounded-full transition-all ${
+                    summaryPassRate == null
+                      ? 'bg-slate-300'
+                      : summaryPassRate >= 0.8
+                        ? 'bg-emerald-500'
+                        : summaryPassRate >= 0.6
+                          ? 'bg-sky-500'
+                          : 'bg-rose-500'
+                  }`}
+                  style={{ width: summaryPassRate == null ? '0%' : `${Math.max(0, Math.min(summaryPassRate, 1)) * 100}%` }}
+                />
               </div>
+
+              <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+                <StatCard label="Total Cases" value={formatInteger(summaryTotal)} />
+                <StatCard label="Passed" value={formatInteger(summaryPassed)} tone="positive" />
+                <StatCard label="Failed" value={formatInteger(summaryFailed)} tone={summaryFailed > 0 ? 'danger' : 'default'} />
+                <StatCard label="Pass Rate" value={summaryPassRateLabel} tone={summaryPassRateTone} />
+                <StatCard
+                  label="Exec Failed"
+                  value={formatInteger(summaryExecFailed)}
+                  tone={summaryExecFailed > 0 ? 'danger' : 'default'}
+                />
+                <StatCard
+                  label="Invalid Pred"
+                  value={formatInteger(summaryInvalidPred)}
+                  tone={summaryInvalidPred > 0 ? 'danger' : 'default'}
+                />
+              </div>
+            </section>
+
+            {classification ? (
+              <section className="rounded-2xl border border-slate-200 bg-white p-4">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                    Classification ({classification.label ?? 'N/A'})
+                  </p>
+                  <Badge className="bg-white text-slate-700 ring-slate-200">
+                    Evaluated: {formatInteger(classification.n_eval ?? null)}
+                  </Badge>
+                </div>
+
+                <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                  <StatCard label="Accuracy" value={formatPercent(classification.accuracy ?? null, 2)} tone="accent" />
+                  <StatCard label="Precision" value={formatPercent(classification.precision ?? null, 2)} />
+                  <StatCard label="Recall" value={formatPercent(classification.recall ?? null, 2)} />
+                  <StatCard label="F1 Score" value={formatPercent(classification.f1 ?? null, 2)} />
+                  <StatCard label="Specificity" value={formatPercent(classification.specificity ?? null, 2)} />
+                  <StatCard label="Evaluated Cases" value={formatInteger(classification.n_eval ?? null)} />
+                </div>
+
+                <div className="mt-4 grid gap-4 xl:grid-cols-[2fr_1fr]">
+                  <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Confusion Matrix</p>
+                    <div className="mt-2 grid grid-cols-[5.5rem_1fr_1fr] gap-2">
+                      <div />
+                      <div className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-center text-[11px] font-semibold uppercase tracking-wide text-slate-600">
+                        Predicted Positive
+                      </div>
+                      <div className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-center text-[11px] font-semibold uppercase tracking-wide text-slate-600">
+                        Predicted Negative
+                      </div>
+
+                      <div className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-center text-[11px] font-semibold uppercase tracking-wide text-slate-600">
+                        Actual Positive
+                      </div>
+                      <ConfusionCell label="TP" value={tp} tone="correct" maxValue={confusionMax} />
+                      <ConfusionCell label="FN" value={fn} tone="error" maxValue={confusionMax} />
+
+                      <div className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-center text-[11px] font-semibold uppercase tracking-wide text-slate-600">
+                        Actual Negative
+                      </div>
+                      <ConfusionCell label="FP" value={fp} tone="error" maxValue={confusionMax} />
+                      <ConfusionCell label="TN" value={tn} tone="correct" maxValue={confusionMax} />
+                    </div>
+                  </div>
+
+                  <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Excluded</p>
+                    <div className="mt-3 space-y-2">
+                      <StatCard
+                        label="Exec Failed"
+                        value={formatInteger(classification.excluded?.exec_failed ?? null)}
+                        tone={(classification.excluded?.exec_failed ?? 0) > 0 ? 'danger' : 'default'}
+                      />
+                      <StatCard
+                        label="Invalid Pred"
+                        value={formatInteger(classification.excluded?.invalid_pred ?? null)}
+                        tone={(classification.excluded?.invalid_pred ?? 0) > 0 ? 'danger' : 'default'}
+                      />
+                      <StatCard
+                        label="Other"
+                        value={formatInteger(classification.excluded?.other ?? null)}
+                        tone={(classification.excluded?.other ?? 0) > 0 ? 'danger' : 'default'}
+                      />
+                    </div>
+                  </div>
+                </div>
+              </section>
+            ) : (
+              <div className="rounded-2xl border border-slate-200 bg-white p-4 text-sm text-slate-700">
+                Classification metrics were not returned for this run.
+              </div>
+            )}
+
+            {runMetrics ? (
+              <details className="rounded-2xl border border-slate-200 bg-white p-4">
+                <summary className="cursor-pointer select-none text-sm font-semibold text-slate-800">
+                  Raw Run Metrics JSON
+                </summary>
+                <div className="mt-3 max-h-[min(24rem,50vh)] overflow-auto rounded-2xl border border-slate-200 bg-slate-50 p-3">
+                  <JsonInspector value={runMetrics} />
+                </div>
+              </details>
             ) : null}
           </div>
         ) : (
