@@ -113,6 +113,7 @@ export function AgentTracesComponent({ runId, onDone }: AgentTracesComponentProp
 
       const parsed = JSON.parse(event.data) as unknown;
       const payload = asAgentEventPayload(parsed);
+      console.log("Payload", payload);
       if (payload.event_type !== 'tool_result' && payload.event_type !== 'thought') return;
       if (!payload.tool_name) return;
 
@@ -197,7 +198,7 @@ export function AgentTracesComponent({ runId, onDone }: AgentTracesComponentProp
                       ? parsedResult.objectives
                       : '';
                 const steps = Array.isArray(parsedResult.steps)
-                  ? parsedResult.steps.filter((step): step is string => typeof step === 'string')
+                  ? parsedResult.steps.filter((step): step is { step_id: string; description: string } => typeof step === 'object' && 'step_id' in step && 'description' in step && typeof step.description === 'string')
                   : [];
 
                 return (
@@ -219,7 +220,7 @@ export function AgentTracesComponent({ runId, onDone }: AgentTracesComponentProp
                     {steps.length ? (
                       <ul className="list-disc space-y-1 pl-6 text-sm text-slate-800">
                         {steps.map((step, index) => (
-                          <li key={`${entry.id}-step-${index}`}>{truncateText(step, 2000)}</li>
+                          <li key={`${entry.id}-step-${index}`}>{truncateText(step.step_id, 2000)}: {truncateText(step.description, 2000)}</li>
                         ))}
                       </ul>
                     ) : (
