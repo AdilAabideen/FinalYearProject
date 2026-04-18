@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useId, useMemo, useState, type ReactElement } from 'react';
-import type { AgentTestCaseRead } from '../../../types/agentTests';
+import type { AgentTestCaseRead, AgentTestRunBatchMetricsRead } from '../../../types/agentTests';
 import { API_BASE_URL } from '../../../config/env';
+import { agentTestService } from '../../../services/agentTestService';
 import { agentRunService } from '../../../services/agentRunService';
 import { AgentTracesComponent } from './AgentTracesComponent';
 import { SegmentedTabs } from '../../../shared/ui/SegmentedTabs';
@@ -8,7 +9,7 @@ import { JsonInspector } from '../../../shared/ui/JsonInspector';
 import { Badge } from '../../../shared/ui/Badge';
 import { useModels } from '../hooks/useModels';
 
-type HarnessTabKey = 'cases' | 'results';
+type HarnessTabKey = 'cases' | 'results' | 'run_metrics';
 type ViewerTabKey = 'case_details' | 'test_traces' | 'outputs' | 'diff' | 'metrics';
 type CaseStatus = 'pending' | 'running' | 'passed' | 'failed';
 type RunPhase = 'idle' | 'running' | 'done';
@@ -71,6 +72,12 @@ type CaseResultViewModel = {
   missingInformation: string[];
 };
 
+type AggregatedRunMetricsState =
+  | { status: 'idle' }
+  | { status: 'loading' }
+  | { status: 'error'; error: string }
+  | { status: 'ready'; data: AgentTestRunBatchMetricsRead };
+
 type StatCardProps = {
   label: string;
   value: string;
@@ -82,6 +89,7 @@ type DiffRenderer = (diff: Record<string, unknown>) => ReactElement;
 const harnessTabs: Array<{ key: HarnessTabKey; label: string }> = [
   { key: 'cases', label: 'Test Cases' },
   { key: 'results', label: 'Test Results' },
+  { key: 'run_metrics', label: 'Run Metrics' },
 ];
 
 const viewerTabs: Array<{ key: ViewerTabKey; label: string }> = [
@@ -279,6 +287,13 @@ function formatDuration(seconds: number | null) {
   return `${seconds.toFixed(seconds < 10 ? 2 : 1)} s`;
 }
 
+function formatLatencyMs(value: number | null) {
+  if (value == null) return '—';
+  if (value < 10) return `${value.toFixed(2)} ms`;
+  if (value < 100) return `${value.toFixed(1)} ms`;
+  return `${Math.round(value)} ms`;
+}
+
 function formatCurrency(value: number | null) {
   if (value == null) return '—';
   return new Intl.NumberFormat(undefined, {
@@ -461,6 +476,8 @@ export default function AgentTestRunDrawer({
   const [outputsByCaseId, setOutputsByCaseId] = useState<Record<string, CaseOutputState>>({});
   const [metricsByCaseId, setMetricsByCaseId] = useState<Record<string, CaseMetricsState>>({});
   const [diffByCaseId, setDiffByCaseId] = useState<Record<string, CaseDiffState>>({});
+  const [aggregatedRunMetricsState, setAggregatedRunMetricsState] =
+    useState<AggregatedRunMetricsState>({ status: 'idle' });
 
   const { models, status: modelsStatus, selectedModelId, setSelectedModelId } = useModels();
 
@@ -496,6 +513,21 @@ export default function AgentTestRunDrawer({
       }));
     }
     
+  }, []);
+
+  const fetchAggregatedRunMetrics = useCallback(async (targetRunId: string) => {
+    if (!targetRunId) return;
+    setAggregatedRunMetricsState({ status: 'loading' });
+    try {
+      const data = await agentTestService.getRunBatchMetrics(targetRunId);
+      console.log(data)
+      setAggregatedRunMetricsState({ status: 'ready', data });
+    } catch (e: unknown) {
+      setAggregatedRunMetricsState({
+        status: 'error',
+        error: e instanceof Error ? e.message : 'Failed to load run metrics',
+      });
+    }
   }, []);
 
   const fetchCaseOutputAndMetrics = useCallback(
@@ -562,9 +594,18 @@ export default function AgentTestRunDrawer({
     setOutputsByCaseId({});
     setMetricsByCaseId({});
     setDiffByCaseId({});
+    setAggregatedRunMetricsState({ status: runId ? 'loading' : 'idle' });
     setActiveViewerTab('case_details');
     setActiveHarnessTab('cases');
   }, [selectedCases, runId]);
+
+  useEffect(() => {
+    if (!runId) {
+      setAggregatedRunMetricsState({ status: 'idle' });
+      return;
+    }
+    void fetchAggregatedRunMetrics(runId);
+  }, [runId, fetchAggregatedRunMetrics]);
 
   useEffect(() => {
     if (!runId) return undefined;
@@ -656,6 +697,7 @@ export default function AgentTestRunDrawer({
       const metrics = extractMetrics(payload);
       if (metrics) setRunMetrics(metrics);
       setRunPhase('done');
+      if (runId) void fetchAggregatedRunMetrics(runId);
     };
 
     const parseEventPayload = (event: MessageEvent<string>) => {
@@ -728,7 +770,7 @@ export default function AgentTestRunDrawer({
     return () => {
       source.close();
     };
-  }, [runId, fetchCaseOutputAndMetrics, insertDiff]);
+  }, [runId, fetchCaseOutputAndMetrics, insertDiff, fetchAggregatedRunMetrics]);
 
   const activeCase = useMemo(
     () => selectedCases.find((c) => c.id === activeCaseId),
@@ -831,6 +873,11 @@ export default function AgentTestRunDrawer({
     void fetchCaseOutputAndMetrics(activeCaseId, agentRunId);
   }
 
+  function handleRetryRunMetrics() {
+    if (!runId) return;
+    void fetchAggregatedRunMetrics(runId);
+  }
+
   const summaryTotal = runMetrics?.total ?? totals.total;
   const summaryPassed = runMetrics?.passed ?? totals.completed;
   const summaryFailed = runMetrics?.failed ?? Math.max(summaryTotal - summaryPassed, 0);
@@ -847,6 +894,21 @@ export default function AgentTestRunDrawer({
   const fp = classification?.fp ?? 0;
   const fn = classification?.fn ?? 0;
   const confusionMax = Math.max(tp, tn, fp, fn, 1);
+
+  const aggregatedRunMetrics =
+    aggregatedRunMetricsState.status === 'ready' ? aggregatedRunMetricsState.data : null;
+  const aggregatedSummary = aggregatedRunMetrics?.summary ?? null;
+  const aggregatedLatency = aggregatedRunMetrics?.latency ?? null;
+  const aggregatedScore = aggregatedRunMetrics?.score ?? null;
+  const aggregatedCases = aggregatedRunMetrics?.cases ?? [];
+  const aggregatedStatusCounts = aggregatedSummary?.statusCounts ?? {};
+  const aggregatedStatusEntries = Object.entries(aggregatedStatusCounts).sort(([a], [b]) =>
+    a.localeCompare(b),
+  );
+  const aggregatedTotalCases =
+    aggregatedRunMetrics?.run.selectedCaseIds.length ??
+    aggregatedStatusEntries.reduce((acc, [, value]) => acc + value, 0) ??
+    0;
 
   return (
     <div className="flex h-full min-h-0 flex-col gap-4 overflow-y-hidden">
@@ -1488,6 +1550,196 @@ export default function AgentTestRunDrawer({
         ) : (
           <div className="rounded-2xl border border-slate-200 bg-white p-4 text-sm text-slate-700">
             Results not available yet.
+          </div>
+        )}
+      </div>
+
+      <div
+        id={harnessPanelId('run_metrics')}
+        role="tabpanel"
+        aria-labelledby={harnessTabId('run_metrics')}
+        hidden={activeHarnessTab !== 'run_metrics'}
+        className="h-full min-h-0 overflow-auto"
+      >
+        {!runId ? (
+          <div className="rounded-2xl border border-slate-200 bg-white p-4 text-sm text-slate-700">
+            Start a test run to view aggregated run metrics.
+          </div>
+        ) : aggregatedRunMetricsState.status === 'loading' ? (
+          <div className="rounded-2xl border border-slate-200 bg-white p-4 text-sm text-slate-700">
+            Loading run metrics…
+          </div>
+        ) : aggregatedRunMetricsState.status === 'error' ? (
+          <div className="space-y-3 rounded-2xl border border-rose-200 bg-rose-50 p-4">
+            <p className="text-sm text-rose-700">{aggregatedRunMetricsState.error}</p>
+            <button
+              type="button"
+              onClick={handleRetryRunMetrics}
+              className="inline-flex items-center justify-center rounded-xl border border-rose-200 bg-white px-3 py-2 text-xs font-semibold text-rose-700 transition hover:bg-rose-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-rose-300 focus-visible:ring-offset-2 focus-visible:ring-offset-white"
+            >
+              Retry
+            </button>
+          </div>
+        ) : aggregatedRunMetrics ? (
+          <div className="space-y-4 pb-3">
+            <section className="rounded-2xl border border-slate-200 bg-white p-4">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Aggregated Run Metrics</p>
+                  <p className="mt-1 text-sm text-slate-700">
+                    Run ID: <span className="font-mono text-slate-900">{aggregatedRunMetrics.run.id}</span>
+                  </p>
+                </div>
+                <Badge className="bg-white text-slate-700 ring-slate-200">
+                  {aggregatedRunMetrics.run.status || 'Unknown'}
+                </Badge>
+              </div>
+
+              <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-7">
+                <StatCard label="Total Cases" value={formatInteger(aggregatedTotalCases)} />
+                <StatCard label="Passed Cases" value={formatInteger(aggregatedSummary?.passedCases ?? null)} tone="positive" />
+                <StatCard
+                  label="Failed Cases"
+                  value={formatInteger(aggregatedSummary?.failedCases ?? null)}
+                  tone={(aggregatedSummary?.failedCases ?? 0) > 0 ? 'danger' : 'default'}
+                />
+                <StatCard
+                  label="Completion Rate"
+                  value={formatPercent(aggregatedSummary?.completionRate ?? null, 2)}
+                  tone="accent"
+                />
+                <StatCard
+                  label="Pass Rate (All)"
+                  value={formatPercent(aggregatedSummary?.passRateAll ?? null, 2)}
+                />
+                <StatCard
+                  label="Pass Rate (Completed)"
+                  value={formatPercent(aggregatedSummary?.passRateCompleted ?? null, 2)}
+                />
+                <StatCard
+                  label="Exec Failed Cases"
+                  value={formatInteger(aggregatedSummary?.execFailedCases ?? null)}
+                  tone={(aggregatedSummary?.execFailedCases ?? 0) > 0 ? 'danger' : 'default'}
+                />
+              </div>
+
+              <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                <StatCard
+                  label="Invalid Pred Cases"
+                  value={formatInteger(aggregatedSummary?.invalidPredCases ?? null)}
+                  tone={(aggregatedSummary?.invalidPredCases ?? 0) > 0 ? 'danger' : 'default'}
+                />
+                <StatCard label="Latency P50" value={formatLatencyMs(aggregatedLatency?.p50Ms ?? null)} />
+                <StatCard label="Latency P95" value={formatLatencyMs(aggregatedLatency?.p95Ms ?? null)} />
+                <StatCard label="Score Avg" value={formatPercent(aggregatedScore?.avg ?? null, 2)} />
+              </div>
+            </section>
+
+            <section className="grid gap-4 xl:grid-cols-2">
+              <div className="rounded-2xl border border-slate-200 bg-white p-4">
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Latency Distribution</p>
+                <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                  <StatCard label="Min" value={formatLatencyMs(aggregatedLatency?.minMs ?? null)} />
+                  <StatCard label="P50" value={formatLatencyMs(aggregatedLatency?.p50Ms ?? null)} />
+                  <StatCard label="P95" value={formatLatencyMs(aggregatedLatency?.p95Ms ?? null)} />
+                  <StatCard label="Max" value={formatLatencyMs(aggregatedLatency?.maxMs ?? null)} />
+                  <StatCard label="Average" value={formatLatencyMs(aggregatedLatency?.avgMs ?? null)} tone="accent" />
+                </div>
+              </div>
+
+              <div className="rounded-2xl border border-slate-200 bg-white p-4">
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Score Distribution</p>
+                <div className="mt-3 grid gap-3 sm:grid-cols-3">
+                  <StatCard label="Min" value={formatPercent(aggregatedScore?.min ?? null, 2)} />
+                  <StatCard label="Average" value={formatPercent(aggregatedScore?.avg ?? null, 2)} tone="accent" />
+                  <StatCard label="Max" value={formatPercent(aggregatedScore?.max ?? null, 2)} />
+                </div>
+              </div>
+            </section>
+
+            <section className="rounded-2xl border border-slate-200 bg-white p-4">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Status Counts</p>
+                {aggregatedStatusEntries.length ? (
+                  <div className="flex flex-wrap gap-2">
+                    {aggregatedStatusEntries.map(([status, count]) => (
+                      <Badge key={status} className="bg-slate-50 text-slate-700 ring-slate-200">
+                        {status}: {count}
+                      </Badge>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-xs text-slate-600">No status counts returned.</p>
+                )}
+              </div>
+            </section>
+
+            <section className="rounded-2xl border border-slate-200 bg-white p-4">
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Per-Case Metrics</p>
+              {aggregatedCases.length ? (
+                <div className="mt-3 max-h-[min(26rem,55vh)] overflow-auto rounded-xl border border-slate-200">
+                  <table className="min-w-full border-separate border-spacing-0 text-xs">
+                    <thead className="sticky top-0 z-10 bg-slate-50">
+                      <tr>
+                        <th className="border-b border-slate-200 px-3 py-2 text-left font-semibold text-slate-600">Case</th>
+                        <th className="border-b border-slate-200 px-3 py-2 text-left font-semibold text-slate-600">Status</th>
+                        <th className="border-b border-slate-200 px-3 py-2 text-left font-semibold text-slate-600">Passed</th>
+                        <th className="border-b border-slate-200 px-3 py-2 text-left font-semibold text-slate-600">Score</th>
+                        <th className="border-b border-slate-200 px-3 py-2 text-left font-semibold text-slate-600">Latency</th>
+                        <th className="border-b border-slate-200 px-3 py-2 text-left font-semibold text-slate-600">Agent Status</th>
+                        <th className="border-b border-slate-200 px-3 py-2 text-left font-semibold text-slate-600">Exec Failed</th>
+                        <th className="border-b border-slate-200 px-3 py-2 text-left font-semibold text-slate-600">Invalid Pred</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {aggregatedCases.map((row, index) => {
+                        const id = row.testCaseId ?? row.caseId ?? String(index);
+                        const passedLabel = row.passed == null ? '—' : row.passed ? 'Yes' : 'No';
+                        const boolFlag = (value: boolean | number | null) =>
+                          value == null ? '—' : typeof value === 'boolean' ? (value ? 'Yes' : 'No') : String(value);
+                        return (
+                          <tr key={id} className="odd:bg-white even:bg-slate-50/50">
+                            <td className="border-b border-slate-100 px-3 py-2 font-mono text-[11px] text-slate-700">
+                              {row.name || row.testCaseId || row.caseId || '—'}
+                            </td>
+                            <td className="border-b border-slate-100 px-3 py-2 text-slate-700">{row.status ?? '—'}</td>
+                            <td className="border-b border-slate-100 px-3 py-2 text-slate-700">{passedLabel}</td>
+                            <td className="border-b border-slate-100 px-3 py-2 text-slate-700">
+                              {formatPercent(row.score, 2)}
+                            </td>
+                            <td className="border-b border-slate-100 px-3 py-2 text-slate-700">
+                              {formatLatencyMs(row.latencyMs)}
+                            </td>
+                            <td className="border-b border-slate-100 px-3 py-2 text-slate-700">{row.agentStatus ?? '—'}</td>
+                            <td className="border-b border-slate-100 px-3 py-2 text-slate-700">
+                              {boolFlag(row.execFailed)}
+                            </td>
+                            <td className="border-b border-slate-100 px-3 py-2 text-slate-700">
+                              {boolFlag(row.invalidPred)}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <p className="mt-3 text-sm text-slate-600">No per-case rows were returned.</p>
+              )}
+            </section>
+
+            <details className="rounded-2xl border border-slate-200 bg-white p-4">
+              <summary className="cursor-pointer select-none text-sm font-semibold text-slate-800">
+                Raw Aggregated Metrics JSON
+              </summary>
+              <div className="mt-3 max-h-[min(24rem,50vh)] overflow-auto rounded-2xl border border-slate-200 bg-slate-50 p-3">
+                <JsonInspector value={aggregatedRunMetrics} />
+              </div>
+            </details>
+          </div>
+        ) : (
+          <div className="rounded-2xl border border-slate-200 bg-white p-4 text-sm text-slate-700">
+            Run metrics not available yet.
           </div>
         )}
       </div>

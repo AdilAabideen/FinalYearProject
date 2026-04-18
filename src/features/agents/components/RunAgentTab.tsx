@@ -222,6 +222,13 @@ export default function RunAgentTab({ agent }: RunAgentTabProps) {
     return Object.entries(runOutput).filter(([key]) => !knownKeys.has(normalizeKey(key)));
   }, [runOutput]);
 
+  const reliabilitySummary = runMetrics?.reliabilitySummary ?? null;
+  const reliabilityByCode = reliabilitySummary?.byCode ?? [];
+  const reliabilityTotalIssues = reliabilitySummary?.totalIssues ?? null;
+  const reliabilityErrorIssues = reliabilitySummary?.errorIssues ?? null;
+  const reliabilityHasIssues = (reliabilitySummary?.totalIssues ?? 0) > 0;
+  const reliabilityHasErrors = (reliabilitySummary?.errorIssues ?? 0) > 0;
+
   async function refreshRunResults(targetRunId: string) {
     let done = false;
     const loadingTimer = window.setTimeout(() => {
@@ -572,6 +579,71 @@ export default function RunAgentTab({ agent }: RunAgentTabProps) {
                       value={runMetrics.failure_reason || 'None'}
                       tone={runMetrics.failure_reason ? 'danger' : 'positive'}
                     />
+                  </div>
+
+                  <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-3">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-600">
+                      Reliability Summary
+                    </p>
+                    <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                      <StatCard
+                        label="Total Issues"
+                        value={formatInteger(reliabilityTotalIssues)}
+                        tone={
+                          reliabilitySummary == null
+                            ? 'default'
+                            : reliabilityHasIssues
+                              ? 'danger'
+                              : 'positive'
+                        }
+                      />
+                      <StatCard
+                        label="Error Issues"
+                        value={formatInteger(reliabilityErrorIssues)}
+                        tone={
+                          reliabilitySummary == null
+                            ? 'default'
+                            : reliabilityHasErrors
+                              ? 'danger'
+                              : 'positive'
+                        }
+                      />
+                      <StatCard
+                        label="Issue Codes"
+                        value={formatInteger(reliabilityByCode.length)}
+                        tone={reliabilityByCode.length ? 'accent' : 'default'}
+                      />
+                      <StatCard
+                        label="Reliability Status"
+                        value={
+                          reliabilitySummary == null
+                            ? 'Unavailable'
+                            : reliabilityHasIssues
+                              ? 'Issues Detected'
+                              : 'Healthy'
+                        }
+                        tone={
+                          reliabilitySummary == null
+                            ? 'default'
+                            : reliabilityHasIssues
+                              ? 'danger'
+                              : 'positive'
+                        }
+                      />
+                    </div>
+
+                    {reliabilityByCode.length ? (
+                      <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                        {reliabilityByCode.map((item) => (
+                          <StatCard
+                            key={item.issueCode}
+                            label={titleCaseKey(item.issueCode)}
+                            value={formatInteger(item.count)}
+                            tone={item.count > 0 ? 'danger' : 'default'}
+                          />
+                        ))}
+                      </div>
+                    ) : null}
                   </div>
 
                   <details className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-3">

@@ -1,5 +1,8 @@
 import { API_BASE_URL } from '../config/env';
 import type {
+  AgentTestRunBatchCaseDto,
+  AgentTestRunBatchMetricsDto,
+  AgentTestRunBatchMetricsRead,
   AgentTestCaseRead,
   AgentTestCaseReadDto,
   AgentTestRunRead,
@@ -26,6 +29,7 @@ export type AgentTestService = {
     modelId?: string,
     signal?: AbortSignal,
   ) => Promise<AgentTestRunRead>;
+  getRunBatchMetrics: (runId: string, signal?: AbortSignal) => Promise<AgentTestRunBatchMetricsRead>;
 };
 
 export const agentTestService: AgentTestService = {
@@ -103,6 +107,87 @@ export const agentTestService: AgentTestService = {
       finishedAt: data.finished_at ?? null,
       createdAt: data.created_at,
       updatedAt: data.updated_at,
+    };
+  },
+
+  async getRunBatchMetrics(runId, signal) {
+    const url = `${API_BASE_URL}/api/tests/runs/${encodeURIComponent(runId)}/metrics`;
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: { Accept: 'application/json' },
+      signal,
+    });
+
+    if (!response.ok) {
+      const message = await response.text();
+      throw new Error(message || 'Failed to load aggregated run metrics');
+    }
+
+    const data = (await response.json()) as AgentTestRunBatchMetricsDto;
+    const run = data.run;
+    const summary = data.summary ?? {};
+    const latency = data.latency ?? {};
+    const score = data.score ?? {};
+    const cases = Array.isArray(data.cases) ? data.cases : [];
+
+    return {
+      run: {
+        id: run.id,
+        agentName: run.agent_name,
+        name: run.name ?? null,
+        status: run.status,
+        modelName: run.model_name ?? null,
+        selectedCaseIds: run.selected_case_ids_json,
+        metricsJson: run.metrics_json ?? null,
+        startedAt: run.started_at ?? null,
+        finishedAt: run.finished_at ?? null,
+        createdAt: run.created_at,
+        updatedAt: run.updated_at,
+      },
+      summary: {
+        statusCounts: summary.status_counts ?? {},
+        passedCases: summary.passed_cases ?? 0,
+        failedCases: summary.failed_cases ?? 0,
+        completionRate: summary.completion_rate ?? null,
+        passRateAll: summary.pass_rate_all ?? null,
+        passRateCompleted: summary.pass_rate_completed ?? null,
+        execFailedCases: summary.exec_failed_cases ?? 0,
+        invalidPredCases: summary.invalid_pred_cases ?? 0,
+      },
+      latency: {
+        minMs: latency.min_ms ?? null,
+        p50Ms: latency.p50_ms ?? null,
+        p95Ms: latency.p95_ms ?? null,
+        maxMs: latency.max_ms ?? null,
+        avgMs: latency.avg_ms ?? null,
+      },
+      score: {
+        min: score.min ?? null,
+        max: score.max ?? null,
+        avg: score.avg ?? null,
+      },
+      cases: cases.map((item) => {
+        const row = item as AgentTestRunBatchCaseDto;
+        return {
+          caseId: row.case_id ?? null,
+          testCaseId: row.test_case_id ?? null,
+          name: row.name ?? null,
+          status: row.status ?? null,
+          passed: typeof row.passed === 'boolean' ? row.passed : null,
+          score: typeof row.score === 'number' ? row.score : null,
+          latencyMs: typeof row.latency_ms === 'number' ? row.latency_ms : null,
+          agentStatus: row.agent_status ?? null,
+          execFailed:
+            typeof row.exec_failed === 'boolean' || typeof row.exec_failed === 'number'
+              ? row.exec_failed
+              : null,
+          invalidPred:
+            typeof row.invalid_pred === 'boolean' || typeof row.invalid_pred === 'number'
+              ? row.invalid_pred
+              : null,
+          raw: item,
+        };
+      }),
     };
   },
 };

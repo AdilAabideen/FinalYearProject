@@ -1,5 +1,16 @@
 export type RunStatus = string;
 
+export type AgentRunReliabilityIssueCount = {
+  issueCode: string;
+  count: number;
+};
+
+export type AgentRunReliabilitySummary = {
+  totalIssues: number;
+  errorIssues: number;
+  byCode: AgentRunReliabilityIssueCount[];
+};
+
 export type AgentRunMetrics = {
   id: string;
   tokens_total?: number;
@@ -12,6 +23,7 @@ export type AgentRunMetrics = {
   failure_reason?: string | null;
   duration_seconds?: number;
   cost_usd_total?: number;
+  reliabilitySummary?: AgentRunReliabilitySummary | null;
 }
 
 export type AgentRunMetricsDto = {
@@ -34,10 +46,20 @@ export type AgentRunMetricsDto = {
   updated_at?: string;
 };
 
+export type AgentRunReliabilitySummaryDto = {
+  error_issues: number;
+  total_issues: number;
+  by_code: {
+    issue_code: string;
+    count: number;
+  }[];
+}
+
 export type AgentRunMetricsResponseDto = {
   run_id: string;
   metrics: AgentRunMetricsDto | null;
   llm_calls?: unknown[];
+  reliability_summary?: AgentRunReliabilitySummaryDto | null;
 };
 
 export type AgentRunReadDto = {
