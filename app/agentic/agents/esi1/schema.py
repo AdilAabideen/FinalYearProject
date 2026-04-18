@@ -3,17 +3,23 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Literal, List, Union
 
-from pydantic import BaseModel, Field
+from pydantic import AliasChoices, BaseModel, Field
 
 
 class ES1AgentInput(BaseModel):
     gender: str
     race: str
-    arrival_transport: str
+    arrival_transport: str = Field(
+        validation_alias=AliasChoices("arrival_transport", "arrivaltransport", "arrival", "transfer")
+    )
     pain: str
-    chiefcomplaint: str
+    chiefcomplaint: str = Field(
+        validation_alias=AliasChoices("chiefcomplaint", "chief complaint", "chief_complaint")
+    )
     age: Union[float, int]
-    tiragecase: str
+    tiragecase: str = Field(
+        validation_alias=AliasChoices("tiragecase", "triage case", "triage_case")
+    )
 
 
 

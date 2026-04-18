@@ -6,7 +6,7 @@ from typing import Literal, List, Union
 from pydantic import AliasChoices, BaseModel, Field
 
 
-class ES2AgentInput(BaseModel):
+class ES345AgentInput(BaseModel):
     gender: str
     race: str
     arrival_transport: str = Field(
@@ -23,10 +23,19 @@ class ES2AgentInput(BaseModel):
 
 
 
-class ES2AgentOutput(BaseModel):
-    is_esi2: bool = Field(
+class ES345AgentOutput(BaseModel):
+    esi_level: Literal[3, 4, 5] = Field(
         ...,
-        description="Whether the case is ESI-2 or NOT ESI-2"
+        description="Which ESI level the case is in"
+    )
+    num_resources: int = Field(
+        ...,
+        ge=0,
+        description="The number of resources required for the case."
+    )
+    predicted_resources: List[str] = Field(
+        default_factory=list,
+        description="Specific ESI resources likely needed, if any."
     )
     confidence: float = Field(
         ...,
@@ -50,5 +59,6 @@ class ES2AgentOutput(BaseModel):
         ...,
         description="Brief rationale for the provisional ESI decision."
     )
+
 
 

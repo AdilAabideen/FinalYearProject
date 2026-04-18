@@ -12,6 +12,7 @@ from app.schemas.agent_runs import (
     AgentEventsPage,
     AgentRunCreateRequest,
     AgentRunCreateResponse,
+    AgentRunReliabilityIssuePage,
     AgentRunMetricsDetail,
     AgentRunMetricsSummary,
     AgentRunRead,
@@ -66,6 +67,23 @@ def get_agent_run(run_id: str, db: Session = Depends(get_db)):
 @router.get("/{run_id}/metrics", response_model=AgentRunMetricsDetail)
 def get_agent_run_metrics(run_id: str, db: Session = Depends(get_db)):
     return agent_runs_service.get_agent_run_metrics(run_id, db)
+
+
+@router.get("/{run_id}/reliability-issues", response_model=AgentRunReliabilityIssuePage)
+def get_agent_run_reliability_issues(
+    run_id: str,
+    issue_code: Optional[str] = Query(default=None),
+    limit: int = Query(default=200, ge=1, le=1000),
+    offset: int = Query(default=0, ge=0),
+    db: Session = Depends(get_db),
+):
+    return agent_runs_service.get_agent_run_reliability_issues(
+        run_id=run_id,
+        issue_code=issue_code,
+        limit=limit,
+        offset=offset,
+        db=db,
+    )
 
 
 @router.get("/{run_id}/events", response_model=AgentEventsPage)

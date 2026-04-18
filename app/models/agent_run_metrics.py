@@ -26,6 +26,10 @@ class AgentRunMetrics(Base, TimestampMixin):
     llm_call_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     tool_call_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     tool_error_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    reliability_issue_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    reliability_error_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    finalization_failure_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    tool_recovery_failure_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
 
     input_tokens_total: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     output_tokens_total: Mapped[int] = mapped_column(Integer, nullable=False, default=0)

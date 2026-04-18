@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import uuid
+from dataclasses import dataclass
 from datetime import datetime
 from time import sleep
 from typing import Any, Optional, Tuple
@@ -24,6 +25,10 @@ from app.schemas.agent_runs import (
     AgentLLMCallRead,
     AgentRunCreateRequest,
     AgentRunCreateResponse,
+    AgentRunReliabilityIssuePage,
+    AgentRunReliabilityIssueRead,
+    AgentRunReliabilityIssueCount,
+    AgentRunReliabilitySummary,
     AgentRunMetricsDetail,
     AgentRunMetricsRead,
     AgentRunMetricsSummary,
@@ -33,6 +38,21 @@ from app.schemas.agent_runs import (
 )
 
 MAX_EVENT_TEXT_LEN = 50_000
+MAX_RELIABILITY_SCAN_EVENTS = 50_000
+
+
+@dataclass
+class _ReliabilityIssue:
+    issue_code: str
+    severity: str
+    stage: str
+    message: str
+    details_json: Optional[dict[str, Any]] = None
+    assistant_raw_text: Optional[str] = None
+    iteration: Optional[int] = None
+    call_index: Optional[int] = None
+    tool_call_id: Optional[str] = None
+    tool_name: Optional[str] = None
 
 
 def _safe_text(text: str) -> str:
@@ -102,6 +122,242 @@ def _coerce_output_json(value: Any) -> Optional[dict]:
     return {"value": value}
 
 
+def _truncate_optional_text(value: Optional[str], max_len: int = 4_000) -> Optional[str]:
+    if value is None:
+        return None
+    text = str(value)
+    if len(text) <= max_len:
+        return text
+    return text[:max_len] + "…(truncated)"
+
+
+def _schema_validation_error(run: AgentRun, output_json: Optional[dict]) -> Optional[str]:
+    if output_json is None:
+        return None
+    try:
+        spec = get_agent_spec(run.agent_name)
+    except Exception:
+        return None
+    if spec.output_model is None:
+        return None
+    try:
+        spec.output_model.model_validate(output_json)
+        return None
+    except Exception as exc:
+        return str(exc)
+
+
+def _collect_reliability_issues(
+    *,
+    db: Session,
+    run: AgentRun,
+    output_json: Optional[dict],
+    raw_output: Any,
+) -> list[_ReliabilityIssue]:
+    llm_calls = agent_metrics_repository.list_llm_calls(db, run.id)
+    tool_calls = agent_metrics_repository.list_tool_calls(db, run.id)
+    events = agent_runs_repository.list_events_after(
+        db,
+        run_id=run.id,
+        after_seq=0,
+        limit=MAX_RELIABILITY_SCAN_EVENTS,
+    )
+
+    issues: list[_ReliabilityIssue] = []
+
+    for call in llm_calls:
+        if str(call.call_kind or "") == "structured_output" and str(call.error_text or "").strip():
+            issues.append(
+                _ReliabilityIssue(
+                    issue_code="structured_output_generation_failed",
+                    severity="warning",
+                    stage="structured_output",
+                    message="Structured output generation failed; fallback path used.",
+                    details_json={
+                        "error_text": _truncate_optional_text(call.error_text, max_len=2_000),
+                    },
+                    iteration=call.iteration,
+                    call_index=call.call_index,
+                )
+            )
+
+    assistant_tool_parse_event_ids: list[int] = []
+    for ev in events:
+        if ev.event_type != "assistant":
+            continue
+        raw_text = str(ev.payload_text or "").strip()
+        has_tool_calls_text = "tool_calls" in raw_text.lower()
+        if has_tool_calls_text and ev.payload_json is None:
+            assistant_tool_parse_event_ids.append(int(ev.seq))
+            issues.append(
+                _ReliabilityIssue(
+                    issue_code="assistant_tool_call_json_unparseable",
+                    severity="warning",
+                    stage="tool_recovery",
+                    message="Assistant output looked like tool calls but could not be parsed as JSON.",
+                    details_json={"event_seq": int(ev.seq)},
+                    assistant_raw_text=_truncate_optional_text(raw_text),
+                )
+            )
+
+    last_llm = llm_calls[-1] if llm_calls else None
+    last_iteration = last_llm.iteration if last_llm is not None else None
+    related_tool_calls = [
+        {
+            "id": t.tool_call_id,
+            "name": t.tool_name,
+            "status": t.status,
+            "iteration": t.iteration,
+        }
+        for t in tool_calls
+        if last_iteration is not None and t.iteration == last_iteration
+    ]
+    if not related_tool_calls:
+        related_tool_calls = [
+            {
+                "id": t.tool_call_id,
+                "name": t.tool_name,
+                "status": t.status,
+                "iteration": t.iteration,
+            }
+            for t in tool_calls[-5:]
+        ]
+
+    if output_json is None:
+        raw_output_text = str(raw_output).strip() if isinstance(raw_output, str) else ""
+        latest_assistant_text = ""
+        latest_assistant_seq: Optional[int] = None
+        for ev in reversed(events):
+            if ev.event_type != "assistant":
+                continue
+            latest_assistant_seq = int(ev.seq)
+            latest_assistant_text = str(ev.payload_text or "").strip()
+            if latest_assistant_text:
+                break
+
+        final_raw_text = raw_output_text or latest_assistant_text
+        issue_code = "final_output_unparseable" if final_raw_text else "final_output_missing"
+        issues.append(
+            _ReliabilityIssue(
+                issue_code=issue_code,
+                severity="error",
+                stage="finalization",
+                message=(
+                    "Run ended without a parseable final JSON output."
+                    if issue_code == "final_output_unparseable"
+                    else "Run ended without any final output."
+                ),
+                details_json={
+                    "latest_assistant_seq": latest_assistant_seq,
+                    "related_tool_calls": related_tool_calls,
+                },
+                assistant_raw_text=_truncate_optional_text(final_raw_text),
+                iteration=last_iteration,
+                call_index=(last_llm.call_index if last_llm is not None else None),
+                tool_call_id=(related_tool_calls[0]["id"] if len(related_tool_calls) == 1 else None),
+                tool_name=(related_tool_calls[0]["name"] if len(related_tool_calls) == 1 else None),
+            )
+        )
+
+        contains_tool_calls_hint = "tool_calls" in final_raw_text.lower() if final_raw_text else False
+        if contains_tool_calls_hint or assistant_tool_parse_event_ids:
+            issues.append(
+                _ReliabilityIssue(
+                    issue_code="assistant_tool_call_recovery_failed",
+                    severity="error",
+                    stage="tool_recovery",
+                    message="Tool-call recovery failed before finalization.",
+                    details_json={
+                        "event_seqs": assistant_tool_parse_event_ids,
+                        "related_tool_calls": related_tool_calls,
+                    },
+                    assistant_raw_text=_truncate_optional_text(final_raw_text),
+                    iteration=last_iteration,
+                    call_index=(last_llm.call_index if last_llm is not None else None),
+                )
+            )
+    else:
+        schema_error = _schema_validation_error(run, output_json)
+        if schema_error:
+            issues.append(
+                _ReliabilityIssue(
+                    issue_code="final_output_schema_invalid",
+                    severity="warning",
+                    stage="finalization",
+                    message="Final output failed schema validation.",
+                    details_json={"validation_error": _truncate_optional_text(schema_error, max_len=2_000)},
+                    iteration=last_iteration,
+                    call_index=(last_llm.call_index if last_llm is not None else None),
+                )
+            )
+
+    return issues
+
+
+def _persist_reliability_issues(
+    *,
+    db: Session,
+    run: AgentRun,
+    seq: int,
+    issues: list[_ReliabilityIssue],
+) -> int:
+    if not issues:
+        return seq
+
+    for issue in issues:
+        agent_metrics_repository.append_reliability_issue(
+            db,
+            run_id=run.id,
+            agent_name=run.agent_name,
+            model_name=run.model_name,
+            issue_code=issue.issue_code,
+            severity=issue.severity,
+            stage=issue.stage,
+            message=issue.message,
+            details_json=issue.details_json,
+            assistant_raw_text=issue.assistant_raw_text,
+            iteration=issue.iteration,
+            call_index=issue.call_index,
+            tool_call_id=issue.tool_call_id,
+            tool_name=issue.tool_name,
+            created_at=datetime.utcnow(),
+        )
+
+        seq += 1
+        _append_event(
+            db=db,
+            run=run,
+            seq=seq,
+            event_type="error",
+            status=issue.severity,
+            tool_name=issue.tool_name,
+            tool_call_id=issue.tool_call_id,
+            payload_json={
+                "reliability_issue": {
+                    "issue_code": issue.issue_code,
+                    "stage": issue.stage,
+                    "message": issue.message,
+                    "details": issue.details_json,
+                }
+            },
+            payload_text=issue.assistant_raw_text if issue.assistant_raw_text else None,
+        )
+    return seq
+
+
+def _build_reliability_summary(db: Session, run_id: str) -> AgentRunReliabilitySummary:
+    by_code = agent_metrics_repository.list_reliability_issue_code_counts(db, run_id)
+    total_issues, error_issues, _, _ = agent_metrics_repository.count_reliability_issues(db, run_id)
+    return AgentRunReliabilitySummary(
+        total_issues=total_issues,
+        error_issues=error_issues,
+        by_code=[
+            AgentRunReliabilityIssueCount(issue_code=code, count=count)
+            for code, count in sorted(by_code, key=lambda item: item[0])
+        ],
+    )
+
+
 def _resolve_agent_system(agent: Any) -> str:
     if all(hasattr(agent, attr) for attr in ("set_event_context", "set_event_handlers")):
         return "handrolled_callback"
@@ -151,6 +407,12 @@ def _persist_run_metrics(db: Session, run: AgentRun, *, agent_system: str) -> No
     cost_usd_total = sum(cost_values) if cost_values else None
     llm_call_count = len(llm_calls)
     tool_call_count, tool_error_count = agent_metrics_repository.count_tool_events(db, run.id)
+    (
+        reliability_issue_count,
+        reliability_error_count,
+        finalization_failure_count,
+        tool_recovery_failure_count,
+    ) = agent_metrics_repository.count_reliability_issues(db, run.id)
 
     duration_ms: Optional[int] = None
     if run.started_at and run.finished_at:
@@ -173,6 +435,10 @@ def _persist_run_metrics(db: Session, run: AgentRun, *, agent_system: str) -> No
         llm_call_count=llm_call_count,
         tool_call_count=tool_call_count,
         tool_error_count=tool_error_count,
+        reliability_issue_count=reliability_issue_count,
+        reliability_error_count=reliability_error_count,
+        finalization_failure_count=finalization_failure_count,
+        tool_recovery_failure_count=tool_recovery_failure_count,
         input_tokens_total=input_tokens_total,
         output_tokens_total=output_tokens_total,
         tokens_total=tokens_total,
@@ -243,11 +509,24 @@ def execute_agent_run_and_persist(db: Session, run: AgentRun) -> Optional[dict]:
     agent_system = "unknown"
 
     try:
-        seq, output_json, agent_system = _run_agent_and_persist(db, run, seq)
+        seq, output_json, raw_output, agent_system = _run_agent_and_persist(db, run, seq)
+        reliability_issues = _collect_reliability_issues(
+            db=db,
+            run=run,
+            output_json=output_json,
+            raw_output=raw_output,
+        )
+        seq = _persist_reliability_issues(
+            db=db,
+            run=run,
+            seq=seq,
+            issues=reliability_issues,
+        )
 
         now = datetime.utcnow()
         run.status = "succeeded"
         run.output_json = output_json
+        run.error_text = None
         run.finished_at = now
         run.updated_at = now
         agent_runs_repository.save_run(db, run)
@@ -292,7 +571,7 @@ def execute_agent_run_and_persist(db: Session, run: AgentRun) -> Optional[dict]:
         return None
 
 
-def _run_agent_and_persist(db: Session, run: AgentRun, seq: int) -> Tuple[int, Optional[dict], str]:
+def _run_agent_and_persist(db: Session, run: AgentRun, seq: int) -> Tuple[int, Optional[dict], Any, str]:
     try:
         spec = get_agent_spec(run.agent_name)
     except KeyError as e:
@@ -402,7 +681,7 @@ def _run_agent_and_persist(db: Session, run: AgentRun, seq: int) -> Tuple[int, O
     output = asyncio.run(agent.ainvoke(payload))
     output_json = _coerce_output_json(output)
     seq = agent_runs_repository.get_last_event_seq(db, run.id)
-    return seq, output_json, agent_system
+    return seq, output_json, output, agent_system
 
 
 def _execute_run_in_background(run_id: str) -> None:
@@ -558,6 +837,40 @@ def get_agent_run_metrics(run_id: str, db: Session) -> AgentRunMetricsDetail:
         ),
         llm_calls=llm_items,
         tool_calls=tool_items,
+        reliability_summary=_build_reliability_summary(db, run_id),
+    )
+
+
+def get_agent_run_reliability_issues(
+    *,
+    run_id: str,
+    issue_code: Optional[str],
+    limit: int,
+    offset: int,
+    db: Session,
+) -> AgentRunReliabilityIssuePage:
+    run = agent_runs_repository.get_run(db, run_id)
+    if run is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Run not found")
+
+    rows = agent_metrics_repository.list_reliability_issues(
+        db,
+        run_id=run_id,
+        issue_code=issue_code,
+        limit=limit,
+        offset=offset,
+    )
+    total_count = agent_metrics_repository.count_reliability_issues_filtered(
+        db,
+        run_id=run_id,
+        issue_code=issue_code,
+    )
+    items = [AgentRunReliabilityIssueRead.model_validate(r.__dict__) for r in rows]
+    return AgentRunReliabilityIssuePage(
+        run_id=run_id,
+        issues=items,
+        next_offset=offset + len(items),
+        total_count=total_count,
     )
 
 
@@ -590,6 +903,9 @@ def get_metrics_summary(
             success_rate=0.0,
             schema_valid_rate=None,
             tool_error_rate=0.0,
+            reliability_failure_rate=0.0,
+            finalization_failure_rate=0.0,
+            runs_with_reliability_issues=0,
             timeout_or_stuck_rate=0.0,
             p50_duration_ms=None,
             p95_duration_ms=None,
@@ -613,6 +929,8 @@ def get_metrics_summary(
     tool_error_rate = (
         (total_tool_errors / total_tool_calls) if total_tool_calls > 0 else 0.0
     )
+    runs_with_reliability_issues = sum(1 for r in rows if int(r.reliability_issue_count or 0) > 0)
+    runs_with_finalization_failures = sum(1 for r in rows if int(r.finalization_failure_count or 0) > 0)
     timeout_runs = sum(1 for r in rows if (r.failure_reason or "") == "timeout")
 
     durations = [float(r.duration_ms) for r in rows if r.duration_ms is not None]
@@ -627,6 +945,9 @@ def get_metrics_summary(
         success_rate=successful_runs / total_runs,
         schema_valid_rate=schema_valid_rate,
         tool_error_rate=tool_error_rate,
+        reliability_failure_rate=runs_with_reliability_issues / total_runs,
+        finalization_failure_rate=runs_with_finalization_failures / total_runs,
+        runs_with_reliability_issues=runs_with_reliability_issues,
         timeout_or_stuck_rate=timeout_runs / total_runs,
         p50_duration_ms=_percentile(durations, 50),
         p95_duration_ms=_percentile(durations, 95),

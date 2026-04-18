@@ -1,18 +1,20 @@
-# Agent Metrics Architecture
+# Agent Metrics and Reliability Telemetry
 
-This document explains how runtime metrics are produced by `SSEHandrolledAgent`, persisted by API services/repositories, and exposed through metrics endpoints.
+This document explains how runtime telemetry is produced by `SSEHandrolledAgent`, persisted by API services/repositories, and exposed through metrics endpoints.
 
 ## Overview
 
-The runtime now emits three telemetry streams:
+The runtime emits and persists five telemetry streams:
 
-1. `agent events` (existing): timeline events such as `tool_call`, `tool_result`, `assistant`.
-2. `llm call metrics` (expanded): one record per model invocation.
-3. `tool execution metrics` (new): one record per tool execution.
+1. `agent events`: timeline events such as `tool_call`, `tool_result`, `assistant`, and reliability `error` events.
+2. `llm call metrics`: one record per model invocation.
+3. `tool execution metrics`: one record per tool execution.
+4. `run aggregate metrics`: one row per run in `agent_run_metrics`.
+5. `reliability issues`: one row per reliability anomaly in `agent_run_reliability_issues`.
 
-`provider` token usage is authoritative when available. `estimated` usage is only used when provider usage is absent.
+`provider` token usage is authoritative when available. `estimated` usage is used only when provider usage is absent.
 
-## Runtime Metric Flow
+## Runtime Flow
 
 ```mermaid
 flowchart LR
@@ -34,36 +36,36 @@ flowchart LR
 
   A --> M[Emit agent events]
   M --> N[(agent_events)]
+
+  I --> O[Post-run reliability analysis]
+  O --> P[(agent_run_reliability_issues)]
+  O --> Q[Run status policy]
+  Q --> R[(agent_runs)]
+  O --> S[(agent_run_metrics)]
 ```
 
-## Token Source Rules
+## Reliability Policy
 
-### LLM input/output tokens
+### Run status behavior
 
-`SSEHandrolledAgent` telemetry uses this precedence for each LLM call:
+Reliability issues are always logged and counted, but they do **not** change run status by themselves.
 
-1. **Provider usage** (`usage_metadata` or `response_metadata.token_usage`)  
-   - persisted as `usage_source = "provider"`
-2. **Fallback estimation** (canonical serialization)  
-   - persisted as `usage_source = "estimated"`
+- Run `status=failed` remains reserved for execution failures (exceptions/timeouts/cancel).
+- Reliability anomalies (including tool-call parse/recovery and final-output parse issues) are tracked in:
+  - `agent_run_reliability_issues`
+  - additive reliability counters in `agent_run_metrics`
+  - `error` timeline events with `payload_json.reliability_issue`
 
-### Fallback canonicalization
+### Reliability issue taxonomy
 
-Fallback estimation intentionally serializes only model-relevant fields.
-
-Prompt/input estimation uses canonical message serialization:
-- role
-- normalized content
-- assistant tool-calls (if present)
-- relevant provider function/tool metadata (`additional_kwargs.function_call`, `additional_kwargs.tool_calls`)
-- tool message metadata (`name`, `status`, `tool_call_id`)
-
-Assistant output fallback includes:
-- assistant `content`
-- assistant `tool_calls`
-- relevant function/tool fields from `additional_kwargs`
-
-This avoids undercounting tool-calling turns while avoiding full object dumps.
+| Issue Code | Stage | Typical Meaning | Severity |
+|---|---|---|---|
+| `assistant_tool_call_json_unparseable` | `tool_recovery` | Assistant output looked like tool JSON but could not be parsed. | `warning` |
+| `assistant_tool_call_recovery_failed` | `tool_recovery` | Tool-call recovery failed before finalization. | `error` |
+| `structured_output_generation_failed` | `structured_output` | Structured-output call errored and fallback path was used. | `warning` |
+| `final_output_missing` | `finalization` | No final output was produced. | `error` |
+| `final_output_unparseable` | `finalization` | Final output text existed but could not be parsed into JSON. | `error` |
+| `final_output_schema_invalid` | `finalization` | Final output JSON did not validate against expected output model. | `warning` |
 
 ## Database Model
 
@@ -72,6 +74,7 @@ erDiagram
   AGENT_RUNS ||--o{ AGENT_EVENTS : has
   AGENT_RUNS ||--o{ AGENT_LLM_CALLS : has
   AGENT_RUNS ||--o{ AGENT_TOOL_CALLS : has
+  AGENT_RUNS ||--o{ AGENT_RUN_RELIABILITY_ISSUES : has
   AGENT_RUNS ||--|| AGENT_RUN_METRICS : has
 
   AGENT_RUNS {
@@ -141,6 +144,24 @@ erDiagram
     string error_text
   }
 
+  AGENT_RUN_RELIABILITY_ISSUES {
+    int id PK
+    string run_id FK
+    string agent_name
+    string model_name
+    int iteration
+    int call_index
+    string issue_code
+    string severity
+    string stage
+    string message
+    json details_json
+    string assistant_raw_text
+    string tool_call_id
+    string tool_name
+    datetime created_at
+  }
+
   AGENT_RUN_METRICS {
     string run_id PK
     string agent_system
@@ -152,6 +173,10 @@ erDiagram
     int llm_call_count
     int tool_call_count
     int tool_error_count
+    int reliability_issue_count
+    int reliability_error_count
+    int finalization_failure_count
+    int tool_recovery_failure_count
     int input_tokens_total
     int output_tokens_total
     int tokens_total
@@ -162,7 +187,7 @@ erDiagram
   }
 ```
 
-## API Contracts (Metrics-Related)
+## API Contracts
 
 ## `GET /api/agent-runs/{run_id}/metrics`
 
@@ -172,77 +197,84 @@ Response type: `AgentRunMetricsDetail`
 - `metrics: AgentRunMetricsRead | null`
 - `llm_calls: AgentLLMCallRead[]`
 - `tool_calls: AgentToolCallRead[]`
+- `reliability_summary: AgentRunReliabilitySummary | null`
 
-### `AgentLLMCallRead`
+### `AgentRunMetricsRead` (reliability-related fields)
+
+| Field | Type |
+|---|---|
+| `reliability_issue_count` | `int` |
+| `reliability_error_count` | `int` |
+| `finalization_failure_count` | `int` |
+| `tool_recovery_failure_count` | `int` |
+
+### `AgentRunReliabilitySummary`
+
+| Field | Type |
+|---|---|
+| `total_issues` | `int` |
+| `error_issues` | `int` |
+| `by_code` | `AgentRunReliabilityIssueCount[]` |
+
+### `AgentRunReliabilityIssueCount`
+
+| Field | Type |
+|---|---|
+| `issue_code` | `str` |
+| `count` | `int` |
+
+## `GET /api/agent-runs/{run_id}/reliability-issues`
+
+Query params:
+
+- `issue_code: str | null`
+- `limit: int`
+- `offset: int`
+
+Response type: `AgentRunReliabilityIssuePage`
+
+| Field | Type |
+|---|---|
+| `run_id` | `str` |
+| `issues` | `AgentRunReliabilityIssueRead[]` |
+| `next_offset` | `int` |
+| `total_count` | `int` |
+
+### `AgentRunReliabilityIssueRead`
 
 | Field | Type |
 |---|---|
 | `id` | `int` |
 | `run_id` | `str` |
-| `call_index` | `int` |
-| `agent_system` | `str` |
 | `agent_name` | `str` |
 | `model_name` | `str \| null` |
-| `call_kind` | `str` |
 | `iteration` | `int \| null` |
-| `started_at` | `datetime` |
-| `ended_at` | `datetime` |
-| `latency_ms` | `int` |
-| `input_tokens` | `int` |
-| `output_tokens` | `int` |
-| `tokens_total` | `int` |
-| `usage_source` | `"provider" \| "estimated" \| str` |
-| `had_tool_calls` | `bool \| null` |
-| `tool_call_count` | `int \| null` |
-| `tool_names` | `str[]` |
-| `cost_usd` | `float \| null` |
-| `error_text` | `str \| null` |
-
-### `AgentToolCallRead`
-
-| Field | Type |
-|---|---|
-| `id` | `int` |
-| `run_id` | `str` |
-| `agent_name` | `str` |
-| `iteration` | `int` |
+| `call_index` | `int \| null` |
+| `issue_code` | `str` |
+| `severity` | `str` |
+| `stage` | `str` |
+| `message` | `str` |
+| `details_json` | `dict \| null` |
+| `assistant_raw_text` | `str \| null` |
 | `tool_call_id` | `str \| null` |
-| `tool_name` | `str` |
-| `started_at` | `datetime` |
-| `ended_at` | `datetime` |
-| `latency_ms` | `int` |
-| `status` | `str` |
-| `result_char_count` | `int` |
-| `result_estimated_tokens` | `int` |
-| `error_text` | `str \| null` |
+| `tool_name` | `str \| null` |
+| `created_at` | `datetime` |
 
 ## `GET /api/agent-runs/metrics/summary`
 
 Response type: `AgentRunMetricsSummary`
 
+Additive reliability fields:
+
 | Field | Type |
 |---|---|
-| `total_runs` | `int` |
-| `successful_runs` | `int` |
-| `success_rate` | `float` |
-| `schema_valid_rate` | `float \| null` |
-| `tool_error_rate` | `float` |
-| `timeout_or_stuck_rate` | `float` |
-| `p50_duration_ms` | `float \| null` |
-| `p95_duration_ms` | `float \| null` |
-| `p50_llm_call_count` | `float \| null` |
-| `p95_llm_call_count` | `float \| null` |
-| `p50_tokens_total` | `float \| null` |
-| `p95_tokens_total` | `float \| null` |
-| `cost_per_successful_run` | `float \| null` |
-
-## `GET /api/agent-runs/{run_id}/events` and `/events/stream`
-
-These remain event-timeline APIs. They do not return `agent_tool_calls` records directly, but remain useful for reconstructing behavioral traces.
+| `reliability_failure_rate` | `float` |
+| `finalization_failure_rate` | `float` |
+| `runs_with_reliability_issues` | `int` |
 
 ## Notes on Backward Compatibility
 
 - Existing event persistence shape is unchanged.
-- `llm_calls` response is additive (new optional fields).
-- `tool_calls` is additive on `GET /metrics`.
-- Legacy rows without new columns map cleanly with `null` values for additive fields.
+- Existing run, llm-call, and tool-call fields are preserved.
+- Reliability fields are additive to existing metrics payloads.
+- New detailed reliability endpoint is additive and does not break existing consumers.

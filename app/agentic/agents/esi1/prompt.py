@@ -63,6 +63,13 @@ Ask:
 2. Is immediate life-saving intervention required right now?
 3. If not, the answer is NOT ESI-1.
 
+IF YOU ARE NOT SURE ABOUT THE DECISION, ASK YOURSELF THE FOLLOWING QUESTIONS:
+
+- Is the patient in immediate danger?
+- Is the patient in immediate need of life-saving intervention?
+- Is the patient in immediate need of life-saving intervention?
+IF STILL YOU ARE NOT SURE ABOUT THE DECISION, THEN OUTPUT ESI-1 WITH A CONFIDENCE OF 0.1 
+
 LANGUAGE RULE
 Base the decision on immediate clinical state and required intervention, not on vital-sign interpretation.
 Prefer intervention-focused language such as:
