@@ -166,7 +166,7 @@ export function AgentsPage({ onHeaderChange }: AgentsPageProps) {
           </div>
         ) : null}
 
-        <div className="grid items-start gap-6 sm:grid-cols-2 lg:grid-cols-3 p-6">
+        <div className="grid items-start gap-8 sm:grid-cols-2 lg:grid-cols-3 p-6">
           {state.status === 'success'
             ? state.agents.map((agent) => (
                 <AgentCard

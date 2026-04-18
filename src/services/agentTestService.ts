@@ -126,8 +126,6 @@ export const agentTestService: AgentTestService = {
     const data = (await response.json()) as AgentTestRunBatchMetricsDto;
     const run = data.run;
     const summary = data.summary ?? {};
-    const latency = data.latency ?? {};
-    const score = data.score ?? {};
     const cases = Array.isArray(data.cases) ? data.cases : [];
 
     return {
@@ -145,33 +143,37 @@ export const agentTestService: AgentTestService = {
         updatedAt: run.updated_at,
       },
       summary: {
-        statusCounts: summary.status_counts ?? {},
-        passedCases: summary.passed_cases ?? 0,
-        failedCases: summary.failed_cases ?? 0,
-        completionRate: summary.completion_rate ?? null,
-        passRateAll: summary.pass_rate_all ?? null,
-        passRateCompleted: summary.pass_rate_completed ?? null,
-        execFailedCases: summary.exec_failed_cases ?? 0,
-        invalidPredCases: summary.invalid_pred_cases ?? 0,
-      },
-      latency: {
-        minMs: latency.min_ms ?? null,
-        p50Ms: latency.p50_ms ?? null,
-        p95Ms: latency.p95_ms ?? null,
-        maxMs: latency.max_ms ?? null,
-        avgMs: latency.avg_ms ?? null,
-      },
-      score: {
-        min: score.min ?? null,
-        max: score.max ?? null,
-        avg: score.avg ?? null,
+        totalRuns: summary.total_runs ?? 0,
+        runsWithAgentRun: summary.runs_with_agent_run ?? 0,
+        successfulRuns: summary.successful_runs ?? 0,
+        failedRuns: summary.failed_runs ?? 0,
+        successRate: summary.success_rate ?? null,
+        missingMetricsCount: summary.missing_metrics_count ?? 0,
+        llmCallCountTotal: summary.llm_call_count_total ?? 0,
+        toolCallCountTotal: summary.tool_call_count_total ?? 0,
+        toolErrorCountTotal: summary.tool_error_count_total ?? 0,
+        inputTokensTotal: summary.input_tokens_total ?? 0,
+        outputTokensTotal: summary.output_tokens_total ?? 0,
+        tokensTotal: summary.tokens_total ?? 0,
+        durationMsTotal: summary.duration_ms_total ?? 0,
+        costUsdTotal: summary.cost_usd_total ?? 0,
+        llmCallCountAvg: summary.llm_call_count_avg ?? 0,
+        toolCallCountAvg: summary.tool_call_count_avg ?? 0,
+        toolErrorCountAvg: summary.tool_error_count_avg ?? 0,
+        inputTokensAvg: summary.input_tokens_avg ?? 0,
+        outputTokensAvg: summary.output_tokens_avg ?? 0,
+        tokensAvg: summary.tokens_avg ?? 0,
+        durationMsAvg: summary.duration_ms_avg ?? 0,
+        costUsdAvg: summary.cost_usd_avg ?? 0,
+        costUsdAvgSuccessful: summary.cost_usd_avg_successful ?? null,
+        failureReasonCounts: summary.failure_reason_counts ?? {},
       },
       cases: cases.map((item) => {
         const row = item as AgentTestRunBatchCaseDto;
         return {
           caseId: row.case_id ?? null,
           testCaseId: row.test_case_id ?? null,
-          name: row.name ?? null,
+          name: row.test_case_name ?? row.name ?? null,
           status: row.status ?? null,
           passed: typeof row.passed === 'boolean' ? row.passed : null,
           score: typeof row.score === 'number' ? row.score : null,

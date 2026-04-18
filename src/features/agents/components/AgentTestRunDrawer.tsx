@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useId, useMemo, useState, type ReactElement } from 'react';
+import { useCallback, useEffect, useId, useMemo, useState } from 'react';
 import type { AgentTestCaseRead, AgentTestRunBatchMetricsRead } from '../../../types/agentTests';
 import { API_BASE_URL } from '../../../config/env';
 import { agentTestService } from '../../../services/agentTestService';
@@ -82,9 +82,16 @@ type StatCardProps = {
   label: string;
   value: string;
   tone?: 'default' | 'accent' | 'positive' | 'danger';
+  small?: boolean;
 };
 
-type DiffRenderer = (diff: Record<string, unknown>) => ReactElement;
+type AgentDecisionConfig = {
+  decisionAliases: string[];
+  trueLabel: string;
+  falseLabel: string;
+  trueKeywords: string[];
+  falseKeywords: string[];
+};
 
 const harnessTabs: Array<{ key: HarnessTabKey; label: string }> = [
   { key: 'cases', label: 'Test Cases' },
@@ -115,13 +122,36 @@ const friendlyLabels: Record<string, string> = {
 };
 
 const RESULT_ALIASES = {
-  decision: ['is_esi1', 'isesi1', 'ok', 'decision', 'final_decision', 'finaldecision'],
   confidence: ['confidence', 'score', 'probability'],
   summary: ['case_summary', 'casesummary', 'summary'],
   risks: ['key_risks', 'keyrisks', 'risks'],
   missing: ['missing_information', 'missinginformation', 'missing_info', 'gaps'],
   justification: ['justification', 'rationale', 'reasoning'],
 } as const;
+
+const DEFAULT_DECISION_CONFIG: AgentDecisionConfig = {
+  decisionAliases: ['decision', 'ok', 'final_decision', 'finaldecision'],
+  trueLabel: 'Positive',
+  falseLabel: 'Negative',
+  trueKeywords: [],
+  falseKeywords: [],
+};
+
+const ESI1_DECISION_CONFIG: AgentDecisionConfig = {
+  decisionAliases: ['is_esi1', 'isesi1', 'ok', 'decision', 'final_decision', 'finaldecision'],
+  trueLabel: 'ESI-1',
+  falseLabel: 'Not ESI-1',
+  trueKeywords: ['esi1', 'esi-1'],
+  falseKeywords: ['esi2', 'esi-2', 'esi3', 'esi-3', 'esi4', 'esi-4', 'esi5', 'esi-5'],
+};
+
+const ESI2_DECISION_CONFIG: AgentDecisionConfig = {
+  decisionAliases: ['is_esi2', 'isesi2', 'ok', 'decision', 'final_decision', 'finaldecision'],
+  trueLabel: 'ESI-2',
+  falseLabel: 'Not ESI-2',
+  trueKeywords: ['esi2', 'esi-2'],
+  falseKeywords: ['esi1', 'esi-1', 'esi3', 'esi-3', 'esi4', 'esi-4', 'esi5', 'esi-5'],
+};
 
 type AgentTestRunDrawerProps = {
   agentName: string;
@@ -251,14 +281,23 @@ function parseDecision(value: unknown) {
   if (typeof value === 'number') return value > 0;
   if (typeof value === 'string') {
     const normalized = value.trim().toLowerCase();
-    if (['true', 'yes', '1', 'retain', 'esi1', 'esi-1', 'critical'].includes(normalized)) {
+    if (['true', 'yes', '1', 'retain', 'critical'].includes(normalized)) {
       return true;
     }
-    if (['false', 'no', '0', 'defer', 'esi2', 'esi3', 'esi4', 'esi5'].includes(normalized)) {
+    if (['false', 'no', '0', 'defer'].includes(normalized)) {
       return false;
     }
   }
   return null;
+}
+
+function parseDecisionWithConfig(value: unknown, config: AgentDecisionConfig) {
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLowerCase();
+    if (config.trueKeywords.includes(normalized)) return true;
+    if (config.falseKeywords.includes(normalized)) return false;
+  }
+  return parseDecision(value);
 }
 
 function formatConfidence(value: number | null) {
@@ -310,7 +349,7 @@ function formatPercent(value: number | null, digits = 1) {
   return `${(clamped * 100).toFixed(digits)}%`;
 }
 
-function StatCard({ label, value, tone = 'default' }: StatCardProps) {
+function StatCard({ label, value, tone = 'default', small=false }: StatCardProps) {
   const toneClass =
     tone === 'positive'
       ? 'border-emerald-200 bg-emerald-50/70'
@@ -322,8 +361,8 @@ function StatCard({ label, value, tone = 'default' }: StatCardProps) {
 
   return (
     <div className={`rounded-xl border p-3 ${toneClass}`}>
-      <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">{label}</p>
-      <p className="mt-1 text-base font-semibold text-slate-900">{value}</p>
+      <p className={`text-[9px] font-semibold uppercase tracking-wide text-slate-500 ${small ? 'text-[9px]' : 'text-[11px]'}`} >{label}</p>
+      <p className={`mt-1 text-base font-semibold text-slate-900 ${small ? 'text-[11px]' : ''}`}>{value}</p>
     </div>
   );
 }
@@ -366,6 +405,72 @@ function normalizeAgentName(name: string) {
   return name.trim().toLowerCase().replace(/[\s_-]+/g, '');
 }
 
+function isEsi1Config(config: AgentDecisionConfig) {
+  return config.decisionAliases.map(normalizeKey).includes('isesi1');
+}
+
+function isEsi2Config(config: AgentDecisionConfig) {
+  return config.decisionAliases.map(normalizeKey).includes('isesi2');
+}
+
+function prefixedRecord(record: Record<string, unknown>, prefix: string) {
+  const out: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(record)) {
+    if (!key.startsWith(prefix)) continue;
+    out[key.slice(prefix.length)] = value;
+  }
+  return out;
+}
+
+function resolveDecisionFromRecord(record: Record<string, unknown>, config: AgentDecisionConfig) {
+  const primaryRaw = getValueByAliases(record, config.decisionAliases);
+  const primaryDecision = parseDecisionWithConfig(primaryRaw, config);
+  if (primaryDecision != null || primaryRaw !== undefined) {
+    return { raw: primaryRaw, decision: primaryDecision };
+  }
+
+  const inverseAliases = isEsi2Config(config)
+    ? ['is_esi1', 'isesi1']
+    : isEsi1Config(config)
+      ? ['is_esi2', 'isesi2']
+      : [];
+  if (!inverseAliases.length) {
+    return { raw: primaryRaw, decision: primaryDecision };
+  }
+
+  const inverseRaw = getValueByAliases(record, inverseAliases);
+  const inverseDecision = parseDecision(inverseRaw);
+  if (inverseDecision == null) {
+    return { raw: inverseRaw, decision: null };
+  }
+  return { raw: inverseRaw, decision: !inverseDecision };
+}
+
+function decisionKnownAliases(config: AgentDecisionConfig) {
+  if (isEsi2Config(config)) {
+    return [...config.decisionAliases, 'is_esi1', 'isesi1'];
+  }
+  if (isEsi1Config(config)) {
+    return [...config.decisionAliases, 'is_esi2', 'isesi2'];
+  }
+  return config.decisionAliases;
+}
+
+function formatDecisionDisplayValue(decision: boolean | null, raw: unknown) {
+  if (decision != null) return decision ? 'True' : 'False';
+  if (typeof raw === 'string') return raw;
+  if (typeof raw === 'number') return String(raw);
+  if (typeof raw === 'boolean') return raw ? 'True' : 'False';
+  return '—';
+}
+
+function getAgentDecisionConfig(agentName: string): AgentDecisionConfig {
+  const normalized = normalizeAgentName(agentName);
+  if (normalized.includes('esi2')) return ESI2_DECISION_CONFIG;
+  if (normalized.includes('esi1')) return ESI1_DECISION_CONFIG;
+  return DEFAULT_DECISION_CONFIG;
+}
+
 function renderGenericDiff(diff: Record<string, unknown>) {
   return (
     <div className="rounded-2xl border border-slate-200 bg-white p-4">
@@ -383,15 +488,36 @@ function renderGenericDiff(diff: Record<string, unknown>) {
   );
 }
 
-function renderEsiDiff(diff: Record<string, unknown>) {
+function renderDecisionDiff(diff: Record<string, unknown>, config: AgentDecisionConfig) {
   const expectedAnswer = isRecord(diff.expected_answer) ? diff.expected_answer : {};
   const agentAnswer = isRecord(diff.agent_answer) ? diff.agent_answer : {};
+  const expectedRootRecord = prefixedRecord(diff, 'expected_');
+  const actualRootRecord = prefixedRecord(diff, 'actual_');
+  const expectedDecisionSource = { ...expectedRootRecord, ...expectedAnswer };
 
   const expectedAcuity = asNumber(expectedAnswer.acuity);
-  const isEsi1 = parseDecision(agentAnswer.is_esi1);
+  const { raw: agentDecisionRaw, decision: agentDecision } = resolveDecisionFromRecord(
+    agentAnswer,
+    config,
+  );
+  const { raw: expectedDecisionRaw, decision: expectedDecision } = resolveDecisionFromRecord(
+    expectedDecisionSource,
+    config,
+  );
+  const { raw: actualDecisionRaw, decision: actualDecision } = resolveDecisionFromRecord(
+    actualRootRecord,
+    config,
+  );
   const confidence = asNumber(agentAnswer.confidence);
 
-  const isMatch = diff.passed
+  const passed = typeof diff.passed === 'boolean' ? diff.passed : null;
+  const inferredMatch =
+    expectedDecision != null && actualDecision != null
+      ? expectedDecision === actualDecision
+      : expectedDecision != null && agentDecision != null
+        ? expectedDecision === agentDecision
+        : null;
+  const isMatch = passed ?? inferredMatch;
 
   const verdictLabel = isMatch == null ? 'Not enough data' : isMatch ? 'Success' : 'Mismatch';
   const verdictBadgeClass =
@@ -417,14 +543,27 @@ function renderEsiDiff(diff: Record<string, unknown>) {
 
         <div className="mt-3 grid gap-3 sm:grid-cols-3">
           <StatCard
-            label="Agent Response Is ESI-1"
-            value={isEsi1 == null ? '—' : isEsi1 ? 'True' : 'False'}
+            label={`Agent Response (${config.trueLabel})`}
+            value={formatDecisionDisplayValue(agentDecision, agentDecisionRaw)}
             tone={isMatch == null ? 'default' : isMatch ? 'positive' : 'danger'}
           />
           <StatCard label="Confidence" value={formatConfidence(confidence)} tone="accent" />
           <StatCard
             label="Expected Acuity"
             value={expectedAcuity == null ? '—' : formatInteger(expectedAcuity)}
+            tone={isMatch == null ? 'default' : isMatch ? 'positive' : 'danger'}
+          />
+        </div>
+
+        <div className="mt-3 grid gap-3 sm:grid-cols-2">
+          <StatCard
+            label={`Expected ${config.trueLabel}`}
+            value={formatDecisionDisplayValue(expectedDecision, expectedDecisionRaw)}
+            tone={isMatch == null ? 'default' : isMatch ? 'positive' : 'danger'}
+          />
+          <StatCard
+            label={`Actual ${config.trueLabel}`}
+            value={formatDecisionDisplayValue(actualDecision, actualDecisionRaw)}
             tone={isMatch == null ? 'default' : isMatch ? 'positive' : 'danger'}
           />
         </div>
@@ -442,17 +581,15 @@ function renderEsiDiff(diff: Record<string, unknown>) {
   );
 }
 
-const DIFF_RENDERERS: Record<string, DiffRenderer> = {
-  esiagent: renderEsiDiff,
-  esitriageagent: renderEsiDiff,
-};
-
 function resolveDiffRenderer(agentName: string) {
-  const normalized = normalizeAgentName(agentName);
-  const directRenderer = DIFF_RENDERERS[normalized];
-  if (directRenderer) return directRenderer;
-  if (normalized.includes('esi')) return renderEsiDiff;
-  return renderGenericDiff;
+  const config = getAgentDecisionConfig(agentName);
+  return (diff: Record<string, unknown>) => {
+    const normalized = normalizeAgentName(agentName);
+    if (normalized.includes('esi')) {
+      return renderDecisionDiff(diff, config);
+    }
+    return renderGenericDiff(diff);
+  };
 }
 
 export default function AgentTestRunDrawer({
@@ -520,7 +657,6 @@ export default function AgentTestRunDrawer({
     setAggregatedRunMetricsState({ status: 'loading' });
     try {
       const data = await agentTestService.getRunBatchMetrics(targetRunId);
-      console.log(data)
       setAggregatedRunMetricsState({ status: 'ready', data });
     } catch (e: unknown) {
       setAggregatedRunMetricsState({
@@ -728,7 +864,6 @@ export default function AgentTestRunDrawer({
 
     source.addEventListener('run_done', (event) => {
       const payload = parseEventPayload(event as MessageEvent<string>);
-      console.log(payload);
       if (!payload) return;
       handleRunDonePayload(payload);
     });
@@ -786,6 +921,45 @@ export default function AgentTestRunDrawer({
     activeMetricsState?.status === 'ready' && isRecord(activeMetricsState.metrics)
       ? activeMetricsState.metrics
       : null;
+  const activeReliabilitySummary =
+    activeMetricsRecord && isRecord(activeMetricsRecord.reliabilitySummary)
+      ? activeMetricsRecord.reliabilitySummary
+      : activeMetricsRecord && isRecord(activeMetricsRecord.reliability_summary)
+        ? activeMetricsRecord.reliability_summary
+        : null;
+  const activeReliabilityTotalIssues = asNumber(
+    activeReliabilitySummary
+      ? (activeReliabilitySummary.totalIssues ?? activeReliabilitySummary.total_issues)
+      : null,
+  );
+  const activeReliabilityErrorIssues = asNumber(
+    activeReliabilitySummary
+      ? (activeReliabilitySummary.errorIssues ?? activeReliabilitySummary.error_issues)
+      : null,
+  );
+  const activeReliabilityByCodeRaw = activeReliabilitySummary
+    ? (activeReliabilitySummary.byCode ?? activeReliabilitySummary.by_code)
+    : null;
+  const activeReliabilityByCode = Array.isArray(
+    activeReliabilitySummary
+      ? (activeReliabilitySummary.byCode ?? activeReliabilitySummary.by_code)
+      : null,
+  )
+    ? (activeReliabilityByCodeRaw as unknown[])
+      .map((item) => {
+        if (!isRecord(item)) return null;
+        const issueCode =
+          typeof item.issueCode === 'string'
+            ? item.issueCode
+            : typeof item.issue_code === 'string'
+              ? item.issue_code
+              : '';
+        const count = asNumber(item.count);
+        if (!issueCode) return null;
+        return { issueCode, count: count ?? 0 };
+      })
+      .filter((item): item is { issueCode: string; count: number } => item != null)
+    : [];
   const activeDiffRecord =
     activeDiffState?.status === 'ready' && isRecord(activeDiffState.diff)
       ? activeDiffState.diff
@@ -794,27 +968,30 @@ export default function AgentTestRunDrawer({
     activeOutputState?.status === 'ready' && isRecord(activeOutputState.output)
       ? activeOutputState.output
       : null;
+  const decisionConfig = useMemo(() => getAgentDecisionConfig(agentName), [agentName]);
   const diffRenderer = useMemo(() => resolveDiffRenderer(agentName), [agentName]);
 
   const activeResultView = useMemo<CaseResultViewModel | null>(() => {
     if (!activeOutputRecord) return null;
 
-    const decisionRaw = getValueByAliases(activeOutputRecord, RESULT_ALIASES.decision);
+    const { raw: decisionRaw, decision: decisionBool } = resolveDecisionFromRecord(
+      activeOutputRecord,
+      decisionConfig,
+    );
     const confidenceRaw = getValueByAliases(activeOutputRecord, RESULT_ALIASES.confidence);
     const summaryRaw = getValueByAliases(activeOutputRecord, RESULT_ALIASES.summary);
     const risksRaw = getValueByAliases(activeOutputRecord, RESULT_ALIASES.risks);
     const missingRaw = getValueByAliases(activeOutputRecord, RESULT_ALIASES.missing);
     const justificationRaw = getValueByAliases(activeOutputRecord, RESULT_ALIASES.justification);
 
-    const decisionBool = parseDecision(decisionRaw);
     const decisionLabel =
       decisionBool == null
         ? typeof decisionRaw === 'string'
           ? decisionRaw
           : 'Unknown'
         : decisionBool
-          ? 'ESI-1'
-          : 'Not ESI-1';
+          ? decisionConfig.trueLabel
+          : decisionConfig.falseLabel;
     const decisionTone: CaseResultViewModel['decisionTone'] =
       decisionBool == null ? 'neutral' : decisionBool ? 'positive' : 'danger';
 
@@ -833,13 +1010,13 @@ export default function AgentTestRunDrawer({
       risks: toStringArray(risksRaw),
       missingInformation: toStringArray(missingRaw),
     };
-  }, [activeOutputRecord]);
+  }, [activeOutputRecord, decisionConfig]);
 
   const activeAdditionalOutputEntries = useMemo(() => {
     if (!activeOutputRecord) return [];
     const known = new Set(
       [
-        ...RESULT_ALIASES.decision,
+        ...decisionKnownAliases(decisionConfig),
         ...RESULT_ALIASES.confidence,
         ...RESULT_ALIASES.summary,
         ...RESULT_ALIASES.risks,
@@ -848,7 +1025,7 @@ export default function AgentTestRunDrawer({
       ].map(normalizeKey),
     );
     return Object.entries(activeOutputRecord).filter(([key]) => !known.has(normalizeKey(key)));
-  }, [activeOutputRecord]);
+  }, [activeOutputRecord, decisionConfig]);
 
   function harnessTabId(key: HarnessTabKey) {
     return `${harnessTabsId}-tab-${key}`;
@@ -898,17 +1075,10 @@ export default function AgentTestRunDrawer({
   const aggregatedRunMetrics =
     aggregatedRunMetricsState.status === 'ready' ? aggregatedRunMetricsState.data : null;
   const aggregatedSummary = aggregatedRunMetrics?.summary ?? null;
-  const aggregatedLatency = aggregatedRunMetrics?.latency ?? null;
-  const aggregatedScore = aggregatedRunMetrics?.score ?? null;
-  const aggregatedCases = aggregatedRunMetrics?.cases ?? [];
-  const aggregatedStatusCounts = aggregatedSummary?.statusCounts ?? {};
-  const aggregatedStatusEntries = Object.entries(aggregatedStatusCounts).sort(([a], [b]) =>
+  const aggregatedFailureReasons = aggregatedSummary?.failureReasonCounts ?? {};
+  const aggregatedFailureReasonEntries = Object.entries(aggregatedFailureReasons).sort(([a], [b]) =>
     a.localeCompare(b),
   );
-  const aggregatedTotalCases =
-    aggregatedRunMetrics?.run.selectedCaseIds.length ??
-    aggregatedStatusEntries.reduce((acc, [, value]) => acc + value, 0) ??
-    0;
 
   return (
     <div className="flex h-full min-h-0 flex-col gap-4 overflow-y-hidden">
@@ -1364,7 +1534,74 @@ export default function AgentTestRunDrawer({
                                 ? 'danger'
                                 : 'positive'
                             }
+                            small={true}
                           />
+                        </div>
+
+                        <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-3">
+                          <p className="text-xs font-semibold uppercase tracking-wide text-slate-600">
+                            Reliability Summary
+                          </p>
+                          <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                            <StatCard
+                              label="Total Issues"
+                              value={formatInteger(activeReliabilityTotalIssues)}
+                              tone={
+                                activeReliabilityTotalIssues == null
+                                  ? 'default'
+                                  : activeReliabilityTotalIssues > 0
+                                    ? 'danger'
+                                    : 'positive'
+                              }
+                            />
+                            <StatCard
+                              label="Error Issues"
+                              value={formatInteger(activeReliabilityErrorIssues)}
+                              tone={
+                                activeReliabilityErrorIssues == null
+                                  ? 'default'
+                                  : activeReliabilityErrorIssues > 0
+                                    ? 'danger'
+                                    : 'positive'
+                              }
+                            />
+                            <StatCard
+                              label="Issue Codes"
+                              value={formatInteger(activeReliabilityByCode.length)}
+                              tone={activeReliabilityByCode.length > 0 ? 'accent' : 'default'}
+                            />
+                            <StatCard
+                              label="Reliability Status"
+                              value={
+                                activeReliabilityTotalIssues == null
+                                  ? 'Unavailable'
+                                  : activeReliabilityTotalIssues > 0
+                                    ? 'Issues Detected'
+                                    : 'Healthy'
+                              }
+                              tone={
+                                activeReliabilityTotalIssues == null
+                                  ? 'default'
+                                  : activeReliabilityTotalIssues > 0
+                                    ? 'danger'
+                                    : 'positive'
+                              }
+                              small={true}
+                            />
+                          </div>
+
+                          {activeReliabilityByCode.length ? (
+                            <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                              {activeReliabilityByCode.map((item) => (
+                                <StatCard
+                                  key={item.issueCode}
+                                  label={titleCaseKey(item.issueCode)}
+                                  value={formatInteger(item.count)}
+                                  tone={item.count > 0 ? 'danger' : 'default'}
+                                />
+                              ))}
+                            </div>
+                          ) : null}
                         </div>
 
                         <details className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-3">
@@ -1585,155 +1822,112 @@ export default function AgentTestRunDrawer({
             <section className="rounded-2xl border border-slate-200 bg-white p-4">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
-                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Aggregated Run Metrics</p>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                    Aggregated Run Summary
+                  </p>
                   <p className="mt-1 text-sm text-slate-700">
-                    Run ID: <span className="font-mono text-slate-900">{aggregatedRunMetrics.run.id}</span>
+                    Summary-level metrics across case runs for this test run.
                   </p>
                 </div>
                 <Badge className="bg-white text-slate-700 ring-slate-200">
-                  {aggregatedRunMetrics.run.status || 'Unknown'}
+                  Success Rate: {formatPercent(aggregatedSummary?.successRate ?? null, 2)}
                 </Badge>
               </div>
 
-              <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-7">
-                <StatCard label="Total Cases" value={formatInteger(aggregatedTotalCases)} />
-                <StatCard label="Passed Cases" value={formatInteger(aggregatedSummary?.passedCases ?? null)} tone="positive" />
+              <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
                 <StatCard
-                  label="Failed Cases"
-                  value={formatInteger(aggregatedSummary?.failedCases ?? null)}
-                  tone={(aggregatedSummary?.failedCases ?? 0) > 0 ? 'danger' : 'default'}
-                />
-                <StatCard
-                  label="Completion Rate"
-                  value={formatPercent(aggregatedSummary?.completionRate ?? null, 2)}
+                  label="Average Cost"
+                  value={formatCurrency(aggregatedSummary?.costUsdAvg ?? null)}
                   tone="accent"
                 />
                 <StatCard
-                  label="Pass Rate (All)"
-                  value={formatPercent(aggregatedSummary?.passRateAll ?? null, 2)}
+                  label="Total Cost"
+                  value={formatCurrency(aggregatedSummary?.costUsdTotal ?? null)}
+                  tone="accent"
                 />
                 <StatCard
-                  label="Pass Rate (Completed)"
-                  value={formatPercent(aggregatedSummary?.passRateCompleted ?? null, 2)}
+                  label="Average Duration (ms)"
+                  value={formatLatencyMs(aggregatedSummary?.durationMsAvg ?? null)}
                 />
                 <StatCard
-                  label="Exec Failed Cases"
-                  value={formatInteger(aggregatedSummary?.execFailedCases ?? null)}
-                  tone={(aggregatedSummary?.execFailedCases ?? 0) > 0 ? 'danger' : 'default'}
+                  label="Failed Runs"
+                  value={formatInteger(aggregatedSummary?.failedRuns ?? null)}
+                  tone={(aggregatedSummary?.failedRuns ?? 0) > 0 ? 'danger' : 'default'}
                 />
-              </div>
-
-              <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
                 <StatCard
-                  label="Invalid Pred Cases"
-                  value={formatInteger(aggregatedSummary?.invalidPredCases ?? null)}
-                  tone={(aggregatedSummary?.invalidPredCases ?? 0) > 0 ? 'danger' : 'default'}
+                  label="LLM Calls (Avg)"
+                  value={formatInteger(aggregatedSummary?.llmCallCountAvg ?? null)}
                 />
-                <StatCard label="Latency P50" value={formatLatencyMs(aggregatedLatency?.p50Ms ?? null)} />
-                <StatCard label="Latency P95" value={formatLatencyMs(aggregatedLatency?.p95Ms ?? null)} />
-                <StatCard label="Score Avg" value={formatPercent(aggregatedScore?.avg ?? null, 2)} />
-              </div>
-            </section>
-
-            <section className="grid gap-4 xl:grid-cols-2">
-              <div className="rounded-2xl border border-slate-200 bg-white p-4">
-                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Latency Distribution</p>
-                <div className="mt-3 grid gap-3 sm:grid-cols-2">
-                  <StatCard label="Min" value={formatLatencyMs(aggregatedLatency?.minMs ?? null)} />
-                  <StatCard label="P50" value={formatLatencyMs(aggregatedLatency?.p50Ms ?? null)} />
-                  <StatCard label="P95" value={formatLatencyMs(aggregatedLatency?.p95Ms ?? null)} />
-                  <StatCard label="Max" value={formatLatencyMs(aggregatedLatency?.maxMs ?? null)} />
-                  <StatCard label="Average" value={formatLatencyMs(aggregatedLatency?.avgMs ?? null)} tone="accent" />
-                </div>
+                <StatCard
+                  label="LLM Calls (Total)"
+                  value={formatInteger(aggregatedSummary?.llmCallCountTotal ?? null)}
+                />
+                <StatCard
+                  label="Tool Calls (Avg)"
+                  value={formatInteger(aggregatedSummary?.toolCallCountAvg ?? null)}
+                />
+                <StatCard
+                  label="Tool Calls (Total)"
+                  value={formatInteger(aggregatedSummary?.toolCallCountTotal ?? null)}
+                />
               </div>
 
-              <div className="rounded-2xl border border-slate-200 bg-white p-4">
-                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Score Distribution</p>
-                <div className="mt-3 grid gap-3 sm:grid-cols-3">
-                  <StatCard label="Min" value={formatPercent(aggregatedScore?.min ?? null, 2)} />
-                  <StatCard label="Average" value={formatPercent(aggregatedScore?.avg ?? null, 2)} tone="accent" />
-                  <StatCard label="Max" value={formatPercent(aggregatedScore?.max ?? null, 2)} />
-                </div>
-              </div>
-            </section>
-
-            <section className="rounded-2xl border border-slate-200 bg-white p-4">
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Status Counts</p>
-                {aggregatedStatusEntries.length ? (
-                  <div className="flex flex-wrap gap-2">
-                    {aggregatedStatusEntries.map(([status, count]) => (
-                      <Badge key={status} className="bg-slate-50 text-slate-700 ring-slate-200">
-                        {status}: {count}
-                      </Badge>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="text-xs text-slate-600">No status counts returned.</p>
-                )}
+              <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+                <StatCard
+                  label="Input Tokens (Avg)"
+                  value={formatInteger(aggregatedSummary?.inputTokensAvg ?? null)}
+                />
+                <StatCard
+                  label="Input Tokens (Total)"
+                  value={formatInteger(aggregatedSummary?.inputTokensTotal ?? null)}
+                />
+                <StatCard
+                  label="Output Tokens (Avg)"
+                  value={formatInteger(aggregatedSummary?.outputTokensAvg ?? null)}
+                />
+                <StatCard
+                  label="Output Tokens (Total)"
+                  value={formatInteger(aggregatedSummary?.outputTokensTotal ?? null)}
+                />
+                <StatCard
+                  label="Tokens (Avg)"
+                  value={formatInteger(aggregatedSummary?.tokensAvg ?? null)}
+                />
+                <StatCard
+                  label="Tokens (Total)"
+                  value={formatInteger(aggregatedSummary?.tokensTotal ?? null)}
+                />
               </div>
             </section>
 
             <section className="rounded-2xl border border-slate-200 bg-white p-4">
-              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Per-Case Metrics</p>
-              {aggregatedCases.length ? (
-                <div className="mt-3 max-h-[min(26rem,55vh)] overflow-auto rounded-xl border border-slate-200">
-                  <table className="min-w-full border-separate border-spacing-0 text-xs">
-                    <thead className="sticky top-0 z-10 bg-slate-50">
-                      <tr>
-                        <th className="border-b border-slate-200 px-3 py-2 text-left font-semibold text-slate-600">Case</th>
-                        <th className="border-b border-slate-200 px-3 py-2 text-left font-semibold text-slate-600">Status</th>
-                        <th className="border-b border-slate-200 px-3 py-2 text-left font-semibold text-slate-600">Passed</th>
-                        <th className="border-b border-slate-200 px-3 py-2 text-left font-semibold text-slate-600">Score</th>
-                        <th className="border-b border-slate-200 px-3 py-2 text-left font-semibold text-slate-600">Latency</th>
-                        <th className="border-b border-slate-200 px-3 py-2 text-left font-semibold text-slate-600">Agent Status</th>
-                        <th className="border-b border-slate-200 px-3 py-2 text-left font-semibold text-slate-600">Exec Failed</th>
-                        <th className="border-b border-slate-200 px-3 py-2 text-left font-semibold text-slate-600">Invalid Pred</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {aggregatedCases.map((row, index) => {
-                        const id = row.testCaseId ?? row.caseId ?? String(index);
-                        const passedLabel = row.passed == null ? '—' : row.passed ? 'Yes' : 'No';
-                        const boolFlag = (value: boolean | number | null) =>
-                          value == null ? '—' : typeof value === 'boolean' ? (value ? 'Yes' : 'No') : String(value);
-                        return (
-                          <tr key={id} className="odd:bg-white even:bg-slate-50/50">
-                            <td className="border-b border-slate-100 px-3 py-2 font-mono text-[11px] text-slate-700">
-                              {row.name || row.testCaseId || row.caseId || '—'}
-                            </td>
-                            <td className="border-b border-slate-100 px-3 py-2 text-slate-700">{row.status ?? '—'}</td>
-                            <td className="border-b border-slate-100 px-3 py-2 text-slate-700">{passedLabel}</td>
-                            <td className="border-b border-slate-100 px-3 py-2 text-slate-700">
-                              {formatPercent(row.score, 2)}
-                            </td>
-                            <td className="border-b border-slate-100 px-3 py-2 text-slate-700">
-                              {formatLatencyMs(row.latencyMs)}
-                            </td>
-                            <td className="border-b border-slate-100 px-3 py-2 text-slate-700">{row.agentStatus ?? '—'}</td>
-                            <td className="border-b border-slate-100 px-3 py-2 text-slate-700">
-                              {boolFlag(row.execFailed)}
-                            </td>
-                            <td className="border-b border-slate-100 px-3 py-2 text-slate-700">
-                              {boolFlag(row.invalidPred)}
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                Failure Reason Issues
+              </p>
+              {aggregatedFailureReasonEntries.length ? (
+                <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                  {aggregatedFailureReasonEntries.map(([reason, count]) => (
+                    <StatCard
+                      key={reason}
+                      label={titleCaseKey(reason)}
+                      value={formatInteger(count)}
+                      tone={count > 0 ? 'danger' : 'default'}
+                    />
+                  ))}
                 </div>
               ) : (
-                <p className="mt-3 text-sm text-slate-600">No per-case rows were returned.</p>
+                <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                  <StatCard label="Failure Reason Issues" value="None detected" tone="positive" />
+                </div>
               )}
             </section>
 
             <details className="rounded-2xl border border-slate-200 bg-white p-4">
               <summary className="cursor-pointer select-none text-sm font-semibold text-slate-800">
-                Raw Aggregated Metrics JSON
+                Raw Summary JSON
               </summary>
               <div className="mt-3 max-h-[min(24rem,50vh)] overflow-auto rounded-2xl border border-slate-200 bg-slate-50 p-3">
-                <JsonInspector value={aggregatedRunMetrics} />
+                <JsonInspector value={aggregatedSummary} />
               </div>
             </details>
           </div>

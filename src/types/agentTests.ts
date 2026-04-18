@@ -51,33 +51,37 @@ export type AgentTestRunRead = {
 };
 
 export type AgentTestRunBatchSummaryDto = {
-  status_counts?: Record<string, number>;
-  passed_cases?: number;
-  failed_cases?: number;
-  completion_rate?: number | null;
-  pass_rate_all?: number | null;
-  pass_rate_completed?: number | null;
-  exec_failed_cases?: number;
-  invalid_pred_cases?: number;
-};
-
-export type AgentTestRunBatchLatencyDto = {
-  min_ms?: number | null;
-  p50_ms?: number | null;
-  p95_ms?: number | null;
-  max_ms?: number | null;
-  avg_ms?: number | null;
-};
-
-export type AgentTestRunBatchScoreDto = {
-  min?: number | null;
-  max?: number | null;
-  avg?: number | null;
+  total_runs?: number;
+  runs_with_agent_run?: number;
+  successful_runs?: number;
+  failed_runs?: number;
+  success_rate?: number | null;
+  missing_metrics_count?: number;
+  llm_call_count_total?: number;
+  tool_call_count_total?: number;
+  tool_error_count_total?: number;
+  input_tokens_total?: number;
+  output_tokens_total?: number;
+  tokens_total?: number;
+  duration_ms_total?: number;
+  cost_usd_total?: number;
+  llm_call_count_avg?: number;
+  tool_call_count_avg?: number;
+  tool_error_count_avg?: number;
+  input_tokens_avg?: number;
+  output_tokens_avg?: number;
+  tokens_avg?: number;
+  duration_ms_avg?: number;
+  cost_usd_avg?: number;
+  cost_usd_avg_successful?: number | null;
+  failure_reason_counts?: Record<string, number>;
 };
 
 export type AgentTestRunBatchCaseDto = Record<string, unknown> & {
   case_id?: string | null;
   test_case_id?: string | null;
+  test_case_name?: string | null;
+  agent_run_id?: string | null;
   name?: string | null;
   status?: string | null;
   passed?: boolean | null;
@@ -91,34 +95,34 @@ export type AgentTestRunBatchCaseDto = Record<string, unknown> & {
 export type AgentTestRunBatchMetricsDto = {
   run: AgentTestRunReadDto;
   summary?: AgentTestRunBatchSummaryDto | null;
-  latency?: AgentTestRunBatchLatencyDto | null;
-  score?: AgentTestRunBatchScoreDto | null;
   cases?: AgentTestRunBatchCaseDto[] | null;
 };
 
 export type AgentTestRunBatchSummaryRead = {
-  statusCounts: Record<string, number>;
-  passedCases: number;
-  failedCases: number;
-  completionRate: number | null;
-  passRateAll: number | null;
-  passRateCompleted: number | null;
-  execFailedCases: number;
-  invalidPredCases: number;
-};
-
-export type AgentTestRunBatchLatencyRead = {
-  minMs: number | null;
-  p50Ms: number | null;
-  p95Ms: number | null;
-  maxMs: number | null;
-  avgMs: number | null;
-};
-
-export type AgentTestRunBatchScoreRead = {
-  min: number | null;
-  max: number | null;
-  avg: number | null;
+  totalRuns: number;
+  runsWithAgentRun: number;
+  successfulRuns: number;
+  failedRuns: number;
+  successRate: number | null;
+  missingMetricsCount: number;
+  llmCallCountTotal: number;
+  toolCallCountTotal: number;
+  toolErrorCountTotal: number;
+  inputTokensTotal: number;
+  outputTokensTotal: number;
+  tokensTotal: number;
+  durationMsTotal: number;
+  costUsdTotal: number;
+  llmCallCountAvg: number;
+  toolCallCountAvg: number;
+  toolErrorCountAvg: number;
+  inputTokensAvg: number;
+  outputTokensAvg: number;
+  tokensAvg: number;
+  durationMsAvg: number;
+  costUsdAvg: number;
+  costUsdAvgSuccessful: number | null;
+  failureReasonCounts: Record<string, number>;
 };
 
 export type AgentTestRunBatchCaseRead = {
@@ -138,7 +142,5 @@ export type AgentTestRunBatchCaseRead = {
 export type AgentTestRunBatchMetricsRead = {
   run: AgentTestRunRead;
   summary: AgentTestRunBatchSummaryRead;
-  latency: AgentTestRunBatchLatencyRead;
-  score: AgentTestRunBatchScoreRead;
   cases: AgentTestRunBatchCaseRead[];
 };

@@ -39,14 +39,45 @@ type StatCardProps = {
   tone?: 'default' | 'accent' | 'positive' | 'danger';
 };
 
+type AgentDecisionConfig = {
+  decisionAliases: string[];
+  trueLabel: string;
+  falseLabel: string;
+  trueKeywords: string[];
+  falseKeywords: string[];
+};
+
 const RESULT_ALIASES = {
-  decision: ['is_esi1', 'isesi1', 'ok', 'decision', 'final_decision', 'finaldecision'],
   confidence: ['confidence', 'score', 'probability'],
   summary: ['case_summary', 'casesummary', 'summary'],
   risks: ['key_risks', 'keyrisks', 'risks'],
   missing: ['missing_information', 'missinginformation', 'missing_info', 'gaps'],
   justification: ['justification', 'rationale', 'reasoning'],
 } as const;
+
+const DEFAULT_DECISION_CONFIG: AgentDecisionConfig = {
+  decisionAliases: ['decision', 'ok', 'final_decision', 'finaldecision'],
+  trueLabel: 'Positive',
+  falseLabel: 'Negative',
+  trueKeywords: [],
+  falseKeywords: [],
+};
+
+const ESI1_DECISION_CONFIG: AgentDecisionConfig = {
+  decisionAliases: ['is_esi1', 'isesi1', 'ok', 'decision', 'final_decision', 'finaldecision'],
+  trueLabel: 'ESI-1',
+  falseLabel: 'Not ESI-1',
+  trueKeywords: ['esi1', 'esi-1'],
+  falseKeywords: ['esi2', 'esi-2', 'esi3', 'esi-3', 'esi4', 'esi-4', 'esi5', 'esi-5'],
+};
+
+const ESI2_DECISION_CONFIG: AgentDecisionConfig = {
+  decisionAliases: ['is_esi2', 'isesi2', 'ok', 'decision', 'final_decision', 'finaldecision'],
+  trueLabel: 'ESI-2',
+  falseLabel: 'Not ESI-2',
+  trueKeywords: ['esi2', 'esi-2'],
+  falseKeywords: ['esi1', 'esi-1', 'esi3', 'esi-3', 'esi4', 'esi-4', 'esi5', 'esi-5'],
+};
 
 function normalizeKey(key: string) {
   return key.toLowerCase().replace(/[^a-z0-9]/g, '');
@@ -91,14 +122,30 @@ function parseDecision(value: unknown) {
   if (typeof value === 'number') return value > 0;
   if (typeof value === 'string') {
     const normalized = value.trim().toLowerCase();
-    if (['true', 'yes', '1', 'retain', 'esi1', 'esi-1', 'critical'].includes(normalized)) {
+    if (['true', 'yes', '1', 'retain', 'critical'].includes(normalized)) {
       return true;
     }
-    if (['false', 'no', '0', 'defer', 'esi2', 'esi3', 'esi4', 'esi5'].includes(normalized)) {
+    if (['false', 'no', '0', 'defer'].includes(normalized)) {
       return false;
     }
   }
   return null;
+}
+
+function parseDecisionWithConfig(value: unknown, config: AgentDecisionConfig) {
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLowerCase();
+    if (config.trueKeywords.includes(normalized)) return true;
+    if (config.falseKeywords.includes(normalized)) return false;
+  }
+  return parseDecision(value);
+}
+
+function getAgentDecisionConfig(agentName: string): AgentDecisionConfig {
+  const normalized = normalizeKey(agentName);
+  if (normalized.includes('esi2')) return ESI2_DECISION_CONFIG;
+  if (normalized.includes('esi1')) return ESI1_DECISION_CONFIG;
+  return DEFAULT_DECISION_CONFIG;
 }
 
 function formatInteger(value: number | null) {
@@ -165,24 +212,25 @@ export default function RunAgentTab({ agent }: RunAgentTabProps) {
   const [startError, setStartError] = useState<string | null>(null);
   const [starting, setStarting] = useState(false);
   const { models, status: modelsStatus, selectedModelId, setSelectedModelId } = useModels();
+  const decisionConfig = useMemo(() => getAgentDecisionConfig(agent.name), [agent.name]);
 
   const resultView = useMemo<ResultViewModel | null>(() => {
     if (!runOutput) return null;
 
-    const decisionRaw = getValueByAliases(runOutput, RESULT_ALIASES.decision);
+    const decisionRaw = getValueByAliases(runOutput, decisionConfig.decisionAliases);
     const confidenceRaw = getValueByAliases(runOutput, RESULT_ALIASES.confidence);
     const summaryRaw = getValueByAliases(runOutput, RESULT_ALIASES.summary);
     const risksRaw = getValueByAliases(runOutput, RESULT_ALIASES.risks);
     const missingRaw = getValueByAliases(runOutput, RESULT_ALIASES.missing);
     const justificationRaw = getValueByAliases(runOutput, RESULT_ALIASES.justification);
 
-    const decisionBool = parseDecision(decisionRaw);
+    const decisionBool = parseDecisionWithConfig(decisionRaw, decisionConfig);
     const decisionLabel =
       decisionBool == null
         ? (typeof decisionRaw === 'string' ? decisionRaw : 'Unknown')
         : decisionBool
-          ? 'ESI-1'
-          : 'Not ESI-1';
+          ? decisionConfig.trueLabel
+          : decisionConfig.falseLabel;
     const decisionTone: ResultViewModel['decisionTone'] =
       decisionBool == null ? 'neutral' : decisionBool ? 'positive' : 'danger';
 
@@ -205,13 +253,13 @@ export default function RunAgentTab({ agent }: RunAgentTabProps) {
       risks: toStringArray(risksRaw),
       missingInformation: toStringArray(missingRaw),
     };
-  }, [runOutput]);
+  }, [runOutput, decisionConfig]);
 
   const additionalResultEntries = useMemo(() => {
     if (!runOutput) return [];
     const knownKeys = new Set(
       [
-        ...RESULT_ALIASES.decision,
+        ...decisionConfig.decisionAliases,
         ...RESULT_ALIASES.confidence,
         ...RESULT_ALIASES.summary,
         ...RESULT_ALIASES.risks,
@@ -220,7 +268,7 @@ export default function RunAgentTab({ agent }: RunAgentTabProps) {
       ].map(normalizeKey),
     );
     return Object.entries(runOutput).filter(([key]) => !knownKeys.has(normalizeKey(key)));
-  }, [runOutput]);
+  }, [runOutput, decisionConfig]);
 
   const reliabilitySummary = runMetrics?.reliabilitySummary ?? null;
   const reliabilityByCode = reliabilitySummary?.byCode ?? [];
