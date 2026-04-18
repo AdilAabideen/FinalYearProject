@@ -1,48 +1,81 @@
-from typing import Optional
+from typing import Optional, Dict, Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from langchain.tools import tool
 
 
 class ShockIndexInput(BaseModel):
-    hr: Optional[float] = Field(description="The Heart Rate of the Patient | CODE HR")
-    sbp: Optional[float] = Field(description="The Systolic Blood Pressure of the Patient | CODE SBP")
+    hr: Optional[float] = Field(default=None, description="Heart rate in beats per minute")
+    sbp: Optional[float] = Field(default=None, description="Systolic blood pressure in mmHg")
+
+    @field_validator("hr")
+    @classmethod
+    def validate_hr(cls, v: Optional[float]) -> Optional[float]:
+        if v is not None and v < 0:
+            raise ValueError("hr must be >= 0")
+        return v
+
+    @field_validator("sbp")
+    @classmethod
+    def validate_sbp(cls, v: Optional[float]) -> Optional[float]:
+        if v is not None and v <= 0:
+            raise ValueError("sbp must be > 0")
+        return v
+
 
 @tool("compute_shock_index", args_schema=ShockIndexInput)
 def compute_shock_index(
-    hr: float,
-    sbp: float
-) -> dict:
-
+    hr: Optional[float],
+    sbp: Optional[float]
+) -> Dict[str, Any]:
     """
-    Compute the Shock Index using the Heart Rate and Systolic Blood Pressure (HR, SBP) -> SI = HR / SBP
-    Use this to tool to compute the Shock Index. You should use this Tool at the Start of the Execution of the Agent.
-    ALWAYS USE THIS TOOL ATLEAST ONCE IN EXECUTION AND TAKE IN THE CONTEXT BEFORE MAKING THE FINAL DECISION.
-    This Returns the Banding, If it is Hard ( Dangerous), Soft ( Caution) or Normal.
+    Compute shock index (SI = HR / SBP) and return a compact structured result.
 
-    If Band is Hard you should possible consider result Uptriage however look at Other vitals and context such as medications and chief complaint before making the final decision.
-    If Band is Normal you can consider not Uptriaging
-    If Band is Soft then there is a chance of Uptriage but look at Other Vitals heavily for other signs and then Uptriage
+    Intended use:
+    - supports reassessment or uptriage concern
+    - does not determine final clinical disposition alone
 
-    Eg: 
-    Input: HR = 100, SBP = 120
-    Output: {"ok": True, "si": 0.833, "band": "soft"}
-
-    Input: HR = 100, SBP = 80
-    Output: {"ok": True, "si": 1.25, "band": "hard"}
-
+    Banding:
+    - normal: SI < 0.9
+    - soft:   0.9 <= SI < 1.0
+    - hard:   SI >= 1.0
     """
+
+    missing = []
+    if hr is None:
+        missing.append("HR")
+    if sbp is None:
+        missing.append("SBP")
+
+    if missing:
+        return {
+            "ok": False,
+            "missing_vitals": missing,
+            "si": None,
+            "band": None,
+            "summary": f"Shock index could not be computed; missing: {', '.join(missing)}."
+        }
 
     si = hr / sbp
 
-    # Conservative banding you can tune:
-    # soft >=0.9, hard >=1.0
     if si >= 1.0:
-        band = "hard -> Consider Uptriage However you should still look at Other Vitals and medications for contradictions before making a final contextual decision"
+        band = "hard"
+        interpretation = "Supports concern for hemodynamic instability."
     elif si >= 0.9:
-        band = "soft -> There is a chance of Uptriage but look at Other Vitals heavily for other signs and then Uptriage"
+        band = "soft"
+        interpretation = "Borderline elevation; interpret with other findings."
     else:
-        band = "normal -> Consider Not Uptriaging per these Vitals however look at other vitals and context before making the final decision"
+        band = "normal"
+        interpretation = "No shock-index elevation detected."
 
-
-    return {"ok": True, "si": round(si, 3), "band": band}
+    return {
+        "ok": True,
+        "si": round(si, 3),
+        "band": band,
+        "thresholds": {
+            "soft_ge": 0.9,
+            "hard_ge": 1.0
+        },
+        "interpretation": interpretation,
+        "summary": f"Shock index {round(si, 3)} in {band} band."
+    }

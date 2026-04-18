@@ -11,6 +11,7 @@ from app.schemas.agent_tests import (
     AgentTestCaseCreateRequest,
     AgentTestCaseRead,
     AgentTestCaseUpdateRequest,
+    AgentTestRunBatchMetricsRead,
     AgentTestRunDetailRead,
     AgentTestRunRead,
     AgentTestRunStartRequest,
@@ -79,6 +80,11 @@ def list_test_runs(
 @router.get("/runs/{run_id}", response_model=AgentTestRunDetailRead)
 def get_test_run(run_id: str, db: Session = Depends(get_db)):
     return agent_tests_service.get_run(run_id, db)
+
+
+@router.get("/runs/{run_id}/metrics", response_model=AgentTestRunBatchMetricsRead)
+def get_test_run_metrics(run_id: str, db: Session = Depends(get_db)):
+    return agent_tests_service.get_run_metrics(run_id, db)
 
 
 @router.get("/runs/{run_id}/stream")

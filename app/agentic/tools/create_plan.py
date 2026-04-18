@@ -2,34 +2,45 @@ from __future__ import annotations
 
 from langchain.tools import tool
 from pydantic import BaseModel, Field
-from typing import List, Optional
+from typing import Any, List, Optional
+
+class Step(BaseModel):
+    step_id: str = Field(
+        ...,
+        description="Stable step identifier such as S1, S2, S3."
+    )
+    description: str = Field(
+        ...,
+        description="Short description of the step."
+    )
+
 
 class CreatePlanInput(BaseModel):
     objective: str = Field(
         ...,
         description="The main task the agent is trying to complete."
     )
-    steps: List[str] = Field(
+    steps: List[Step] = Field(
         ...,
-        description="A short ordered list of lightweight execution steps."
+        description="Ordered plan steps."
     )
     notes: Optional[str] = Field(
         default=None,
-        description="Optional brief note for the plan. Keep short."
+        description="Optional brief note for the plan."
     )
 
 
 @tool("create_plan", args_schema=CreatePlanInput)
 def create_plan(
     objective: str,
-    steps: List[str],
+    steps: List[Step],
     notes: Optional[str] = None,
-) -> dict:
+) -> dict[str, Any]:
     """
     Create a lightweight structured plan for the current case.
     """
     return {
         "objective": objective,
-        "steps": steps,
+        "steps": [step.model_dump() for step in steps],
         "notes": notes,
     }

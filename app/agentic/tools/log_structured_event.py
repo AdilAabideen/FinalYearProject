@@ -10,6 +10,7 @@ class LogStructuredEventInput(BaseModel):
         "missing_info_detected",
         "replan_required",
         "final_output_ready",
+        "resource_needed"
     ] = Field(
         ...,
         description="The type of meaningful event being logged."
@@ -22,7 +23,7 @@ class LogStructuredEventInput(BaseModel):
         ...,
         description="A short one-sentence summary of what happened."
     )
-    tag: Literal["info", "warning", "important"] = Field(
+    tag: Literal["info", "warning", "important", "completed"] = Field(
         default="info",
         description="A very lightweight general tag for the event."
     )

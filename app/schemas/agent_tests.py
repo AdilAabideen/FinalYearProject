@@ -83,3 +83,53 @@ class AgentTestCaseRunRead(BaseModel):
 class AgentTestRunDetailRead(BaseModel):
     run: AgentTestRunRead
     case_runs: list[AgentTestCaseRunRead]
+
+
+class AgentTestCaseRunMetricRead(BaseModel):
+    test_case_id: str
+    test_case_name: Optional[str] = None
+    agent_run_id: Optional[str] = None
+    status: AgentTestCaseRunStatus
+    failure_reason: Optional[str] = None
+    llm_call_count: Optional[int] = None
+    tool_call_count: Optional[int] = None
+    tool_error_count: Optional[int] = None
+    input_tokens_total: Optional[int] = None
+    output_tokens_total: Optional[int] = None
+    tokens_total: Optional[int] = None
+    duration_ms: Optional[int] = None
+    latency_ms: Optional[int] = None
+    cost_usd_total: Optional[float] = None
+
+
+class AgentTestRunMetricsSummaryRead(BaseModel):
+    total_runs: int
+    runs_with_agent_run: int
+    successful_runs: int
+    failed_runs: int
+    success_rate: float
+    missing_metrics_count: int
+    llm_call_count_total: int
+    tool_call_count_total: int
+    tool_error_count_total: int
+    input_tokens_total: int
+    output_tokens_total: int
+    tokens_total: int
+    duration_ms_total: int
+    cost_usd_total: Optional[float] = None
+    llm_call_count_avg: Optional[float] = None
+    tool_call_count_avg: Optional[float] = None
+    tool_error_count_avg: Optional[float] = None
+    input_tokens_avg: Optional[float] = None
+    output_tokens_avg: Optional[float] = None
+    tokens_avg: Optional[float] = None
+    duration_ms_avg: Optional[float] = None
+    cost_usd_avg: Optional[float] = None
+    cost_usd_avg_successful: Optional[float] = None
+    failure_reason_counts: dict[str, int] = Field(default_factory=dict)
+
+
+class AgentTestRunBatchMetricsRead(BaseModel):
+    run: AgentTestRunRead
+    summary: AgentTestRunMetricsSummaryRead
+    cases: list[AgentTestCaseRunMetricRead]

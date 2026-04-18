@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import DateTime, Float, ForeignKey, Index, Integer, String, Text, UniqueConstraint
+from sqlalchemy import JSON, Boolean, DateTime, Float, ForeignKey, Index, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import Base
@@ -25,6 +25,8 @@ class AgentLLMCall(Base):
     model_name: Mapped[Optional[str]] = mapped_column(String, nullable=True, index=True)
     call_kind: Mapped[str] = mapped_column(String, nullable=False, index=True)
 
+    iteration: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+
     started_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
     ended_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
     latency_ms: Mapped[int] = mapped_column(Integer, nullable=False)
@@ -34,6 +36,11 @@ class AgentLLMCall(Base):
     tokens_total: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     usage_source: Mapped[str] = mapped_column(String, nullable=False, default="estimated")
     cost_usd: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+
+    had_tool_calls: Mapped[Optional[bool]] = mapped_column(Boolean, nullable=True)
+    tool_call_count: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    tool_names_json: Mapped[Optional[list[str]]] = mapped_column(JSON, nullable=True)
+
     error_text: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
     __table_args__ = (

@@ -39,7 +39,23 @@ flowchart LR
 - `POST /api/tests/runs/start` (creates run + case-run rows)
 - `GET /api/tests/runs?agent_name=vitals_agent`
 - `GET /api/tests/runs/{run_id}` (run + case-run results)
+- `GET /api/tests/runs/{run_id}/metrics` (batch metrics across all case runs in the test run)
 - `GET /api/tests/runs/{run_id}/stream` (SSE execution; emits `run_start`, `case_start`, `case_done`, `run_done`)
+
+**Per-case verdict contract**
+- `case_done.diff_json.passed` is always set by backend evaluator logic (`true` or `false`).
+- This mirrors top-level `case_done.passed` and `case_runs[].passed`, so frontend does not need to re-evaluate outputs.
+
+**Batch metrics payload (`/runs/{run_id}/metrics`)**
+- Aggregates the same core fields used by `/api/agent-runs/{agent_run_id}/metrics` across all `agent_run_id`s in the test run.
+- `summary` includes totals and averages for:
+  - `llm_call_count`, `tool_call_count`, `tool_error_count`
+  - `input_tokens_total`, `output_tokens_total`, `tokens_total`
+  - `duration_ms`, `cost_usd_total`
+  - `failure_reason_counts` and run-level counts (`total_runs`, `runs_with_agent_run`, `successful_runs`, `failed_runs`, `missing_metrics_count`)
+- `cases` is pruned per-case usage data:
+  - `test_case_id`, `test_case_name`, `agent_run_id`, `status`, `failure_reason`
+  - call counts, token totals, `duration_ms` (with `latency_ms` alias), and `cost_usd_total`
 
 ### Traces (existing)
 - `GET /api/agent-runs/{agent_run_id}/events/stream`

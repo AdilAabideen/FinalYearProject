@@ -17,17 +17,20 @@ from app.models.agent_test_case import AgentTestCase
 from app.models.agent_test_case_run import AgentTestCaseRun
 from app.models.agent_test_run import AgentTestRun
 from app.schemas.agent_tests import (
+    AgentTestCaseRunMetricRead,
     AgentTestCaseCreateRequest,
     AgentTestCaseRead,
     AgentTestCaseRunRead,
     AgentTestCaseUpdateRequest,
+    AgentTestRunBatchMetricsRead,
     AgentTestRunDetailRead,
+    AgentTestRunMetricsSummaryRead,
     AgentTestRunRead,
     AgentTestRunStartRequest,
 )
 
 from app.api.services.agent_runs_service import execute_agent_run_and_persist
-from app.api.repository import agent_tests_repository
+from app.api.repository import agent_metrics_repository, agent_tests_repository
 
 
 def _get_spec_or_400(agent_name: str):
@@ -75,6 +78,35 @@ def _evaluate_expected_subset(
     passed = len(diffs) == 0
     score = 1.0 if passed else 0.0
     return passed, score, {"diffs": diffs}
+
+
+def _build_case_diff_payload(
+    *,
+    expected_answer: dict[str, Any],
+    agent_answer: Optional[dict[str, Any]],
+    agent_status: str,
+    passed: bool,
+    evaluator_diff: Optional[dict[str, Any]],
+    agent_error_text: Optional[str],
+) -> dict[str, Any]:
+    """
+    Build a frontend-friendly diff payload for `case_done`.
+
+    Keeps evaluator-provided diff keys at top level for backward compatibility,
+    while always exposing both expected and actual outputs for rendering.
+    """
+    payload: dict[str, Any] = {
+        "expected_answer": expected_answer,
+        "agent_answer": agent_answer,
+        "agent_status": agent_status,
+    }
+    if agent_error_text:
+        payload["agent_error_text"] = agent_error_text
+    if isinstance(evaluator_diff, dict):
+        payload.update(evaluator_diff)
+    # Backend verdict is authoritative for frontend rendering.
+    payload["passed"] = passed
+    return payload
 
 
 def list_cases(
@@ -275,6 +307,155 @@ def get_run(run_id: str, db: Session) -> AgentTestRunDetailRead:
     )
 
 
+def _avg_or_none(total: float, count: int, ndigits: int = 4) -> Optional[float]:
+    if count <= 0:
+        return None
+    return round(total / count, ndigits)
+
+
+def get_run_metrics(run_id: str, db: Session) -> AgentTestRunBatchMetricsRead:
+    run = agent_tests_repository.get_test_run(db, run_id)
+    if run is None:
+        raise HTTPException(status_code=404, detail="Test run not found")
+
+    case_runs = agent_tests_repository.get_case_runs_for_test_run(db, run_id)
+    by_case_id = {cr.test_case_id: cr for cr in case_runs}
+    ordered = [by_case_id[cid] for cid in run.selected_case_ids_json if cid in by_case_id]
+    if len(ordered) < len(case_runs):
+        selected_ids = set(run.selected_case_ids_json)
+        ordered.extend([cr for cr in case_runs if cr.test_case_id not in selected_ids])
+
+    case_ids = [cr.test_case_id for cr in ordered]
+    case_rows = agent_tests_repository.get_test_cases_by_ids(db, case_ids) if case_ids else []
+    case_name_by_id = {c.id: c.name for c in case_rows}
+
+    run_ids = [cr.agent_run_id for cr in ordered if cr.agent_run_id]
+    metrics_rows = agent_metrics_repository.list_run_metrics_by_run_ids(db, run_ids) if run_ids else []
+    metrics_by_run_id = {m.run_id: m for m in metrics_rows}
+
+    successful_runs = 0
+    failed_runs = 0
+    missing_metrics_count = 0
+    llm_call_count_total = 0
+    tool_call_count_total = 0
+    tool_error_count_total = 0
+    input_tokens_total = 0
+    output_tokens_total = 0
+    tokens_total = 0
+    duration_ms_total = 0
+    cost_usd_total_value = 0.0
+    cost_rows_count = 0
+    successful_cost_total = 0.0
+    successful_cost_count = 0
+    avg_denominator = 0
+    failure_reason_counts: dict[str, int] = {}
+    case_metrics: list[AgentTestCaseRunMetricRead] = []
+
+    for cr in ordered:
+        metrics_row = metrics_by_run_id.get(cr.agent_run_id) if cr.agent_run_id else None
+        if metrics_row is not None:
+            avg_denominator += 1
+            if metrics_row.status == "succeeded":
+                successful_runs += 1
+            elif metrics_row.status in {"failed", "canceled"}:
+                failed_runs += 1
+
+            llm_call_count_total += int(metrics_row.llm_call_count or 0)
+            tool_call_count_total += int(metrics_row.tool_call_count or 0)
+            tool_error_count_total += int(metrics_row.tool_error_count or 0)
+            input_tokens_total += int(metrics_row.input_tokens_total or 0)
+            output_tokens_total += int(metrics_row.output_tokens_total or 0)
+            tokens_total += int(metrics_row.tokens_total or 0)
+            duration_ms_total += int(metrics_row.duration_ms or 0)
+
+            if metrics_row.failure_reason:
+                failure_reason_counts[metrics_row.failure_reason] = (
+                    failure_reason_counts.get(metrics_row.failure_reason, 0) + 1
+                )
+
+            if metrics_row.cost_usd_total is not None:
+                cost_usd_total_value += float(metrics_row.cost_usd_total)
+                cost_rows_count += 1
+                if metrics_row.status == "succeeded":
+                    successful_cost_total += float(metrics_row.cost_usd_total)
+                    successful_cost_count += 1
+        else:
+            if cr.agent_run_id:
+                missing_metrics_count += 1
+
+        row_status = cr.status
+        if metrics_row is not None and metrics_row.status in {"created", "running", "succeeded", "failed"}:
+            row_status = metrics_row.status
+
+        case_metrics.append(
+            AgentTestCaseRunMetricRead(
+                test_case_id=cr.test_case_id,
+                test_case_name=case_name_by_id.get(cr.test_case_id),
+                agent_run_id=cr.agent_run_id,
+                status=row_status,
+                failure_reason=(
+                    metrics_row.failure_reason
+                    if metrics_row is not None
+                    else ("metrics_missing" if cr.agent_run_id else None)
+                ),
+                llm_call_count=(int(metrics_row.llm_call_count) if metrics_row is not None else None),
+                tool_call_count=(int(metrics_row.tool_call_count) if metrics_row is not None else None),
+                tool_error_count=(int(metrics_row.tool_error_count) if metrics_row is not None else None),
+                input_tokens_total=(
+                    int(metrics_row.input_tokens_total) if metrics_row is not None else None
+                ),
+                output_tokens_total=(
+                    int(metrics_row.output_tokens_total) if metrics_row is not None else None
+                ),
+                tokens_total=(int(metrics_row.tokens_total) if metrics_row is not None else None),
+                duration_ms=(int(metrics_row.duration_ms) if metrics_row is not None else None),
+                latency_ms=(int(metrics_row.duration_ms) if metrics_row is not None else None),
+                cost_usd_total=(
+                    float(metrics_row.cost_usd_total)
+                    if (metrics_row is not None and metrics_row.cost_usd_total is not None)
+                    else None
+                ),
+            )
+        )
+
+    total_runs = len(ordered)
+    runs_with_agent_run = len(run_ids)
+    success_rate = round((successful_runs / runs_with_agent_run), 4) if runs_with_agent_run else 0.0
+
+    summary = AgentTestRunMetricsSummaryRead(
+        total_runs=total_runs,
+        runs_with_agent_run=runs_with_agent_run,
+        successful_runs=successful_runs,
+        failed_runs=failed_runs,
+        success_rate=success_rate,
+        missing_metrics_count=missing_metrics_count,
+        llm_call_count_total=llm_call_count_total,
+        tool_call_count_total=tool_call_count_total,
+        tool_error_count_total=tool_error_count_total,
+        input_tokens_total=input_tokens_total,
+        output_tokens_total=output_tokens_total,
+        tokens_total=tokens_total,
+        duration_ms_total=duration_ms_total,
+        cost_usd_total=(round(cost_usd_total_value, 6) if cost_rows_count > 0 else None),
+        llm_call_count_avg=_avg_or_none(llm_call_count_total, avg_denominator),
+        tool_call_count_avg=_avg_or_none(tool_call_count_total, avg_denominator),
+        tool_error_count_avg=_avg_or_none(tool_error_count_total, avg_denominator),
+        input_tokens_avg=_avg_or_none(input_tokens_total, avg_denominator),
+        output_tokens_avg=_avg_or_none(output_tokens_total, avg_denominator),
+        tokens_avg=_avg_or_none(tokens_total, avg_denominator),
+        duration_ms_avg=_avg_or_none(duration_ms_total, avg_denominator),
+        cost_usd_avg=_avg_or_none(cost_usd_total_value, cost_rows_count, ndigits=6),
+        cost_usd_avg_successful=_avg_or_none(successful_cost_total, successful_cost_count, ndigits=6),
+        failure_reason_counts=failure_reason_counts,
+    )
+
+    return AgentTestRunBatchMetricsRead(
+        run=AgentTestRunRead.model_validate(run.__dict__),
+        summary=summary,
+        cases=case_metrics,
+    )
+
+
 def stream_run(run_id: str, db: Session) -> StreamingResponse:
     run = agent_tests_repository.get_test_run(db, run_id)
     if run is None:
@@ -343,6 +524,7 @@ def stream_run(run_id: str, db: Session) -> StreamingResponse:
         )
 
         passed_count = 0
+        warning_count = 0
         exec_failed_count = 0
         invalid_pred_count = 0
         eval_results = []
@@ -436,6 +618,8 @@ def stream_run(run_id: str, db: Session) -> StreamingResponse:
                     exec_failed_count += 1
                 if eval_metrics.get("invalid_pred") is True:
                     invalid_pred_count += 1
+                if eval_metrics.get("warning") is True:
+                    warning_count += 1
             else:
                 passed, score, diff_json = _evaluate_expected_subset(
                     test_case.expected_json, output_json
@@ -451,7 +635,15 @@ def stream_run(run_id: str, db: Session) -> StreamingResponse:
             case_run.status = "failed" if (agent_status == "failed" or not passed) else "succeeded"
             case_run.passed = passed
             case_run.score = score
-            case_run.diff_json = diff_json
+            diff_payload = _build_case_diff_payload(
+                expected_answer=test_case.expected_json,
+                agent_answer=output_json,
+                agent_status=agent_status,
+                passed=passed,
+                evaluator_diff=diff_json,
+                agent_error_text=error_text,
+            )
+            case_run.diff_json = diff_payload
             case_run.error_text = error_text
             case_run.metrics_json = {
                 "latency_ms": int((end_ts - start_ts).total_seconds() * 1000),
@@ -474,13 +666,14 @@ def stream_run(run_id: str, db: Session) -> StreamingResponse:
                     "agent_status": agent_status,
                     "passed": passed,
                     "score": score,
-                    "diff_json": diff_json,
+                    "diff_json": diff_payload,
                 },
                 event_id=event_id,
             )
 
         total = len(run.selected_case_ids_json)
         pass_rate = (passed_count / total) if total else 0.0
+        warning_rate = (warning_count / total) if total else 0.0
         now = datetime.utcnow()
 
         run.status = "succeeded" if (exec_failed_count == 0 and passed_count == total) else "failed"
@@ -493,6 +686,8 @@ def stream_run(run_id: str, db: Session) -> StreamingResponse:
             "exec_failed": exec_failed_count,
             "invalid_pred": invalid_pred_count,
             "pass_rate": round(pass_rate, 4),
+            "warning_count": warning_count,
+            "warning_rate": round(warning_rate, 4),
         }
         if evaluator is not None:
             run.metrics_json["classification"] = evaluator.aggregate(eval_results)

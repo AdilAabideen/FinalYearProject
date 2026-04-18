@@ -5,9 +5,10 @@ import json
 import threading
 import time
 import uuid
+from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from queue import Queue
-from typing import Any, AsyncGenerator, Callable, Iterable, Sequence
+from typing import Any, AsyncGenerator, Callable, Iterable, Mapping, Sequence
 
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage, ToolMessage
 from langchain_core.tools import BaseTool, tool as lc_tool
@@ -18,6 +19,337 @@ try:
     import tiktoken
 except Exception:  # pragma: no cover - optional dependency at runtime
     tiktoken = None
+
+
+@dataclass
+class LLMCallMetric:
+    run_id: str
+    agent_name: str
+    call_index: int
+    iteration: int
+    call_kind: str
+    model_name: str | None
+    started_at: datetime
+    ended_at: datetime
+    latency_ms: int
+    input_tokens: int
+    output_tokens: int
+    tokens_total: int
+    usage_source: str
+    had_tool_calls: bool
+    tool_call_count: int
+    tool_names: list[str] = field(default_factory=list)
+    error_text: str | None = None
+
+
+@dataclass
+class ToolExecutionMetric:
+    run_id: str
+    agent_name: str
+    iteration: int
+    tool_call_id: str
+    tool_name: str
+    started_at: datetime
+    ended_at: datetime
+    latency_ms: int
+    status: str
+    result_char_count: int
+    result_estimated_tokens: int
+    error_text: str | None = None
+
+
+class TokenEstimator:
+    """Token estimation helper with canonical serialization for messages and outputs."""
+
+    def estimate_text_tokens(self, text: str) -> int:
+        content = text or ""
+        if not content:
+            return 0
+
+        if tiktoken is not None:
+            try:
+                enc = tiktoken.get_encoding("cl100k_base")
+                return len(enc.encode(content))
+            except Exception:
+                pass
+
+        return max(1, len(content) // 4)
+
+    def estimate_messages_tokens(self, messages: list[BaseMessage]) -> int:
+        serialized = [self.serialize_message_for_estimation(msg) for msg in messages]
+        return self.estimate_text_tokens("\n".join(serialized))
+
+    def estimate_ai_output_tokens(self, msg: AIMessage) -> int:
+        return self.estimate_text_tokens(self.serialize_ai_output_for_estimation(msg))
+
+    def estimate_tool_result_tokens(self, content: str) -> int:
+        return self.estimate_text_tokens(content)
+
+    def estimate_jsonable_output_tokens(self, value: Any) -> int:
+        return self.estimate_text_tokens(self._json_dumps(self._to_jsonable(value)))
+
+    def serialize_message_for_estimation(self, message: BaseMessage) -> str:
+        canonical = self._canonical_message(message)
+        return self._json_dumps(canonical)
+
+    def serialize_ai_output_for_estimation(self, message: AIMessage) -> str:
+        canonical = {
+            "content": self._normalize_content(getattr(message, "content", "")),
+        }
+
+        tool_calls = self._canonical_tool_calls(list(getattr(message, "tool_calls", []) or []))
+        if tool_calls:
+            canonical["tool_calls"] = tool_calls
+
+        fn = self._extract_function_call_fields(getattr(message, "additional_kwargs", {}) or {})
+        if fn:
+            canonical.update(fn)
+
+        return self._json_dumps(canonical)
+
+    @staticmethod
+    def _json_dumps(value: Any) -> str:
+        return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"), default=str)
+
+    @staticmethod
+    def _normalize_content(content: Any) -> Any:
+        if isinstance(content, str):
+            return content
+
+        if isinstance(content, list):
+            normalized_parts: list[dict[str, Any]] = []
+            for item in content:
+                if isinstance(item, str):
+                    normalized_parts.append({"type": "text", "text": item})
+                    continue
+
+                if not isinstance(item, Mapping):
+                    continue
+
+                part_type = str(item.get("type") or "")
+                if part_type == "text":
+                    normalized_parts.append({"type": "text", "text": str(item.get("text") or "")})
+                elif part_type in {"image_url", "input_image"}:
+                    url = item.get("image_url")
+                    if isinstance(url, Mapping):
+                        url = url.get("url")
+                    normalized_parts.append({"type": part_type, "url": str(url or "")})
+                elif part_type:
+                    normalized_parts.append({"type": part_type})
+
+            return normalized_parts
+
+        return str(content)
+
+    def _canonical_message(self, message: BaseMessage) -> dict[str, Any]:
+        role = self._message_role(message)
+        payload: dict[str, Any] = {
+            "role": role,
+            "content": self._normalize_content(getattr(message, "content", "")),
+        }
+
+        if isinstance(message, AIMessage): # Role is AI Message
+            tool_calls = self._canonical_tool_calls(list(getattr(message, "tool_calls", []) or []))
+            if tool_calls:
+                payload["tool_calls"] = tool_calls
+
+            fn = self._extract_function_call_fields(getattr(message, "additional_kwargs", {}) or {})
+            if fn:
+                payload.update(fn)
+
+        if isinstance(message, ToolMessage):
+            payload.update(
+                {
+                    "name": getattr(message, "name", None),
+                    "status": getattr(message, "status", None),
+                    "tool_call_id": getattr(message, "tool_call_id", None),
+                }
+            )
+
+        return payload
+
+    @staticmethod
+    def _message_role(message: BaseMessage) -> str:
+        if isinstance(message, SystemMessage):
+            return "system"
+        if isinstance(message, HumanMessage):
+            return "user"
+        if isinstance(message, ToolMessage):
+            return "tool"
+        if isinstance(message, AIMessage):
+            return "assistant"
+        return type(message).__name__.lower()
+
+    @staticmethod
+    def _canonical_tool_calls(raw_calls: list[Any]) -> list[dict[str, Any]]:
+        canonical: list[dict[str, Any]] = []
+        for item in raw_calls:
+            if not isinstance(item, Mapping):
+                continue
+
+            name = item.get("name")
+            args = item.get("args", item.get("arguments", {}))
+            call_id = item.get("id") or item.get("tool_call_id")
+
+            if not name and isinstance(item.get("function"), Mapping):
+                fn = item["function"]
+                name = fn.get("name")
+                args = fn.get("arguments", args)
+
+            if isinstance(args, str):
+                try:
+                    args = json.loads(args)
+                except Exception:
+                    args = {"raw_arguments": args}
+
+            if not isinstance(args, Mapping):
+                args = {"value": args}
+
+            if name:
+                canonical.append(
+                    {
+                        "id": str(call_id) if call_id is not None else None,
+                        "name": str(name),
+                        "args": dict(args),
+                    }
+                )
+
+        return canonical
+
+    def _extract_function_call_fields(self, additional_kwargs: Mapping[str, Any]) -> dict[str, Any]:
+        fields: dict[str, Any] = {}
+
+        function_call = additional_kwargs.get("function_call")
+        if isinstance(function_call, Mapping):
+            fields["function_call"] = {
+                "name": function_call.get("name"),
+                "arguments": function_call.get("arguments"),
+            }
+
+        tool_calls = additional_kwargs.get("tool_calls")
+        if isinstance(tool_calls, list):
+            canonical = self._canonical_tool_calls(tool_calls)
+            if canonical:
+                fields["provider_tool_calls"] = canonical
+
+        return fields
+
+    @staticmethod
+    def _to_jsonable(value: Any) -> Any:
+        if isinstance(value, BaseModel):
+            return value.model_dump()
+        if hasattr(value, "model_dump") and callable(value.model_dump):
+            try:
+                return value.model_dump()
+            except Exception:
+                pass
+        if isinstance(value, Mapping):
+            return dict(value)
+        if isinstance(value, (list, tuple)):
+            return list(value)
+        if isinstance(value, (str, int, float, bool)) or value is None:
+            return value
+        return str(value)
+
+
+class EventEmitter:
+    """Emit run events in the existing persistence shape with monotonic sequence IDs."""
+
+    def __init__(self) -> None:
+        self._handlers: list[Callable[[dict[str, Any]], None]] = []
+        self._run_id: str | None = None
+        self._agent_name: str | None = None
+        self._seq: int = 0
+
+    def set_context(self, *, run_id: str, agent_name: str, start_seq: int = 0) -> None:
+        self._run_id = str(run_id)
+        self._agent_name = str(agent_name)
+        self._seq = int(start_seq)
+
+    def set_handlers(self, handlers: Sequence[Callable[[dict[str, Any]], None]] | None) -> None:
+        self._handlers = list(handlers or [])
+
+    def add_handler(self, handler: Callable[[dict[str, Any]], None]) -> None:
+        self._handlers.append(handler)
+
+    def emit(
+        self,
+        *,
+        event_type: str,
+        node_name: str | None = None,
+        tool_name: str | None = None,
+        tool_call_id: str | None = None,
+        status: str | None = None,
+        payload_json: dict[str, Any] | None = None,
+        payload_text: str | None = None,
+    ) -> None:
+        if not self._handlers or self._run_id is None or self._agent_name is None:
+            return
+
+        self._seq += 1
+        payload = {
+            "run_id": self._run_id,
+            "agent_name": self._agent_name,
+            "seq": self._seq,
+            "event_type": event_type,
+            "node_name": node_name,
+            "tool_name": tool_name,
+            "tool_call_id": tool_call_id,
+            "status": status,
+            "payload_json": payload_json,
+            "payload_text": payload_text,
+        }
+        for handler in self._handlers:
+            handler(payload)
+
+
+class TelemetryEmitter:
+    """Emit structured LLM and tool metrics through adapter handlers."""
+
+    def __init__(self) -> None:
+        self._llm_handlers: list[Callable[[dict[str, Any]], None]] = []
+        self._tool_handlers: list[Callable[[dict[str, Any]], None]] = []
+        self._run_id: str | None = None
+        self._agent_name: str | None = None
+        self._call_index: int = 0
+
+    def set_context(self, *, run_id: str, agent_name: str) -> None:
+        self._run_id = str(run_id)
+        self._agent_name = str(agent_name)
+        self._call_index = 0
+
+    def set_llm_handlers(self, handlers: Sequence[Callable[[dict[str, Any]], None]] | None) -> None:
+        self._llm_handlers = list(handlers or [])
+
+    def add_llm_handler(self, handler: Callable[[dict[str, Any]], None]) -> None:
+        self._llm_handlers.append(handler)
+
+    def set_tool_handlers(self, handlers: Sequence[Callable[[dict[str, Any]], None]] | None) -> None:
+        self._tool_handlers = list(handlers or [])
+
+    def add_tool_handler(self, handler: Callable[[dict[str, Any]], None]) -> None:
+        self._tool_handlers.append(handler)
+
+    def next_call_index(self) -> int:
+        self._call_index += 1
+        return self._call_index
+
+    def current_context(self) -> tuple[str | None, str | None]:
+        return self._run_id, self._agent_name
+
+    def emit_llm(self, metric: LLMCallMetric) -> None:
+        if not self._llm_handlers:
+            return
+        payload = asdict(metric)
+        for handler in self._llm_handlers:
+            handler(payload)
+
+    def emit_tool(self, metric: ToolExecutionMetric) -> None:
+        if not self._tool_handlers:
+            return
+        payload = asdict(metric)
+        for handler in self._tool_handlers:
+            handler(payload)
 
 
 class SSEHandrolledAgent:
@@ -42,6 +374,8 @@ class SSEHandrolledAgent:
         run_timeout_s: float | None = None,
         event_handlers: Sequence[Callable[[dict[str, Any]], None]] | None = None,
         llm_call_handlers: Sequence[Callable[[dict[str, Any]], None]] | None = None,
+        tool_call_handlers: Sequence[Callable[[dict[str, Any]], None]] | None = None,
+        max_tool_calls: int = 2,
     ) -> None:
         self.model = self._build_model(model=model, llm_kwargs=llm_kwargs)
         self.tools: list[BaseTool] = self._coerce_tools(tools or [])
@@ -52,7 +386,6 @@ class SSEHandrolledAgent:
         self.response_format = response_format
         self.final_answer_tool_name = final_answer_tool_name
 
-        # Ensure final_answer is available as an actual tool when structured output is requested.
         if self.final_answer_tool_name and self.response_format is not None:
             existing = {t.name for t in self.tools}
             if self.final_answer_tool_name not in existing:
@@ -62,12 +395,18 @@ class SSEHandrolledAgent:
         self.agent_node_name = agent_node_name
         self.tools_node_name = tools_node_name
         self.run_timeout_s = None if run_timeout_s is None else float(run_timeout_s)
-        self._event_handlers: list[Callable[[dict[str, Any]], None]] = list(event_handlers or [])
-        self._llm_call_handlers: list[Callable[[dict[str, Any]], None]] = list(llm_call_handlers or [])
-        self._event_run_id: str | None = None
-        self._event_agent_name: str | None = None
-        self._event_seq: int = 0
-        self._llm_call_index: int = 0
+        if not isinstance(max_tool_calls, int):
+            raise TypeError("max_tool_calls must be an integer.")
+        if max_tool_calls < 1:
+            raise ValueError("max_tool_calls must be >= 1.")
+        self.max_tool_calls = max_tool_calls
+        self._token_estimator = TokenEstimator()
+        self._events = EventEmitter()
+        self._telemetry = TelemetryEmitter()
+
+        self.set_event_handlers(event_handlers)
+        self.set_llm_call_handlers(llm_call_handlers)
+        self.set_tool_call_handlers(tool_call_handlers)
 
         if self.tools:
             self.bound_model = self.model.bind_tools(self.tools, tool_choice="any")
@@ -86,13 +425,13 @@ class SSEHandrolledAgent:
     @staticmethod
     def _coerce_tools(raw_tools: Sequence[Any]) -> list[BaseTool]:
         normalized: list[BaseTool] = []
-        for t in raw_tools:
-            if isinstance(t, BaseTool):
-                normalized.append(t)
-            elif callable(t):
-                normalized.append(lc_tool(t))
+        for item in raw_tools:
+            if isinstance(item, BaseTool):
+                normalized.append(item)
+            elif callable(item):
+                normalized.append(lc_tool(item))
             else:
-                raise TypeError(f"Unsupported tool type: {type(t)!r}")
+                raise TypeError(f"Unsupported tool type: {type(item)!r}")
         return normalized
 
     @staticmethod
@@ -145,16 +484,19 @@ class SSEHandrolledAgent:
     def _payload_to_human_content(payload: Any) -> str:
         if isinstance(payload, str):
             return payload
-        if isinstance(payload, dict) and isinstance(payload.get("input"), str):
-            return payload["input"]
-        if isinstance(payload, dict) and isinstance(payload.get("messages"), list):
+
+        if isinstance(payload, Mapping) and isinstance(payload.get("input"), str):
+            return str(payload["input"])
+
+        if isinstance(payload, Mapping) and isinstance(payload.get("messages"), list):
             for item in reversed(payload["messages"]):
                 if isinstance(item, tuple) and len(item) == 2 and str(item[0]).lower() == "user":
                     return str(item[1])
-                if isinstance(item, dict) and str(item.get("role", "")).lower() == "user":
+                if isinstance(item, Mapping) and str(item.get("role", "")).lower() == "user":
                     return str(item.get("content", ""))
                 if isinstance(item, HumanMessage):
                     return str(item.content or "")
+
         return json.dumps(payload, default=str, ensure_ascii=False)
 
     @staticmethod
@@ -162,6 +504,7 @@ class SSEHandrolledAgent:
         raw = (text or "").strip()
         if not raw:
             return None, raw
+
         try:
             return json.loads(raw), raw
         except Exception:
@@ -172,7 +515,22 @@ class SSEHandrolledAgent:
         if isinstance(value, BaseModel):
             return value.model_dump_json()
         if isinstance(value, (dict, list, tuple, int, float, bool)) or value is None:
-            return json.dumps(value, ensure_ascii=False)
+            return json.dumps(value, ensure_ascii=False, default=SSEHandrolledAgent._json_default)
+        return str(value)
+
+    @staticmethod
+    def _json_default(value: Any) -> Any:
+        if isinstance(value, BaseModel):
+            return value.model_dump()
+        if hasattr(value, "model_dump") and callable(value.model_dump):
+            try:
+                return value.model_dump()
+            except Exception:
+                pass
+        if isinstance(value, Mapping):
+            return dict(value)
+        if isinstance(value, (list, tuple)):
+            return list(value)
         return str(value)
 
     @staticmethod
@@ -204,14 +562,17 @@ class SSEHandrolledAgent:
         self,
         messages: list[BaseMessage],
         *,
+        iteration: int,
         timeout_s: float | None = None,
     ) -> Any | None:
         if self.response_format is None:
             return None
+
         try:
             structured_model = self.model.with_structured_output(self.response_format)
             response = await self._ainvoke_with_telemetry(
                 call_kind="structured_output",
+                iteration=iteration,
                 messages=messages,
                 invoke_fn=lambda: structured_model.ainvoke(messages),
                 timeout_s=timeout_s,
@@ -232,9 +593,11 @@ class SSEHandrolledAgent:
                 idx += 1
             if idx >= n:
                 break
+
             if text[idx] not in "[{":
                 idx += 1
                 continue
+
             try:
                 obj, end = decoder.raw_decode(text, idx)
                 yield obj
@@ -243,14 +606,15 @@ class SSEHandrolledAgent:
                 idx += 1
 
     @classmethod
-    def _normalize_tool_call(cls, obj: dict[str, Any]) -> dict[str, Any] | None:
+    def _normalize_tool_call(cls, obj: Mapping[str, Any]) -> dict[str, Any] | None:
         name = obj.get("name") or obj.get("tool_name")
         args = obj.get("args", obj.get("arguments", {}))
         call_id = obj.get("id") or obj.get("tool_call_id") or f"call_{uuid.uuid4().hex[:24]}"
 
-        if not name and isinstance(obj.get("function"), dict):
-            name = obj["function"].get("name")
-            args = obj["function"].get("arguments", args)
+        function = obj.get("function")
+        if not name and isinstance(function, Mapping):
+            name = function.get("name")
+            args = function.get("arguments", args)
 
         if not name:
             return None
@@ -261,75 +625,183 @@ class SSEHandrolledAgent:
             except Exception:
                 args = {}
 
-        if not isinstance(args, dict):
+        if not isinstance(args, Mapping):
             args = {}
 
-        return {"id": call_id, "name": name, "args": args}
+        return {
+            "id": str(call_id),
+            "name": str(name),
+            "args": dict(args),
+        }
 
     @classmethod
     def _recover_tool_calls_from_content(cls, content: str) -> list[dict[str, Any]]:
         recovered: list[dict[str, Any]] = []
 
         for obj in cls._iter_json_objects(content):
-            if isinstance(obj, dict):
+            if isinstance(obj, Mapping):
                 tool_calls = obj.get("tool_calls")
                 if isinstance(tool_calls, list):
-                    for tc in tool_calls:
-                        if isinstance(tc, dict):
-                            norm = cls._normalize_tool_call(tc)
-                            if norm:
-                                recovered.append(norm)
+                    for item in tool_calls:
+                        if isinstance(item, Mapping):
+                            normalized = cls._normalize_tool_call(item)
+                            if normalized:
+                                recovered.append(normalized)
                 else:
-                    norm = cls._normalize_tool_call(obj)
-                    if norm:
-                        recovered.append(norm)
+                    normalized = cls._normalize_tool_call(obj)
+                    if normalized:
+                        recovered.append(normalized)
+
             elif isinstance(obj, list):
                 for item in obj:
-                    if isinstance(item, dict):
-                        norm = cls._normalize_tool_call(item)
-                        if norm:
-                            recovered.append(norm)
+                    if isinstance(item, Mapping):
+                        normalized = cls._normalize_tool_call(item)
+                        if normalized:
+                            recovered.append(normalized)
 
         deduped: list[dict[str, Any]] = []
         seen: set[str] = set()
-        for tc in recovered:
-            call_id = tc["id"]
+        for item in recovered:
+            call_id = item["id"]
             if call_id in seen:
                 continue
             seen.add(call_id)
-            deduped.append(tc)
+            deduped.append(item)
+
         return deduped
 
-    async def _execute_tool_call(self, tool_call: dict[str, Any]) -> ToolMessage:
+    @classmethod
+    def _extract_provider_tool_calls(cls, msg: AIMessage) -> list[dict[str, Any]]:
+        primary = list(getattr(msg, "tool_calls", []) or [])
+        normalized_primary: list[dict[str, Any]] = []
+        for item in primary:
+            if isinstance(item, Mapping):
+                normalized = cls._normalize_tool_call(item)
+                if normalized:
+                    normalized_primary.append(normalized)
+
+        if normalized_primary:
+            return normalized_primary
+
+        additional = getattr(msg, "additional_kwargs", {}) or {}
+        additional_tool_calls = additional.get("tool_calls")
+        normalized_additional: list[dict[str, Any]] = []
+        if isinstance(additional_tool_calls, list):
+            for item in additional_tool_calls:
+                if isinstance(item, Mapping):
+                    normalized = cls._normalize_tool_call(item)
+                    if normalized:
+                        normalized_additional.append(normalized)
+        if normalized_additional:
+            return normalized_additional
+
+        function_call = additional.get("function_call")
+        if isinstance(function_call, Mapping):
+            normalized = cls._normalize_tool_call({"function": function_call, "id": None})
+            if normalized:
+                return [normalized]
+
+        recovered = cls._recover_tool_calls_from_content(str(msg.content or ""))
+        return recovered
+
+    @staticmethod
+    def _ai_message_with_tool_calls(
+        source: AIMessage,
+        tool_calls: list[dict[str, Any]],
+        *,
+        extra_additional_kwargs: Mapping[str, Any] | None = None,
+    ) -> AIMessage:
+        additional_kwargs = dict(getattr(source, "additional_kwargs", {}) or {})
+        if extra_additional_kwargs:
+            additional_kwargs.update(dict(extra_additional_kwargs))
+        return AIMessage(
+            content="",
+            tool_calls=list(tool_calls),
+            additional_kwargs=additional_kwargs,
+            response_metadata=getattr(source, "response_metadata", {}),
+            id=getattr(source, "id", None),
+            name=getattr(source, "name", None),
+        )
+
+    def _limit_tool_calls(
+        self,
+        tool_calls: list[dict[str, Any]],
+    ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+        if len(tool_calls) <= self.max_tool_calls:
+            return tool_calls, []
+        return tool_calls[: self.max_tool_calls], tool_calls[self.max_tool_calls :]
+
+    async def _execute_tool_call(self, tool_call: dict[str, Any], *, iteration: int) -> ToolMessage:
         name = tool_call.get("name")
         call_id = tool_call.get("id") or f"call_{uuid.uuid4().hex[:24]}"
         args = tool_call.get("args") or {}
 
+        run_id, agent_name = self._telemetry.current_context()
+
+        started_at = datetime.utcnow()
+        t0 = time.perf_counter()
+        status = "error"
+        error_text: str | None = None
+        content = ""
+        metric_tool_name = str(name or "tool")
+
         if name not in self.tools_by_name:
-            return ToolMessage(
-                content=f"Unknown tool: {name}",
+            content = f"Unknown tool: {name}"
+            error_text = content
+            tool_message = ToolMessage(
+                content=content,
                 tool_call_id=call_id,
                 name=name,
                 status="error",
+            )
+        else:
+            tool_obj = self.tools_by_name[name]
+            metric_tool_name = str(getattr(tool_obj, "name", name) or "tool")
+            try:
+                result = await tool_obj.ainvoke(args)
+                content = self._tool_output_to_text(result)
+                status = "success"
+                tool_message = ToolMessage(
+                    content=content,
+                    tool_call_id=call_id,
+                    name=name,
+                    artifact=result,
+                    status="success",
+                )
+            except Exception as exc:
+                error_text = str(exc)
+                content = error_text
+                tool_message = ToolMessage(
+                    content=error_text,
+                    tool_call_id=call_id,
+                    name=name,
+                    status="error",
+                )
+
+        ended_at = datetime.utcnow()
+        latency_ms = int((time.perf_counter() - t0) * 1000)
+        if status != "success":
+            status = "error"
+
+        if run_id and agent_name:
+            self._telemetry.emit_tool(
+                ToolExecutionMetric(
+                    run_id=run_id,
+                    agent_name=agent_name,
+                    iteration=iteration,
+                    tool_call_id=str(call_id),
+                    tool_name=metric_tool_name,
+                    started_at=started_at,
+                    ended_at=ended_at,
+                    latency_ms=latency_ms,
+                    status=status,
+                    result_char_count=len(content),
+                    result_estimated_tokens=self._token_estimator.estimate_tool_result_tokens(content),
+                    error_text=error_text,
+                )
             )
 
-        tool_obj = self.tools_by_name[name]
-        try:
-            result = await tool_obj.ainvoke(args)
-            return ToolMessage(
-                content=self._tool_output_to_text(result),
-                tool_call_id=call_id,
-                name=name,
-                artifact=result,
-                status="success",
-            )
-        except Exception as exc:
-            return ToolMessage(
-                content=str(exc),
-                tool_call_id=call_id,
-                name=name,
-                status="error",
-            )
+        return tool_message
 
     @staticmethod
     def _values_state(
@@ -346,22 +818,26 @@ class SSEHandrolledAgent:
         }
 
     def set_event_context(self, *, run_id: str, agent_name: str, start_seq: int = 0) -> None:
-        self._event_run_id = str(run_id)
-        self._event_agent_name = str(agent_name)
-        self._event_seq = int(start_seq)
-        self._llm_call_index = 0
+        self._events.set_context(run_id=run_id, agent_name=agent_name, start_seq=start_seq)
+        self._telemetry.set_context(run_id=run_id, agent_name=agent_name)
 
     def set_event_handlers(self, handlers: Sequence[Callable[[dict[str, Any]], None]] | None) -> None:
-        self._event_handlers = list(handlers or [])
+        self._events.set_handlers(handlers)
 
     def add_event_handler(self, handler: Callable[[dict[str, Any]], None]) -> None:
-        self._event_handlers.append(handler)
+        self._events.add_handler(handler)
 
     def set_llm_call_handlers(self, handlers: Sequence[Callable[[dict[str, Any]], None]] | None) -> None:
-        self._llm_call_handlers = list(handlers or [])
+        self._telemetry.set_llm_handlers(handlers)
 
     def add_llm_call_handler(self, handler: Callable[[dict[str, Any]], None]) -> None:
-        self._llm_call_handlers.append(handler)
+        self._telemetry.add_llm_handler(handler)
+
+    def set_tool_call_handlers(self, handlers: Sequence[Callable[[dict[str, Any]], None]] | None) -> None:
+        self._telemetry.set_tool_handlers(handlers)
+
+    def add_tool_call_handler(self, handler: Callable[[dict[str, Any]], None]) -> None:
+        self._telemetry.add_tool_handler(handler)
 
     @staticmethod
     def _parsed_to_payload_json(parsed: Any) -> dict[str, Any] | None:
@@ -372,30 +848,9 @@ class SSEHandrolledAgent:
         return {"value": parsed}
 
     @staticmethod
-    def _estimate_token_count(text: str) -> int:
-        content = text or ""
-        if not content:
-            return 0
-        if tiktoken is not None:
-            try:
-                enc = tiktoken.get_encoding("cl100k_base")
-                return len(enc.encode(content))
-            except Exception:
-                pass
-        return max(1, len(content) // 4)
-
-    def _estimate_messages_tokens(self, messages: list[BaseMessage]) -> int:
-        chunks: list[str] = []
-        for msg in messages:
-            role = type(msg).__name__
-            content = getattr(msg, "content", "")
-            chunks.append(f"{role}:{content}")
-        return self._estimate_token_count("\n".join(chunks))
-
-    @staticmethod
     def _usage_from_obj(obj: Any) -> tuple[int | None, int | None, int | None, str | None]:
         usage = getattr(obj, "usage_metadata", None)
-        if isinstance(usage, dict):
+        if isinstance(usage, Mapping):
             in_tok = usage.get("input_tokens")
             out_tok = usage.get("output_tokens")
             tot_tok = usage.get("total_tokens")
@@ -408,9 +863,9 @@ class SSEHandrolledAgent:
                 )
 
         response_meta = getattr(obj, "response_metadata", None)
-        if isinstance(response_meta, dict):
+        if isinstance(response_meta, Mapping):
             token_usage = response_meta.get("token_usage")
-            if isinstance(token_usage, dict):
+            if isinstance(token_usage, Mapping):
                 in_tok = token_usage.get("prompt_tokens", token_usage.get("input_tokens"))
                 out_tok = token_usage.get("completion_tokens", token_usage.get("output_tokens"))
                 tot_tok = token_usage.get("total_tokens")
@@ -424,46 +879,11 @@ class SSEHandrolledAgent:
 
         return None, None, None, None
 
-    def _emit_llm_call(
-        self,
-        *,
-        call_kind: str,
-        model_name: str | None,
-        started_at: datetime,
-        ended_at: datetime,
-        latency_ms: int,
-        input_tokens: int,
-        output_tokens: int,
-        tokens_total: int,
-        usage_source: str,
-        error_text: str | None = None,
-    ) -> None:
-        if not self._llm_call_handlers or self._event_run_id is None or self._event_agent_name is None:
-            return
-
-        self._llm_call_index += 1
-        payload = {
-            "run_id": self._event_run_id,
-            "agent_name": self._event_agent_name,
-            "call_index": self._llm_call_index,
-            "model_name": model_name,
-            "call_kind": call_kind,
-            "started_at": started_at,
-            "ended_at": ended_at,
-            "latency_ms": latency_ms,
-            "input_tokens": max(0, int(input_tokens)),
-            "output_tokens": max(0, int(output_tokens)),
-            "tokens_total": max(0, int(tokens_total)),
-            "usage_source": usage_source,
-            "error_text": error_text,
-        }
-        for handler in self._llm_call_handlers:
-            handler(payload)
-
     async def _ainvoke_with_telemetry(
         self,
         *,
         call_kind: str,
+        iteration: int,
         messages: list[BaseMessage],
         invoke_fn: Callable[[], Any],
         timeout_s: float | None = None,
@@ -471,37 +891,56 @@ class SSEHandrolledAgent:
         started_at = datetime.utcnow()
         t0 = time.perf_counter()
         model_name = getattr(self.model, "model_name", None) or getattr(self.model, "model", None)
+        run_id, agent_name = self._telemetry.current_context()
 
         try:
             if timeout_s is None:
                 response = await invoke_fn()
             else:
                 response = await asyncio.wait_for(invoke_fn(), timeout=timeout_s)
+
             ended_at = datetime.utcnow()
             latency_ms = int((time.perf_counter() - t0) * 1000)
 
-            in_tok, out_tok, tot_tok, source = self._usage_from_obj(response)
+            in_tok, out_tok, tot_tok, usage_source = self._usage_from_obj(response)
             if in_tok is None or out_tok is None or tot_tok is None:
+                in_tok = self._token_estimator.estimate_messages_tokens(messages)
                 if isinstance(response, AIMessage):
-                    output_text = str(response.content or "")
+                    out_tok = self._token_estimator.estimate_ai_output_tokens(response)
                 else:
-                    output_text = self._tool_output_to_text(response)
-                in_tok = self._estimate_messages_tokens(messages)
-                out_tok = self._estimate_token_count(output_text)
+                    out_tok = self._token_estimator.estimate_jsonable_output_tokens(response)
                 tot_tok = in_tok + out_tok
-                source = "estimated"
+                usage_source = "estimated"
 
-            self._emit_llm_call(
-                call_kind=call_kind,
-                model_name=str(model_name) if model_name else None,
-                started_at=started_at,
-                ended_at=ended_at,
-                latency_ms=latency_ms,
-                input_tokens=in_tok,
-                output_tokens=out_tok,
-                tokens_total=tot_tok,
-                usage_source=source or "estimated",
-            )
+            tool_calls: list[dict[str, Any]] = []
+            if isinstance(response, AIMessage):
+                tool_calls = self._extract_provider_tool_calls(response)
+            tool_names = [str(tc.get("name", "")) for tc in tool_calls if tc.get("name")]
+
+            if run_id and agent_name:
+                call_index = self._telemetry.next_call_index()
+                self._telemetry.emit_llm(
+                    LLMCallMetric(
+                        run_id=run_id,
+                        agent_name=agent_name,
+                        call_index=call_index,
+                        iteration=iteration,
+                        call_kind=call_kind,
+                        model_name=str(model_name) if model_name else None,
+                        started_at=started_at,
+                        ended_at=ended_at,
+                        latency_ms=latency_ms,
+                        input_tokens=int(in_tok),
+                        output_tokens=int(out_tok),
+                        tokens_total=int(tot_tok),
+                        usage_source=str(usage_source or "estimated"),
+                        had_tool_calls=bool(tool_calls),
+                        tool_call_count=len(tool_calls),
+                        tool_names=tool_names,
+                        error_text=None,
+                    )
+                )
+
             return response
         except Exception as exc:
             normalized_exc: Exception
@@ -509,21 +948,35 @@ class SSEHandrolledAgent:
                 normalized_exc = TimeoutError(str(exc) or "run_timeout_exceeded")
             else:
                 normalized_exc = exc
+
             ended_at = datetime.utcnow()
             latency_ms = int((time.perf_counter() - t0) * 1000)
-            in_tok = self._estimate_messages_tokens(messages)
-            self._emit_llm_call(
-                call_kind=call_kind,
-                model_name=str(model_name) if model_name else None,
-                started_at=started_at,
-                ended_at=ended_at,
-                latency_ms=latency_ms,
-                input_tokens=in_tok,
-                output_tokens=0,
-                tokens_total=in_tok,
-                usage_source="estimated",
-                error_text=str(normalized_exc),
-            )
+            in_tok = self._token_estimator.estimate_messages_tokens(messages)
+
+            if run_id and agent_name:
+                call_index = self._telemetry.next_call_index()
+                self._telemetry.emit_llm(
+                    LLMCallMetric(
+                        run_id=run_id,
+                        agent_name=agent_name,
+                        call_index=call_index,
+                        iteration=iteration,
+                        call_kind=call_kind,
+                        model_name=str(model_name) if model_name else None,
+                        started_at=started_at,
+                        ended_at=ended_at,
+                        latency_ms=latency_ms,
+                        input_tokens=int(in_tok),
+                        output_tokens=0,
+                        tokens_total=int(in_tok),
+                        usage_source="estimated",
+                        had_tool_calls=False,
+                        tool_call_count=0,
+                        tool_names=[],
+                        error_text=str(normalized_exc),
+                    )
+                )
+
             raise normalized_exc
 
     def _emit_event(
@@ -537,24 +990,15 @@ class SSEHandrolledAgent:
         payload_json: dict[str, Any] | None = None,
         payload_text: str | None = None,
     ) -> None:
-        if not self._event_handlers or self._event_run_id is None or self._event_agent_name is None:
-            return
-
-        self._event_seq += 1
-        event = {
-            "run_id": self._event_run_id,
-            "agent_name": self._event_agent_name,
-            "seq": self._event_seq,
-            "event_type": event_type,
-            "node_name": node_name,
-            "tool_name": tool_name,
-            "tool_call_id": tool_call_id,
-            "status": status,
-            "payload_json": payload_json,
-            "payload_text": payload_text,
-        }
-        for handler in self._event_handlers:
-            handler(event)
+        self._events.emit(
+            event_type=event_type,
+            node_name=node_name,
+            tool_name=tool_name,
+            tool_call_id=tool_call_id,
+            status=status,
+            payload_json=payload_json,
+            payload_text=payload_text,
+        )
 
     async def astream(
         self,
@@ -595,51 +1039,62 @@ class SSEHandrolledAgent:
 
             ai_msg = await self._ainvoke_with_telemetry(
                 call_kind="main_loop",
+                iteration=iteration,
                 messages=call_messages,
                 invoke_fn=lambda: self.bound_model.ainvoke(call_messages),
                 timeout_s=_remaining_timeout_s(),
             )
-            tool_calls = list(getattr(ai_msg, "tool_calls", []) or [])
 
+            raw_tool_calls = list(getattr(ai_msg, "tool_calls", []) or [])
+            tool_calls: list[dict[str, Any]] = []
+            for item in raw_tool_calls:
+                if isinstance(item, Mapping):
+                    normalized = self._normalize_tool_call(item)
+                    if normalized:
+                        tool_calls.append(normalized)
             if not tool_calls:
                 recovered = self._recover_tool_calls_from_content(str(ai_msg.content or ""))
                 if recovered:
-                    ai_msg = AIMessage(
-                        content="",
-                        tool_calls=recovered,
-                        additional_kwargs={
-                            **getattr(ai_msg, "additional_kwargs", {}),
+                    ai_msg = self._ai_message_with_tool_calls(
+                        ai_msg,
+                        recovered,
+                        extra_additional_kwargs={
                             "raw_recovered_tool_text": str(ai_msg.content or ""),
                         },
-                        response_metadata=getattr(ai_msg, "response_metadata", {}),
-                        id=getattr(ai_msg, "id", None),
-                        name=getattr(ai_msg, "name", None),
                     )
                     tool_calls = recovered
             elif str(ai_msg.content or "").strip():
-                ai_msg = AIMessage(
-                    content="",
-                    tool_calls=tool_calls,
-                    additional_kwargs={
-                        **getattr(ai_msg, "additional_kwargs", {}),
+                ai_msg = self._ai_message_with_tool_calls(
+                    ai_msg,
+                    tool_calls,
+                    extra_additional_kwargs={
                         "raw_tool_text": str(ai_msg.content or ""),
                     },
-                    response_metadata=getattr(ai_msg, "response_metadata", {}),
-                    id=getattr(ai_msg, "id", None),
-                    name=getattr(ai_msg, "name", None),
+                )
+
+            limited_tool_calls, dropped_tool_calls = self._limit_tool_calls(tool_calls)
+            if dropped_tool_calls:
+                tool_calls = limited_tool_calls
+                ai_msg = self._ai_message_with_tool_calls(
+                    ai_msg,
+                    tool_calls,
+                    extra_additional_kwargs={
+                        "dropped_tool_calls": [
+                            {"id": tc.get("id"), "name": tc.get("name")} for tc in dropped_tool_calls
+                        ],
+                        "dropped_tool_call_count": len(dropped_tool_calls),
+                    },
                 )
 
             streamed_messages.append(ai_msg)
             scratchpad.append(ai_msg)
 
             for tc in tool_calls:
-                if not isinstance(tc, dict):
-                    continue
                 self._emit_event(
                     event_type="tool_call",
                     node_name=self.agent_node_name,
-                    tool_name=tc.get("name"),
-                    tool_call_id=tc.get("id"),
+                    tool_name=str(tc.get("name") or ""),
+                    tool_call_id=(str(tc.get("id")) if tc.get("id") is not None else None),
                     payload_json={"args": tc.get("args")},
                 )
 
@@ -658,8 +1113,10 @@ class SSEHandrolledAgent:
                         payload_json=self._parsed_to_payload_json(parsed),
                         payload_text=raw if parsed is None else None,
                     )
+
                 structured = await self._generate_structured_response(
                     _messages_for_finalization(),
+                    iteration=iteration,
                     timeout_s=_remaining_timeout_s(),
                 )
                 if structured is not None:
@@ -667,15 +1124,17 @@ class SSEHandrolledAgent:
                 else:
                     parsed, raw = self._json_from_text(str(ai_msg.content or ""))
                     final_output = self._normalize_final_output(parsed if parsed is not None else raw)
+
                 done = True
                 break
 
             async def _execute_indexed_tool_call(idx: int, tc: dict[str, Any]) -> tuple[int, ToolMessage]:
-                return idx, await self._execute_tool_call(tc)
+                return idx, await self._execute_tool_call(tc, iteration=iteration)
 
             indexed_tasks = [
                 asyncio.create_task(_execute_indexed_tool_call(idx, tc))
                 for idx, tc in enumerate(tool_calls)
+                if isinstance(tc, dict)
             ]
             tool_msgs_by_index: dict[int, ToolMessage] = {}
 
@@ -686,6 +1145,7 @@ class SSEHandrolledAgent:
                     if remaining is None
                     else asyncio.as_completed(indexed_tasks, timeout=remaining)
                 )
+
                 for task in iterator:
                     idx, tm = await task
                     tool_msgs_by_index[idx] = tm
@@ -725,6 +1185,7 @@ class SSEHandrolledAgent:
                 for tc, tm in zip(tool_calls, tool_msgs):
                     if tc.get("name") != self.final_answer_tool_name:
                         continue
+
                     parsed, raw = self._json_from_text(str(tm.content or ""))
                     final_output = self._normalize_final_output(parsed if parsed is not None else raw)
                     final_text = (
@@ -732,6 +1193,7 @@ class SSEHandrolledAgent:
                         if not isinstance(final_output, str)
                         else final_output
                     )
+
                     final_msg = AIMessage(content=final_text)
                     streamed_messages.append(final_msg)
                     final_parsed, final_raw = self._json_from_text(final_text)
@@ -766,7 +1228,7 @@ class SSEHandrolledAgent:
     async def ainvoke(self, payload: Any) -> Any:
         final_output: Any = None
         async for mode, data in self.astream(payload, stream_mode=("values",)):
-            if mode == "values" and isinstance(data, dict):
+            if mode == "values" and isinstance(data, Mapping):
                 final_output = data.get("output")
         return final_output
 

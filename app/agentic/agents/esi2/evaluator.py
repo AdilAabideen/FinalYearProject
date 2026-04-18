@@ -34,16 +34,16 @@ def _coerce_to_bool(value: Any) -> Optional[bool]:
     return None
 
 
-class ES1AcuityEvaluator:
+class ESI2AcuityEvaluator:
     """
-    Binary ESI-1 evaluator derived from expected acuity.
+    Binary ESI-2 evaluator derived from expected acuity.
 
     Ground truth rule:
-    - acuity == 1  -> expected is_esi1 = True
-    - acuity != 1  -> expected is_esi1 = False
+    - acuity == 2  -> expected is_esi2 = True
+    - acuity != 2  -> expected is_esi2 = False
     """
 
-    label_name = "is_esi1_from_acuity"
+    label_name = "is_esi2_from_acuity"
 
     def validate_expected(self, expected_json: Dict[str, Any]) -> None:
         if set(expected_json.keys()) != {"acuity"}:
@@ -56,12 +56,12 @@ class ES1AcuityEvaluator:
 
     def _y_true(self, expected_json: Dict[str, Any]) -> bool:
         self.validate_expected(expected_json)
-        return int(expected_json["acuity"]) == 1
+        return int(expected_json["acuity"]) == 2
 
     def _y_pred(self, actual_json: Dict[str, Any]) -> Optional[bool]:
         # Primary output contract requested by user.
-        if "is_esi1" in actual_json:
-            return _coerce_to_bool(actual_json.get("is_esi1"))
+        if "is_esi2" in actual_json:
+            return _coerce_to_bool(actual_json.get("is_esi2"))
 
         # Backward-compatible fallback if old field still appears.
         if "provisional_esi" in actual_json:

@@ -15,33 +15,33 @@ from app.config import settings
 
 from .prompt import SYSTEM_PROMPT
 from .tools import TOOLS
-from .evaluator import ESI2AcuityEvaluator
+from .evaluator import ESI345AcuityEvaluator
 
 from app.agentic.HandRolledAgent import SSEHandrolledAgent
-from .schema import ES2AgentInput, ES2AgentOutput
+from .schema import ES345AgentInput, ES345AgentOutput
 
-def build_esi2_agent(runtime: AgentRuntime):
-    """Build the ESI2 agent."""
+def build_esi345_agent(runtime: AgentRuntime):
+    """Build the ESI345 agent."""
     try:
         return SSEHandrolledAgent(
             model=runtime.model,
             tools=TOOLS,
             system_prompt=SYSTEM_PROMPT,
-            response_format=ES2AgentOutput,
+            response_format=ES345AgentOutput,
         )
     except Exception as e:
-        raise Exception(f"Error building vitals agent: {e}")
+        raise Exception(f"Error building ESI345 agent: {e}")
 
 
-ESI2_AGENT_SPEC = AgentSpec(
-    name="esi2_agent",
-    title="ESI2 Agent",
-    description="Identifies ESI-2 cases based on immediate life-saving criteria.",
-    input_model=ES2AgentInput,
-    output_model=ES2AgentOutput,
+ESI345_AGENT_SPEC = AgentSpec(
+    name="esi345_agent",
+    title="ESI345 Agent",
+    description="Identifies ESI-3, 4, or 5 cases based on immediate life-saving criteria.",
+    input_model=ES345AgentInput,
+    output_model=ES345AgentOutput,
     tools=TOOLS,
-    build=build_esi2_agent,
-    evaluator=ESI2AcuityEvaluator(),
+    build=build_esi345_agent,
+    evaluator=ESI345AcuityEvaluator(),
 )
 
 
@@ -56,8 +56,8 @@ def _maybe_pretty_json(text: str) -> str:
     return json.dumps(obj, indent=2, sort_keys=True, ensure_ascii=False)
 
 
-def run_esi2_agent(input: ES1AgentInput, *, verbose: bool = True):
-    """Run the vitals LangGraph agent with optional verbose stream logging."""
+def run_esi345_agent(input: ES345AgentInput, *, verbose: bool = True):
+    """Run the ESI345 agent with optional verbose stream logging."""
     try:
         model_id = settings.OPENAI_MODEL
         model_spec = resolve_model_spec(model_id)
@@ -66,7 +66,7 @@ def run_esi2_agent(input: ES1AgentInput, *, verbose: bool = True):
             model_spec=model_spec,
             model=get_chat_model(model_id),
         )
-        agent = build_vitals_agent(runtime)
+        agent = build_esi345_agent(runtime)
         payload = {"messages": [("user", input.model_dump_json())]}
 
         if not verbose:
