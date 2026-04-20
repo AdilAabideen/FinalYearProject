@@ -10,7 +10,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from app.config import settings
 
 
-ModelProvider = Literal["openai", "dr7"]
+ModelProvider = Literal["openai", "dr7", "llama"]
 
 
 class ModelPricing(BaseModel):
@@ -68,6 +68,39 @@ _MODEL_REGISTRY: dict[str, ModelSpec] = {
         supports_tools=True,
         supports_structured_output=True,
         default_temperature=0.7,
+    ),
+    "esi1": ModelSpec(
+        id="esi1",
+        provider="llama",
+        description="Llama Server ESI-1 adapter profile.",
+        supports_tools=True,
+        supports_structured_output=True,
+        default_temperature=0,
+        pricing=ModelPricing(input_per_1k=0.00015, output_per_1k=0.00060),
+        context_length=8192,
+        max_tokens=4096,
+    ),
+    "esi2": ModelSpec(
+        id="esi2",
+        provider="llama",
+        description="Llama Server ESI-2 adapter profile.",
+        supports_tools=True,
+        supports_structured_output=True,
+        default_temperature=0,
+        pricing=ModelPricing(input_per_1k=0.00015, output_per_1k=0.00060),
+        context_length=8192,
+        max_tokens=4096,
+    ),
+    "esi345": ModelSpec(
+        id="esi345",
+        provider="llama",
+        description="Llama Server ESI-345 adapter profile.",
+        supports_tools=True,
+        supports_structured_output=True,
+        default_temperature=0,
+        pricing=ModelPricing(input_per_1k=0.00015, output_per_1k=0.00060),
+        context_length=8192,
+        max_tokens=4096,
     ),
 }
 
@@ -127,6 +160,8 @@ def get_chat_model(model_id: str) -> BaseChatModel:
         return _build_openai_chat_model(spec)
     if spec.provider == "dr7":
         return _build_dr7_chat_model(spec)
+    if spec.provider == "llama":
+        return build_llama_model(spec)
     raise RuntimeError(f"Unsupported model provider: {spec.provider}")
 
 
@@ -161,6 +196,31 @@ def _build_dr7_chat_model(spec: ModelSpec) -> BaseChatModel:
         model=spec.id,
         base_url=settings.DR7_MEDICAL_BASE_URL,
         api_key=settings.DR7_API_KEY,
+        temperature=spec.default_temperature,
+        max_tokens=spec.max_tokens,
+    )
+
+
+def build_llama_model(spec: ModelSpec) -> BaseChatModel:
+    from app.agentic.models.llama_server_chat import LlamaServerChat
+
+    adapter_by_model_id: dict[str, str] = {
+        "esi1": "esi1",
+        "esi2": "esi2",
+        "esi345": "esi345",
+    }
+    adapter = adapter_by_model_id.get(spec.id)
+    if adapter is None:
+        supported = ", ".join(sorted(adapter_by_model_id))
+        raise RuntimeError(
+            f"Llama model '{spec.id}' is not mapped to an adapter literal. Supported: {supported}"
+        )
+
+    return LlamaServerChat(
+        model=spec.id,
+        base_url=settings.LLAMA_SERVER_BASE_URL,
+        api_key=settings.LLAMA_SERVER_API_KEY or "",
+        adapter=adapter,
         temperature=spec.default_temperature,
         max_tokens=spec.max_tokens,
     )

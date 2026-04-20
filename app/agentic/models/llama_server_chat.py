@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import uuid
-from typing import Any, Callable, Optional, Sequence, Union
+from typing import Any, Callable, Literal, Optional, Sequence, Union
 
 import httpx
 from langchain_core.language_models import LanguageModelInput
@@ -14,33 +14,94 @@ from langchain_core.tools import BaseTool
 from langchain_core.utils.function_calling import convert_to_openai_tool
 from pydantic import ConfigDict, Field
 
+ESI1_ADAPTER_ID = 0
+ESI2_ADAPTER_ID = 1
+ESI345_ADAPTER_ID = 2
+ES1_ADAPTER_ID = ESI1_ADAPTER_ID
+ES2_ADAPTER_ID = ESI2_ADAPTER_ID
+ES345_ADAPTER_ID = ESI345_ADAPTER_ID
 
-class Dr7MedicalChatModel(BaseChatModel):
+ESIAdapterName = Literal["esi1", "esi2", "esi345"]
+
+ESI_ADAPTER_ID_BY_NAME: dict[str, int] = {
+    "esi1": ESI1_ADAPTER_ID,
+    "esi2": ESI2_ADAPTER_ID,
+    "esi345": ESI345_ADAPTER_ID,
+}
+SUPPORTED_ADAPTER_IDS = set(ESI_ADAPTER_ID_BY_NAME.values())
+
+ESI_LORA_ADAPTERS: list[dict[str, Any]] = [
+    {
+        "id": ESI1_ADAPTER_ID,
+        "path": "/Users/adil/Documents/University/MultiAgentResearch/UseCase1ESI/model_artifacts/adapters_gguf/esi1-lora.gguf",
+        "scale": 1.0,
+        "task_name": "",
+        "prompt_prefix": "",
+    },
+    {
+        "id": ESI2_ADAPTER_ID,
+        "path": "/Users/adil/Documents/University/MultiAgentResearch/UseCase1ESI/model_artifacts/adapters_gguf/esi2-lora.gguf",
+        "scale": 1.0,
+        "task_name": "",
+        "prompt_prefix": "",
+    },
+    {
+        "id": ESI345_ADAPTER_ID,
+        "path": "/Users/adil/Documents/University/MultiAgentResearch/UseCase1ESI/model_artifacts/adapters_gguf/esi345-lora.gguf",
+        "scale": 1.0,
+        "task_name": "",
+        "prompt_prefix": "",
+    },
+]
+
+
+class LlamaServerChat(BaseChatModel):
     """
-    Minimal LangChain ChatModel wrapper around Dr7's medical chat completions endpoint.
+    Minimal LangChain ChatModel wrapper around LLama Server chat completions endpoint.
 
     Notes:
     - v1 only supports non-streaming responses (`stream=false`).
-    - Dr7-native function calling is not available; `bind_tools()` is emulated
+    - Llama CPP function calling is not available; `bind_tools()` is emulated
       through a JSON tool-call contract so LangGraph agents can run tool loops.
     """
 
     model_config = ConfigDict(frozen=True)
 
-    model: str = Field(description="Dr7 model id (e.g. 'medgemma-4b-it').")
-    base_url: str = Field(description="Base URL, e.g. 'https://dr7.ai/api/v1/medical'.")
-    api_key: str = Field(description="Dr7 API key (Bearer token).", repr=False)
+    model: str = Field(description="Llama server model id (e.g. 'medgemma-4b-it').")
+    base_url: str = Field(
+        default="http://localhost:8080/v1",
+        description="Base URL for llama-server OpenAI-compatible API.",
+    )
+    api_key: Optional[str] = Field(
+        default="",
+        description="Optional API key. Local llama-server usually does not require one.",
+        repr=False,
+    )
+    adapter: Optional[ESIAdapterName] = Field(
+        default=None,
+        description="Default LoRA adapter literal: 'esi1' | 'esi2' | 'esi345'.",
+    )
+    adapter_id: Optional[int] = Field(
+        default=None,
+        description="Default LoRA adapter id. If omitted, inferred from model when possible.",
+    )
+    adapter_scale: float = Field(default=1.0, description="LoRA scale for selected adapter.")
 
     temperature: float = 0.7
     max_tokens: Optional[int] = None
     timeout_s: float = 60.0
 
     def _llm_type(self) -> str:
-        return "dr7-medical-chat"
+        return "llama-server-chat"
 
     @property
     def _identifying_params(self) -> dict[str, Any]:
-        return {"model": self.model, "base_url": self.base_url}
+        return {
+            "model": self.model,
+            "base_url": self.base_url,
+            "adapter": self.adapter,
+            "adapter_id": self.adapter_id,
+        }
 
     def _tool_instruction(
         self,
@@ -210,7 +271,7 @@ class Dr7MedicalChatModel(BaseChatModel):
 
         return [], False
 
-    def _to_dr7_messages(
+    def _to_llama_messages(
         self,
         messages: Sequence[BaseMessage],
         *,
@@ -227,11 +288,11 @@ class Dr7MedicalChatModel(BaseChatModel):
             elif isinstance(msg, ToolMessage):
                 if not allow_tool_messages:
                     raise ValueError(
-                        "Dr7MedicalChatModel does not support tool calling (ToolMessage present)."
+                        "LlamaServerChat does not support tool calling (ToolMessage present)."
                     )
                 role = "user"
             else:
-                raise ValueError(f"Unsupported message type for Dr7: {type(msg).__name__}")
+                raise ValueError(f"Unsupported message type for Llama Server: {type(msg).__name__}")
 
             if isinstance(msg, ToolMessage):
                 tool_name = getattr(msg, "name", None) or "tool"
@@ -260,33 +321,7 @@ class Dr7MedicalChatModel(BaseChatModel):
             out.append({"role": role, "content": content})
         return out
 
-    def bind_tools(
-        self,
-        tools: Sequence[Union[dict[str, Any], type, Callable, BaseTool]],
-        *,
-        tool_choice: Optional[str] = None,
-        **kwargs: Any,
-    ) -> Runnable[LanguageModelInput, BaseMessage]:
-        """
-        Bind tools for LangChain/LangGraph compatibility.
-
-        Dr7 does not natively support function-calling in this wrapper; bound tool
-        schemas are used to instruct the model to emit JSON tool calls that are then
-        converted into `AIMessage.tool_calls`.
-        """
-        formatted_tools = [convert_to_openai_tool(tool) for tool in tools]
-        # LangGraph's `create_react_agent` binds tools with no tool_choice; for Dr7 we
-        # default to requiring a tool call so it doesn't "answer in one go" without
-        # producing `AIMessage.tool_calls`.
-        if tool_choice is None:
-            tool_choice = "any"
-        return self.bind(
-            tools=formatted_tools,
-            tool_choice=tool_choice,
-            **kwargs,
-        )
-
-    def _normalize_dr7_messages(self, messages: list[dict[str, str]]) -> list[dict[str, str]]:
+    def _normalize_llama_messages(self, messages: list[dict[str, str]]) -> list[dict[str, str]]:
         """
         Normalize messages for strict llama chat templates.
 
@@ -323,6 +358,55 @@ class Dr7MedicalChatModel(BaseChatModel):
 
         return normalized
 
+    def _resolve_adapter_id(self, **kwargs: Any) -> Optional[int]:
+        raw_adapter_id = kwargs.get("adapter_id", self.adapter_id)
+        if raw_adapter_id is not None:
+            adapter_id = int(raw_adapter_id)
+            if adapter_id not in SUPPORTED_ADAPTER_IDS:
+                supported = ", ".join(str(x) for x in sorted(SUPPORTED_ADAPTER_IDS))
+                raise ValueError(
+                    f"Unsupported adapter_id '{adapter_id}'. Expected one of: {supported}."
+                )
+            return adapter_id
+
+        raw_adapter_name = kwargs.get("adapter", self.adapter)
+        if isinstance(raw_adapter_name, str):
+            adapter_name = raw_adapter_name.strip().lower()
+            if adapter_name not in ESI_ADAPTER_ID_BY_NAME:
+                supported = ", ".join(sorted(ESI_ADAPTER_ID_BY_NAME))
+                raise ValueError(
+                    f"Unsupported adapter '{raw_adapter_name}'. Expected one of: {supported}."
+                )
+            return ESI_ADAPTER_ID_BY_NAME[adapter_name]
+
+        model_key = self.model.strip().lower()
+        return ESI_ADAPTER_ID_BY_NAME.get(model_key)
+
+    def bind_tools(
+        self,
+        tools: Sequence[Union[dict[str, Any], type, Callable, BaseTool]],
+        *,
+        tool_choice: Optional[str] = None,
+        **kwargs: Any,
+    ) -> Runnable[LanguageModelInput, BaseMessage]:
+        """
+        Bind tools for LangChain/LangGraph compatibility.
+
+        Llama Server does not natively support function-calling in this wrapper; bound
+        tool schemas are used to instruct the model to emit JSON tool calls that are then
+        converted into `AIMessage.tool_calls`.
+        """
+        formatted_tools = [convert_to_openai_tool(tool) for tool in tools]
+        # LangGraph's `create_react_agent` binds tools with no tool_choice; for this wrapper we
+        # default to requiring a tool call so it doesn't "answer in one go" without
+        # producing `AIMessage.tool_calls`.
+        if tool_choice is None:
+            tool_choice = "any"
+        return self.bind(
+            tools=formatted_tools,
+            tool_choice=tool_choice,
+            **kwargs,
+        )
 
     def _generate(
         self,
@@ -337,36 +421,27 @@ class Dr7MedicalChatModel(BaseChatModel):
         if isinstance(bound_tools, list):
             tools = [t for t in bound_tools if isinstance(t, dict)]
 
-        dr7_messages = self._to_dr7_messages(messages, allow_tool_messages=bool(tools))
-        # if tools:
-        #     dr7_messages = [
-        #         {
-        #             "role": "system",
-        #             "content": self._tool_instruction(tools, tool_choice),
-        #         },
-        #         *dr7_messages,
-        #     ]
-        
+        llama_messages = self._to_llama_messages(messages, allow_tool_messages=bool(tools))
         if tools:
             tool_instruction = self._tool_instruction(tools, tool_choice)
-            if dr7_messages and dr7_messages[0].get("role") == "system":
-                existing = (dr7_messages[0].get("content") or "").strip()
+            if llama_messages and llama_messages[0].get("role") == "system":
+                existing = (llama_messages[0].get("content") or "").strip()
                 if existing:
-                    dr7_messages[0]["content"] = f"{existing}\n\n{tool_instruction}"
+                    llama_messages[0]["content"] = f"{existing}\n\n{tool_instruction}"
                 else:
-                    dr7_messages[0]["content"] = tool_instruction
+                    llama_messages[0]["content"] = tool_instruction
             else:
-                dr7_messages = [
+                llama_messages = [
                     {"role": "system", "content": tool_instruction},
-                    *dr7_messages,
+                    *llama_messages,
                 ]
-        dr7_messages = self._normalize_dr7_messages(dr7_messages)
-        
-        print(json.dumps(dr7_messages))
+        llama_messages = self._normalize_llama_messages(llama_messages)
+
+        print(json.dumps(llama_messages))
 
         payload: dict[str, Any] = {
             "model": self.model,
-            "messages": dr7_messages,
+            "messages": llama_messages,
             "temperature": self.temperature,
             "stream": False,
         }
@@ -374,35 +449,40 @@ class Dr7MedicalChatModel(BaseChatModel):
             payload["max_tokens"] = self.max_tokens
         if stop:
             payload["stop"] = stop
+        adapter_id = self._resolve_adapter_id(**kwargs)
+        adapter_scale = float(kwargs.get("adapter_scale", self.adapter_scale))
+        # if adapter_id is not None:
+        #     payload["lora"] = [{"id": int(adapter_id), "scale": adapter_scale}]
 
         url = self.base_url.rstrip("/") + "/chat/completions"
-        headers = {
-            "Authorization": f"Bearer {self.api_key}",
-            "Content-Type": "application/json",
-        }
+        headers = {"Content-Type": "application/json"}
+        if self.api_key:
+            headers["Authorization"] = f"Bearer {self.api_key}"
 
         try:
             with httpx.Client(timeout=self.timeout_s) as client:
                 resp = client.post(url, headers=headers, json=payload)
         except Exception as e:
-            raise RuntimeError(f"Dr7 request failed: {e}") from e
+            raise RuntimeError(f"Llama Server request failed: {e}") from e
 
         if resp.status_code >= 400:
             detail = (resp.text or "").strip()
             if len(detail) > 5000:
                 detail = detail[:5000] + "…(truncated)"
-            raise RuntimeError(f"Dr7 API error {resp.status_code}: {detail}")
+            raise RuntimeError(f"Llama Server API error {resp.status_code}: {detail}")
 
         try:
             data = resp.json()
         except Exception as e:
             text = (resp.text or "").strip()
-            raise RuntimeError(f"Dr7 returned invalid JSON: {e}; body={text[:2000]}") from e
+            raise RuntimeError(f"Llama Server returned invalid JSON: {e}; body={text[:2000]}") from e
 
         try:
             choice_msg = data["choices"][0]["message"]
         except Exception as e:
-            raise RuntimeError(f"Dr7 response missing choices/message/content: {data}") from e
+            raise RuntimeError(
+                f"Llama Server response missing choices/message/content: {data}"
+            ) from e
 
         content = ""
         if isinstance(choice_msg, dict):

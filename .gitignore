@@ -17,3 +17,5 @@ docs/*
 !docs/agent_metrics.md
 
 .env
+
+model_artifacts/

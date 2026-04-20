@@ -31,6 +31,10 @@ class Settings(BaseSettings):
     DR7_API_KEY: Optional[str] = None
     DR7_MEDICAL_BASE_URL: str = "https://dr7.ai/api/v1/medical"
 
+    # Llama Server settings
+    LLAMA_SERVER_BASE_URL: str = "http://localhost:8080/v1"
+    LLAMA_SERVER_API_KEY: Optional[str] = None
+
     # Agent runtime safety
     AGENT_RUN_TIMEOUT_S: float = 120.0
 

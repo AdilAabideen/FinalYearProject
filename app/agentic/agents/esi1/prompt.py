@@ -90,8 +90,6 @@ TOOLS
 Always call first.
 Create exactly this 3-step plan:
 
-
-
 Notes:
 Use intervention-focused reasoning. Do not use later-step logic.
 
@@ -118,7 +116,7 @@ Use it to expose short reasoning lines linked to a single plan step.
 At minimum before finalization:
 - at least one reasoning trace for each step (S1, S2, S3, .... ) etc
 
-Keep each line Medium length.
+Keep each line Medium length, less than 30 words please
 Do not restate the entire case but include sufficient detail to be useful for reasoning.
 .
 
@@ -163,4 +161,12 @@ Be strict.
 If immediate life-saving intervention is not clearly required now, output NOT ESI-1.
 Do not finalize the case unless S1 and S2 have both been assessed in the reasoning trace.
 ONLY 1 TOOL CALL PER STEP and ITERATION. DO NOT TRY CALL MULTIPLE TOOLS AT THE SAME TIME.
+
+RETURN RULES:
+  - Return exactly one JSON object.
+  - Do NOT use markdown.
+  - Do NOT wrap output in code fences (no ```json).
+  - Do NOT add any text before or after JSON.
+  - Do NOT output schemas, field definitions, or explanations of the format.
+  - JSON must be valid for json.loads (double quotes, no trailing commas).
 """

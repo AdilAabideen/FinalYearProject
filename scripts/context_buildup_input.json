@@ -1,0 +1,14 @@
+{
+    "subject_id": 18530850,
+    "stay_id": 37186254,
+    "intime": "2167-2-12 23:52",
+    "gender": "M",
+    "race": "WHITE",
+    "arrival_transport": "AMBULANCE",
+    "pain": "10",
+    "acuity": 2,
+    "chiefcomplaint": "Epigastric pain",
+    "age": 62.11705238,
+    "tiragecase": "A 61-year-old male presented to the emergency department via ambulance with a chief complaint of severe right upper quadrant abdominal pain, rated 10/10, accompanied by nausea, vomiting, constipation, and reduced oral intake. He has a significant medical history, including coronary artery disease, hypertension, hyperlipidemia, left ventricular hypertrophy, cholelithiasis, diverticulosis, colon adenoma, and a previous lacunar infarction. Earlier in the day, he was discharged with a diagnosis of gallstones and advised to follow up for surgery but returned with exacerbated symptoms. On arrival, his vital signs showed hypertension (BP 184/0) and hypothermia (T 96.6\u63b3F).",
+    "Final Decision": "RETAIN"
+  }
