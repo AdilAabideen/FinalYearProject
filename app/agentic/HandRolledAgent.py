@@ -474,10 +474,14 @@ class SSEHandrolledAgent:
         else:
             schema = {"description": str(self.response_format)}
 
+        # return (
+        #     f"{self.system_prompt}\n"
+        #     "Return your final assistant output as strict JSON matching this schema:\n"
+        #     f"{json.dumps(schema, ensure_ascii=False)}"
+        # )
+
         return (
-            f"{self.system_prompt}\n\n"
-            "Return your final assistant output as strict JSON matching this schema:\n"
-            f"{json.dumps(schema, ensure_ascii=False)}"
+            f"{self.system_prompt}\n"
         )
 
     @staticmethod
@@ -1114,16 +1118,11 @@ class SSEHandrolledAgent:
                         payload_text=raw if parsed is None else None,
                     )
 
-                structured = await self._generate_structured_response(
-                    _messages_for_finalization(),
-                    iteration=iteration,
-                    timeout_s=_remaining_timeout_s(),
-                )
-                if structured is not None:
-                    final_output = self._normalize_final_output(structured)
-                else:
-                    parsed, raw = self._json_from_text(str(ai_msg.content or ""))
-                    final_output = self._normalize_final_output(parsed if parsed is not None else raw)
+                # TEMP: Disable structured-output fallback during testing so finalization
+                # behavior is driven only by the main tool-call loop / assistant content.
+                # Re-enable `_generate_structured_response(...)` after prompt/tool-call tuning.
+                parsed, raw = self._json_from_text(str(ai_msg.content or ""))
+                final_output = self._normalize_final_output(parsed if parsed is not None else raw)
 
                 done = True
                 break

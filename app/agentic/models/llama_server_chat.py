@@ -125,23 +125,57 @@ class LlamaServerChat(BaseChatModel):
             )
 
         parts = [
-            "When tools are available, you MUST follow this tool-calling contract.",
-            "Return a SINGLE JSON object (no markdown, no extra text).",
-            "Tool-call format (exact):",
-            '{"tool_calls":[{"id":"call_<unique_id>","name":"<tool_name>","arguments":{...}}]}',
-            "Do NOT output multiple JSON objects. If you need multiple tool calls, put them in the single tool_calls array.",
-            "Do NOT include a final answer when you are making tool calls.",
-            "Tool call ids must be unique per call.",
-            "Available tools:",
-            json.dumps(prompt_tools, ensure_ascii=False),
+            "<tool_rules>"
+            " - When tools are available, you MUST follow this tool-calling contract.",
+            " - Return a SINGLE JSON object (no markdown, no extra text).",
+            " - Tool-call format (exact):",
+            ' - {"tool_calls":[{"id":"call_<unique_id>","name":"<tool_name>","arguments":{...}}]}',
+            " - Do NOT output multiple JSON objects. If you need multiple tool calls, put them in the single tool_calls array.",
+            " - When you are ready to finalize, call the final_answer tool with the full final payload.",
+            " - Tool call ids must be unique per call.",
         ]
+
         if tool_choice == "any":
             parts.append("You must call at least one tool (tool call is required).")
         elif tool_choice and tool_choice not in {"auto", "none"}:
             parts.append(f'You must call the tool "{tool_choice}".')
         else:
             parts.append("If no tool is needed, respond with normal assistant text (not JSON).")
+        
+        parts.append(
+            "</tool_rules> \n"
+            "<available_tools>",
+        )
+
+        for tool in prompt_tools:
+            name = str(tool.get("name", ""))
+            desc = str(tool.get("description", ""))
+            parameters = tool.get("parameters", {}) if isinstance(tool.get("parameters"), dict) else {}
+            properties = parameters.get("properties", {})
+            required = parameters.get("required", [])
+
+            header = (
+                "FINAL ANSWER TOOL -- CALL THIS WHEN YOU WANT TO OUTPUT THE FINAL ANSWER"
+                if name == "final_answer"
+                else "TOOL"
+            )
+
+            parts.append(
+                "\n".join(
+                    [
+                        "",
+                        f"[{header}]",
+                        f"TOOL NAME: {name}",
+                        f"TOOL DESCRIPTION: {desc}",
+                        f"TOOL PARAMETERS (arguments schema): {json.dumps(properties, ensure_ascii=False)}",
+                        f"TOOL REQUIRED PARAMETERS: {json.dumps(required, ensure_ascii=False)}",
+                    ]
+                )
+            )
+
+        parts.append("</available_tools>")
         return "\n".join(parts)
+
 
     def _normalize_tool_calls(
         self,
@@ -423,6 +457,7 @@ class LlamaServerChat(BaseChatModel):
 
         llama_messages = self._to_llama_messages(messages, allow_tool_messages=bool(tools))
         if tools:
+            # print(json.dumps(tools))
             tool_instruction = self._tool_instruction(tools, tool_choice)
             if llama_messages and llama_messages[0].get("role") == "system":
                 existing = (llama_messages[0].get("content") or "").strip()

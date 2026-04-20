@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+from importlib import import_module
 import json
 import sys
 from pathlib import Path
@@ -39,47 +40,15 @@ def temp_tool_instruction(
             )
 
         parts = [
-            "When tools are available, you MUST follow this tool-calling contract.",
-            "Return a SINGLE JSON object (no markdown, no extra text).",
-            "Tool-call format (exact):",
-            '{"tool_calls":[{"id":"call_<unique_id>","name":"<tool_name>","arguments":{...}}]}',
-            "Do NOT output multiple JSON objects. If you need multiple tool calls, put them in the single tool_calls array.",
-            "When you are ready to finalize, call the final-answer tool with the full final payload.",
-            "Tool call ids must be unique per call.",
-            "Available tools:\n",
+            "<tool_rules>"
+            " - When tools are available, you MUST follow this tool-calling contract.",
+            " - Return a SINGLE JSON object (no markdown, no extra text).",
+            " - Tool-call format (exact):",
+            ' - {"tool_calls":[{"id":"call_<unique_id>","name":"<tool_name>","arguments":{...}}]}',
+            " - Do NOT output multiple JSON objects. If you need multiple tool calls, put them in the single tool_calls array.",
+            " - When you are ready to finalize, call the final_answer tool with the full final payload.",
+            " - Tool call ids must be unique per call.",
         ]
-
-        for tool in prompt_tools:
-            parameters = tool.get("parameters", {}) if isinstance(tool.get("parameters"), dict) else {}
-            properties = parameters.get("properties", {})
-            required = parameters.get("required", [])
-
-            if tool.get('name', '') != "final_answer" :
-                parts.append(
-                    "\n\n".join(
-                        [
-                            f"TOOL NAME: {tool.get('name', '')}",
-                            f"TOOL DESCRIPTION: {tool.get('description', '')}",
-                            f"TOOL PARAMETERS (arguments schema): {json.dumps(properties, ensure_ascii=False, indent=2)}",
-                            f"TOOL REQUIRED PARAMETERS: {json.dumps(required, ensure_ascii=False, indent=2)}",
-                        ]
-                    )
-                )
-            else :
-                parts.append(
-                    "\n\n".join(
-                        [
-                            f"FINAL ANSWER TOOL -- CALL THIS WHEN YOU WANT TO OUTPUT THE FINAL ANSWER"
-                            f"TOOL NAME: {tool.get('name', '')}",
-                            f"TOOL DESCRIPTION: {tool.get('description', '')}",
-                            f"TOOL PARAMETERS (arguments schema): {json.dumps(properties, ensure_ascii=False, indent=2)}",
-                            f"TOOL REQUIRED PARAMETERS: {json.dumps(required, ensure_ascii=False, indent=2)}",
-                        ]
-                    )
-                )
-
-
-            
 
         if tool_choice == "any":
             parts.append("You must call at least one tool (tool call is required).")
@@ -87,6 +56,39 @@ def temp_tool_instruction(
             parts.append(f'You must call the tool "{tool_choice}".')
         else:
             parts.append("If no tool is needed, respond with normal assistant text (not JSON).")
+        
+        parts.append(
+            "</tool_rules> \n"
+            "<available_tools>",
+        )
+
+        for tool in prompt_tools:
+            name = str(tool.get("name", ""))
+            desc = str(tool.get("description", ""))
+            parameters = tool.get("parameters", {}) if isinstance(tool.get("parameters"), dict) else {}
+            properties = parameters.get("properties", {})
+            required = parameters.get("required", [])
+
+            header = (
+                "FINAL ANSWER TOOL -- CALL THIS WHEN YOU WANT TO OUTPUT THE FINAL ANSWER"
+                if name == "final_answer"
+                else "TOOL"
+            )
+
+            parts.append(
+                "\n".join(
+                    [
+                        "",
+                        f"[{header}]",
+                        f"TOOL NAME: {name}",
+                        f"TOOL DESCRIPTION: {desc}",
+                        f"TOOL PARAMETERS (arguments schema): {json.dumps(properties, ensure_ascii=False)}",
+                        f"TOOL REQUIRED PARAMETERS: {json.dumps(required, ensure_ascii=False)}",
+                    ]
+                )
+            )
+
+        parts.append("</available_tools>")
         return "\n".join(parts)
 
 
@@ -100,6 +102,14 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--provider", choices=("dr7", "llama"), default="dr7")
     parser.add_argument("--model-id", default=None, help="Optional model id override.")
     parser.add_argument("--system", default="", help="System prompt text.")
+    parser.add_argument(
+        "--use-agent-system-prompt",
+        action="store_true",
+        help=(
+            "When --agent-name is set and no --messages-json/--system is provided, "
+            "load SYSTEM_PROMPT from app.agentic.agents.<agent>.prompt."
+        ),
+    )
     parser.add_argument("--user", default="", help="User input text.")
     parser.add_argument(
         "--messages-json",
@@ -139,6 +149,31 @@ def _parse_args() -> argparse.Namespace:
 def _load_json_file(path: str) -> Any:
     payload = Path(path).read_text(encoding="utf-8")
     return json.loads(payload)
+
+
+def _resolve_agent_system_prompt(agent_name: str) -> str:
+    normalized = str(agent_name or "").strip()
+    if not normalized:
+        return ""
+
+    module_key = normalized
+    if module_key.endswith("_agent"):
+        module_key = module_key[: -len("_agent")]
+
+    module_path = f"app.agentic.agents.{module_key}.prompt"
+    try:
+        module = import_module(module_path)
+    except Exception as exc:
+        raise ValueError(
+            f"Could not import prompt module for agent '{agent_name}' ({module_path})."
+        ) from exc
+
+    prompt = getattr(module, "SYSTEM_PROMPT", "")
+    if not isinstance(prompt, str) or not prompt.strip():
+        raise ValueError(
+            f"Prompt module '{module_path}' does not define a non-empty SYSTEM_PROMPT."
+        )
+    return prompt
 
 
 def _to_base_message(item: dict[str, Any]) -> BaseMessage:
@@ -340,7 +375,16 @@ def _build_llama_context(
 
 def main() -> int:
     args = _parse_args()
-    messages = _load_messages(args.messages_json, args.system, args.user)
+    system_text = args.system
+    if (
+        not args.messages_json
+        and not system_text.strip()
+        and args.use_agent_system_prompt
+        and args.agent_name
+    ):
+        system_text = _resolve_agent_system_prompt(args.agent_name)
+
+    messages = _load_messages(args.messages_json, system_text, args.user)
     tools = _load_tools(args.agent_name, args.tools_json)
 
     if args.provider == "dr7":
