@@ -424,6 +424,7 @@ class SSEHandrolledAgent:
         self._finalization_policy = FinalizationPolicy(
             config=self.runtime_config,
             final_answer_tool_name=self.final_answer_tool_name,
+            validate_output=self._schema_validation_error_for_output,
         )
         self._tool_executor = ToolExecutor(
             tools_by_name=self.tools_by_name,
@@ -508,6 +509,16 @@ class SSEHandrolledAgent:
             return dict(kwargs)
 
         return _final_answer
+
+    def _schema_validation_error_for_output(self, value: Any) -> str | None:
+        """Validate final output against configured response format when strict schema is available."""
+        if not (isinstance(self.response_format, type) and issubclass(self.response_format, BaseModel)):
+            return None
+        try:
+            self.response_format.model_validate(value)
+            return None
+        except Exception as exc:
+            return str(exc)
 
     def _render_system_prompt(self) -> str:
         return self.system_prompt

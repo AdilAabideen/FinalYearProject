@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
-from typing import Any, Mapping, Optional
+from typing import Any, Callable, Mapping, Optional
 
 from langchain_core.messages import AIMessage, ToolMessage
 
@@ -28,9 +28,11 @@ class FinalizationPolicy:
         *,
         config: RuntimeConfig,
         final_answer_tool_name: str | None = "final_answer",
+        validate_output: Callable[[Any], Optional[str]] | None = None,
     ) -> None:
         self.config = config
         self.final_answer_tool_name = final_answer_tool_name
+        self.validate_output = validate_output
 
     @staticmethod
     def _json_from_text(text: str) -> tuple[Any | None, str]:
@@ -63,6 +65,14 @@ class FinalizationPolicy:
             return value
         return json.dumps(value, ensure_ascii=False)
 
+    def _schema_validation_error(self, value: Any) -> Optional[str]:
+        if self.validate_output is None:
+            return None
+        try:
+            return self.validate_output(value)
+        except Exception as exc:  # pragma: no cover - defensive, validator is injected.
+            return str(exc)
+
     def maybe_finalize_from_assistant_no_tools(self, ai_message: AIMessage) -> FinalizationDecision:
         """Check assistant content finalization when no tool calls were emitted this turn."""
 
@@ -74,6 +84,9 @@ class FinalizationPolicy:
             if not self.config.allow_plain_json_final_output:
                 return FinalizationDecision(finalized=False, reason="plain_json_final_output_disabled")
             normalized = self._normalize_final_output(raw)
+            schema_error = self._schema_validation_error(normalized)
+            if schema_error:
+                return FinalizationDecision(finalized=False, reason="schema_validation_error")
             return FinalizationDecision(
                 finalized=True,
                 output=normalized,
@@ -86,6 +99,9 @@ class FinalizationPolicy:
             return FinalizationDecision(finalized=False, reason="plain_json_final_output_disabled")
 
         normalized = self._normalize_final_output(parsed)
+        schema_error = self._schema_validation_error(normalized)
+        if schema_error:
+            return FinalizationDecision(finalized=False, reason="schema_validation_error")
         return FinalizationDecision(
             finalized=True,
             output=normalized,
@@ -109,6 +125,9 @@ class FinalizationPolicy:
 
         parsed, raw = self._json_from_text(str(tool_message.content or ""))
         normalized = self._normalize_final_output(parsed if parsed is not None else raw)
+        schema_error = self._schema_validation_error(normalized)
+        if schema_error:
+            return FinalizationDecision(finalized=False, reason="schema_validation_error")
         return FinalizationDecision(
             finalized=True,
             output=normalized,

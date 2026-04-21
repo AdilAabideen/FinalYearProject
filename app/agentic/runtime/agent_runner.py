@@ -261,6 +261,21 @@ class AgentRunner:
             for tc, tm in zip(tool_calls, tool_msgs):
                 decision = self.finalization_policy.maybe_finalize_from_tool_result(tc, tm)
                 if not decision.finalized:
+                    if decision.reason == "schema_validation_error":
+                        invalid = self.finalization_policy.finalize_invalid_output(
+                            reason=decision.reason,
+                            raw_output=str(getattr(tm, "content", "") or ""),
+                        )
+                        final_output = invalid.output
+                        final_msg = AIMessage(
+                            content=invalid.output_text or json.dumps(final_output, ensure_ascii=False)
+                        )
+                        streamed_messages.append(final_msg)
+                        self._emit_assistant_event_from_text(str(final_msg.content or ""))
+                        if self._should_emit(modes, "updates"):
+                            yield "updates", {self.agent_node_name: {"messages": [final_msg]}}
+                        done = True
+                        break
                     continue
 
                 final_output = decision.output
