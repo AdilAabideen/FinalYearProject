@@ -352,11 +352,16 @@ def count_reliability_issues(db: Session, run_id: str) -> tuple[int, int, int, i
         "final_output_missing",
         "final_output_unparseable",
         "final_output_schema_invalid",
+        "final_output_invalid",
+        "schema_validation_error",
     }
     tool_recovery_codes = {
         "assistant_tool_call_json_unparseable",
         "assistant_tool_call_recovery_failed",
         "assistant_tool_call_name_not_allowed",
+        "native_tool_parse_failure",
+        "text_recovery_used",
+        "text_recovery_failure",
     }
     finalization_count = sum(int(grouped.get(code, 0)) for code in finalization_codes)
     tool_recovery_count = sum(int(grouped.get(code, 0)) for code in tool_recovery_codes)

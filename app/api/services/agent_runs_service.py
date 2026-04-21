@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session
 from app.agentic.agents.agents import get_agent_spec, supported_agent_names
 from app.agentic.model_registry import get_chat_model, validate_model_for_agent
 from app.agentic.runtime import AgentRuntime
+from app.agentic.runtime.failure_taxonomy import FailureCategory
 from app.api.repository import agent_metrics_repository, agent_runs_repository
 from app.config import settings
 from app.database import SessionLocal
@@ -175,7 +176,7 @@ def _collect_reliability_issues(
             assistant_tool_parse_event_ids.append(int(ev.seq))
             issues.append(
                 _ReliabilityIssue(
-                    issue_code="assistant_tool_call_json_unparseable",
+                    issue_code=FailureCategory.NATIVE_TOOL_PARSE_FAILURE.value,
                     severity="warning",
                     stage="tool_recovery",
                     message="Assistant output looked like tool calls but could not be parsed as JSON.",
@@ -207,6 +208,82 @@ def _collect_reliability_issues(
             for t in tool_calls[-5:]
         ]
 
+    # Category: text_recovery_used
+    text_recovered_total = sum(int(c.text_recovered_tool_call_count or 0) for c in llm_calls)
+    if text_recovered_total > 0:
+        issues.append(
+            _ReliabilityIssue(
+                issue_code=FailureCategory.TEXT_RECOVERY_USED.value,
+                severity="info",
+                stage="tool_recovery",
+                message="Text-based tool-call recovery was used.",
+                details_json={"text_recovered_tool_call_count": int(text_recovered_total)},
+                iteration=last_iteration,
+                call_index=(last_llm.call_index if last_llm is not None else None),
+            )
+        )
+
+    # Category: unknown_tool / tool_execution_error
+    unknown_tool_rows = [t for t in tool_calls if str(t.status or "").lower() == "error" and str(t.error_text or "").startswith("Unknown tool:")]
+    tool_exec_error_rows = [
+        t
+        for t in tool_calls
+        if str(t.status or "").lower() == "error" and t not in unknown_tool_rows
+    ]
+    if unknown_tool_rows:
+        issues.append(
+            _ReliabilityIssue(
+                issue_code=FailureCategory.UNKNOWN_TOOL.value,
+                severity="error",
+                stage="tool_execution",
+                message="One or more tool calls referenced unknown tools.",
+                details_json={"count": len(unknown_tool_rows)},
+                iteration=unknown_tool_rows[-1].iteration if unknown_tool_rows[-1].iteration is not None else last_iteration,
+                tool_call_id=unknown_tool_rows[-1].tool_call_id,
+                tool_name=unknown_tool_rows[-1].tool_name,
+            )
+        )
+    if tool_exec_error_rows:
+        issues.append(
+            _ReliabilityIssue(
+                issue_code=FailureCategory.TOOL_EXECUTION_ERROR.value,
+                severity="error",
+                stage="tool_execution",
+                message="One or more tool calls failed during execution.",
+                details_json={"count": len(tool_exec_error_rows)},
+                iteration=tool_exec_error_rows[-1].iteration if tool_exec_error_rows[-1].iteration is not None else last_iteration,
+                tool_call_id=tool_exec_error_rows[-1].tool_call_id,
+                tool_name=tool_exec_error_rows[-1].tool_name,
+            )
+        )
+
+    # Category: extra_tool_calls_dropped
+    executed_by_iteration: dict[int, int] = {}
+    for t in tool_calls:
+        it = int(t.iteration or 0)
+        executed_by_iteration[it] = executed_by_iteration.get(it, 0) + 1
+    dropped_total = 0
+    for c in llm_calls:
+        it = int(c.iteration or 0)
+        planned = int(c.tool_call_count or 0)
+        if planned <= 0:
+            continue
+        executed = int(executed_by_iteration.get(it, 0))
+        if planned > executed:
+            dropped_total += planned - executed
+    if dropped_total > 0:
+        issues.append(
+            _ReliabilityIssue(
+                issue_code=FailureCategory.EXTRA_TOOL_CALLS_DROPPED.value,
+                severity="warning",
+                stage="tool_execution",
+                message="Some tool calls were dropped due to per-turn limits.",
+                details_json={"dropped_tool_call_count": int(dropped_total)},
+                iteration=last_iteration,
+                call_index=(last_llm.call_index if last_llm is not None else None),
+            )
+        )
+
     if output_json is None:
         raw_output_text = str(raw_output).strip() if isinstance(raw_output, str) else ""
         latest_assistant_text = ""
@@ -220,7 +297,11 @@ def _collect_reliability_issues(
                 break
 
         final_raw_text = raw_output_text or latest_assistant_text
-        issue_code = "final_output_unparseable" if final_raw_text else "final_output_missing"
+        issue_code = (
+            FailureCategory.FINAL_OUTPUT_INVALID.value
+            if final_raw_text
+            else FailureCategory.FINAL_OUTPUT_MISSING.value
+        )
         issues.append(
             _ReliabilityIssue(
                 issue_code=issue_code,
@@ -228,7 +309,7 @@ def _collect_reliability_issues(
                 stage="finalization",
                 message=(
                     "Run ended without a parseable final JSON output."
-                    if issue_code == "final_output_unparseable"
+                    if issue_code == FailureCategory.FINAL_OUTPUT_INVALID.value
                     else "Run ended without any final output."
                 ),
                 details_json={
@@ -247,7 +328,7 @@ def _collect_reliability_issues(
         if contains_tool_calls_hint or assistant_tool_parse_event_ids:
             issues.append(
                 _ReliabilityIssue(
-                    issue_code="assistant_tool_call_recovery_failed",
+                    issue_code=FailureCategory.TEXT_RECOVERY_FAILURE.value,
                     severity="error",
                     stage="tool_recovery",
                     message="Tool-call recovery failed before finalization.",
@@ -265,7 +346,7 @@ def _collect_reliability_issues(
         if schema_error:
             issues.append(
                 _ReliabilityIssue(
-                    issue_code="final_output_schema_invalid",
+                    issue_code=FailureCategory.SCHEMA_VALIDATION_ERROR.value,
                     severity="warning",
                     stage="finalization",
                     message="Final output failed schema validation.",
@@ -405,7 +486,11 @@ def _persist_run_metrics(db: Session, run: AgentRun, *, agent_system: str) -> No
     failure_reason: Optional[str] = None
     if run.status == "failed":
         err = (run.error_text or "").lower()
-        failure_reason = "timeout" if "timeout" in err else "execution_error"
+        failure_reason = (
+            FailureCategory.TIMEOUT_ERROR.value
+            if "timeout" in err
+            else FailureCategory.PROVIDER_ERROR.value
+        )
 
     agent_metrics_repository.upsert_run_metrics(
         db,
