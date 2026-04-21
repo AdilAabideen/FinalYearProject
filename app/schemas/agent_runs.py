@@ -158,15 +158,18 @@ class AgentRunReliabilityIssueRead(BaseModel):
     created_at: datetime
 
 
-class AgentRunReliabilityIssueCount(BaseModel):
+class AgentRunReliabilityCategoryCount(BaseModel):
     issue_code: str
+    severity: Literal["error", "warning", "info"]
     count: int
 
 
 class AgentRunReliabilitySummary(BaseModel):
     total_issues: int
     error_issues: int
-    by_code: list[AgentRunReliabilityIssueCount] = Field(default_factory=list)
+    warning_issues: int = 0
+    info_issues: int = 0
+    by_category: list[AgentRunReliabilityCategoryCount] = Field(default_factory=list)
 
 
 class AgentRunReliabilityIssuePage(BaseModel):

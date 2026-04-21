@@ -266,14 +266,21 @@ def count_reliability_issues_filtered(
     return int(db.execute(stmt).scalar_one() or 0)
 
 
-def list_reliability_issue_code_counts(db: Session, run_id: str) -> list[tuple[str, int]]:
+def list_reliability_issue_category_counts(db: Session, run_id: str) -> list[tuple[str, str, int]]:
     stmt = (
-        select(AgentRunReliabilityIssue.issue_code, func.count())
+        select(
+            AgentRunReliabilityIssue.issue_code,
+            AgentRunReliabilityIssue.severity,
+            func.count(),
+        )
         .where(AgentRunReliabilityIssue.run_id == run_id)
-        .group_by(AgentRunReliabilityIssue.issue_code)
+        .group_by(
+            AgentRunReliabilityIssue.issue_code,
+            AgentRunReliabilityIssue.severity,
+        )
     )
     rows = db.execute(stmt).all()
-    return [(str(code), int(count)) for code, count in rows]
+    return [(str(code), str(severity), int(count)) for code, severity, count in rows]
 
 
 def list_run_metrics(
@@ -347,7 +354,9 @@ def count_reliability_issues(db: Session, run_id: str) -> tuple[int, int, int, i
             AgentRunReliabilityIssue.severity == "error",
         )
     )
-    grouped = dict(list_reliability_issue_code_counts(db, run_id))
+    grouped: dict[str, int] = {}
+    for code, _severity, count in list_reliability_issue_category_counts(db, run_id):
+        grouped[code] = grouped.get(code, 0) + int(count)
     finalization_codes = {
         "final_output_missing",
         "final_output_unparseable",

@@ -28,7 +28,7 @@ from app.schemas.agent_runs import (
     AgentRunCreateResponse,
     AgentRunReliabilityIssuePage,
     AgentRunReliabilityIssueRead,
-    AgentRunReliabilityIssueCount,
+    AgentRunReliabilityCategoryCount,
     AgentRunReliabilitySummary,
     AgentRunMetricsDetail,
     AgentRunMetricsRead,
@@ -411,14 +411,18 @@ def _persist_reliability_issues(
 
 
 def _build_reliability_summary(db: Session, run_id: str) -> AgentRunReliabilitySummary:
-    by_code = agent_metrics_repository.list_reliability_issue_code_counts(db, run_id)
+    by_category = agent_metrics_repository.list_reliability_issue_category_counts(db, run_id)
     total_issues, error_issues, _, _ = agent_metrics_repository.count_reliability_issues(db, run_id)
+    warning_issues = sum(count for _, severity, count in by_category if severity == "warning")
+    info_issues = sum(count for _, severity, count in by_category if severity == "info")
     return AgentRunReliabilitySummary(
         total_issues=total_issues,
         error_issues=error_issues,
-        by_code=[
-            AgentRunReliabilityIssueCount(issue_code=code, count=count)
-            for code, count in sorted(by_code, key=lambda item: item[0])
+        warning_issues=warning_issues,
+        info_issues=info_issues,
+        by_category=[
+            AgentRunReliabilityCategoryCount(issue_code=code, severity=severity, count=count)
+            for code, severity, count in sorted(by_category, key=lambda item: (item[0], item[1]))
         ],
     )
 
@@ -1005,7 +1009,7 @@ def get_metrics_summary(
     )
     runs_with_reliability_issues = sum(1 for r in rows if int(r.reliability_issue_count or 0) > 0)
     runs_with_finalization_failures = sum(1 for r in rows if int(r.finalization_failure_count or 0) > 0)
-    timeout_runs = sum(1 for r in rows if (r.failure_reason or "") == "timeout")
+    timeout_runs = sum(1 for r in rows if (r.failure_reason or "") == FailureCategory.TIMEOUT_ERROR.value)
 
     durations = [float(r.duration_ms) for r in rows if r.duration_ms is not None]
     llm_counts = [float(r.llm_call_count) for r in rows]
