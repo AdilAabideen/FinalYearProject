@@ -1,12 +1,11 @@
 from __future__ import annotations
 
-import json
 from typing import Any, Callable, Optional, Sequence, Union
 
 import httpx
 from langchain_core.language_models import LanguageModelInput
 from langchain_core.language_models.chat_models import BaseChatModel
-from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage, ToolMessage
+from langchain_core.messages import AIMessage, BaseMessage
 from langchain_core.outputs import ChatGeneration, ChatResult
 from langchain_core.runnables import Runnable
 from langchain_core.tools import BaseTool
@@ -15,8 +14,11 @@ from pydantic import ConfigDict, Field
 
 from app.agentic.protocols import (
     AllowedToolNames,
-    build_tool_instruction,
+    coerce_bound_tools,
+    extract_allowed_tool_names,
+    inject_tool_instruction,
     normalize_chat_messages,
+    to_provider_messages,
     normalize_tool_calls,
 )
 
@@ -47,56 +49,6 @@ class Dr7MedicalChatModel(BaseChatModel):
     @property
     def _identifying_params(self) -> dict[str, Any]:
         return {"model": self.model, "base_url": self.base_url}
-
-    def _to_dr7_messages(
-        self,
-        messages: Sequence[BaseMessage],
-        *,
-        allow_tool_messages: bool = False,
-    ) -> list[dict[str, str]]:
-        out: list[dict[str, str]] = []
-        for msg in messages:
-            if isinstance(msg, SystemMessage):
-                role = "system"
-            elif isinstance(msg, HumanMessage):
-                role = "user"
-            elif isinstance(msg, AIMessage):
-                role = "assistant"
-            elif isinstance(msg, ToolMessage):
-                if not allow_tool_messages:
-                    raise ValueError(
-                        "Dr7MedicalChatModel does not support tool calling (ToolMessage present)."
-                    )
-                role = "user"
-            else:
-                raise ValueError(f"Unsupported message type for Dr7: {type(msg).__name__}")
-
-            if isinstance(msg, ToolMessage):
-                tool_name = getattr(msg, "name", None) or "tool"
-                tool_status = getattr(msg, "status", None) or "success"
-                tool_id = getattr(msg, "tool_call_id", None) or "unknown"
-                raw_content = (getattr(msg, "content", None) or "").strip()
-                content = (
-                    f"Tool result ({tool_name}, id={tool_id}, status={tool_status}):\n{raw_content}"
-                )
-            else:
-                content = (getattr(msg, "content", None) or "").strip()
-                if isinstance(msg, AIMessage) and getattr(msg, "tool_calls", None):
-                    tool_calls = [
-                        {
-                            "id": tc.get("id"),
-                            "name": tc.get("name"),
-                            "arguments": tc.get("args", {}),
-                        }
-                        for tc in msg.tool_calls
-                    ]
-                    rendered_calls = json.dumps({"tool_calls": tool_calls}, ensure_ascii=False)
-                    if content:
-                        content = f"{content}\n\n{rendered_calls}"
-                    else:
-                        content = rendered_calls
-            out.append({"role": role, "content": content})
-        return out
 
     def bind_tools(
         self,
@@ -138,40 +90,22 @@ class Dr7MedicalChatModel(BaseChatModel):
     ) -> ChatResult:
         bound_tools = kwargs.get("tools")
         tool_choice = kwargs.get("tool_choice")
-        tools: list[dict[str, Any]] = []
-        if isinstance(bound_tools, list):
-            tools = [t for t in bound_tools if isinstance(t, dict)]
+        tools = coerce_bound_tools(bound_tools)
 
-        dr7_messages = self._to_dr7_messages(messages, allow_tool_messages=bool(tools))
-        # if tools:
-        #     dr7_messages = [
-        #         {
-        #             "role": "system",
-        #             "content": self._tool_instruction(tools, tool_choice),
-        #         },
-        #         *dr7_messages,
-        #     ]
-        if tools:
-            tool_instruction = build_tool_instruction(
-                tools,
-                tool_choice,
-                final_answer_tool_name="final_answer",
-                highlight_final_answer=True,
-            )
-            if dr7_messages and dr7_messages[0].get("role") == "system":
-                existing = (dr7_messages[0].get("content") or "").strip()
-                if existing:
-                    dr7_messages[0]["content"] = f"{existing}\n\n{tool_instruction}"
-                else:
-                    dr7_messages[0]["content"] = tool_instruction
-            else:
-                dr7_messages = [
-                    {"role": "system", "content": tool_instruction},
-                    *dr7_messages,
-                ]
+        dr7_messages = to_provider_messages(
+            messages,
+            allow_tool_messages=bool(tools),
+            tool_message_error="Dr7MedicalChatModel does not support tool calling (ToolMessage present).",
+            unsupported_type_label="Dr7",
+        )
+        dr7_messages = inject_tool_instruction(
+            dr7_messages,
+            tools=tools,
+            tool_choice=tool_choice,
+            final_answer_tool_name="final_answer",
+            highlight_final_answer=True,
+        )
         dr7_messages = self._normalize_dr7_messages(dr7_messages)
-        
-        print(json.dumps(dr7_messages))
 
         payload: dict[str, Any] = {
             "model": self.model,
@@ -217,14 +151,7 @@ class Dr7MedicalChatModel(BaseChatModel):
         if isinstance(choice_msg, dict):
             content = (choice_msg.get("content") or "").strip()
 
-        allowed_tool_names: AllowedToolNames = {
-            t.get("function", {}).get("name")
-            for t in tools
-            if isinstance(t.get("function"), dict)
-        }
-        allowed_tool_names = {
-            n for n in allowed_tool_names if isinstance(n, str) and n
-        } or None
+        allowed_tool_names: AllowedToolNames = extract_allowed_tool_names(tools)
 
         tool_calls: list[dict[str, Any]] = []
         if tools and isinstance(choice_msg, dict):

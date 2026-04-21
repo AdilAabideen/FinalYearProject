@@ -1,12 +1,11 @@
 from __future__ import annotations
 
-import json
 from typing import Any, Callable, Literal, Optional, Sequence, Union
 
 import httpx
 from langchain_core.language_models import LanguageModelInput
 from langchain_core.language_models.chat_models import BaseChatModel
-from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage, ToolMessage
+from langchain_core.messages import AIMessage, BaseMessage
 from langchain_core.outputs import ChatGeneration, ChatResult
 from langchain_core.runnables import Runnable
 from langchain_core.tools import BaseTool
@@ -15,8 +14,11 @@ from pydantic import ConfigDict, Field
 
 from app.agentic.protocols import (
     AllowedToolNames,
-    build_tool_instruction,
+    coerce_bound_tools,
+    extract_allowed_tool_names,
+    inject_tool_instruction,
     normalize_chat_messages,
+    to_provider_messages,
     normalize_tool_calls,
 )
 
@@ -109,56 +111,6 @@ class LlamaServerChat(BaseChatModel):
             "adapter_id": self.adapter_id,
         }
 
-    def _to_llama_messages(
-        self,
-        messages: Sequence[BaseMessage],
-        *,
-        allow_tool_messages: bool = False,
-    ) -> list[dict[str, str]]:
-        out: list[dict[str, str]] = []
-        for msg in messages:
-            if isinstance(msg, SystemMessage):
-                role = "system"
-            elif isinstance(msg, HumanMessage):
-                role = "user"
-            elif isinstance(msg, AIMessage):
-                role = "assistant"
-            elif isinstance(msg, ToolMessage):
-                if not allow_tool_messages:
-                    raise ValueError(
-                        "LlamaServerChat does not support tool calling (ToolMessage present)."
-                    )
-                role = "user"
-            else:
-                raise ValueError(f"Unsupported message type for Llama Server: {type(msg).__name__}")
-
-            if isinstance(msg, ToolMessage):
-                tool_name = getattr(msg, "name", None) or "tool"
-                tool_status = getattr(msg, "status", None) or "success"
-                tool_id = getattr(msg, "tool_call_id", None) or "unknown"
-                raw_content = (getattr(msg, "content", None) or "").strip()
-                content = (
-                    f"Tool result ({tool_name}, id={tool_id}, status={tool_status}):\n{raw_content}"
-                )
-            else:
-                content = (getattr(msg, "content", None) or "").strip()
-                if isinstance(msg, AIMessage) and getattr(msg, "tool_calls", None):
-                    tool_calls = [
-                        {
-                            "id": tc.get("id"),
-                            "name": tc.get("name"),
-                            "arguments": tc.get("args", {}),
-                        }
-                        for tc in msg.tool_calls
-                    ]
-                    rendered_calls = json.dumps({"tool_calls": tool_calls}, ensure_ascii=False)
-                    if content:
-                        content = f"{content}\n\n{rendered_calls}"
-                    else:
-                        content = rendered_calls
-            out.append({"role": role, "content": content})
-        return out
-
     def _normalize_llama_messages(self, messages: list[dict[str, str]]) -> list[dict[str, str]]:
         """Normalize provider messages via shared protocol helper."""
         return normalize_chat_messages(messages)
@@ -186,6 +138,19 @@ class LlamaServerChat(BaseChatModel):
 
         model_key = self.model.strip().lower()
         return ESI_ADAPTER_ID_BY_NAME.get(model_key)
+
+    def _apply_lora_payload(
+        self,
+        payload: dict[str, Any],
+        *,
+        adapter_id: Optional[int],
+        adapter_scale: float,
+    ) -> None:
+        """Apply llama-only LoRA payload fields."""
+        if adapter_id is None:
+            return
+        # Intentionally disabled to preserve existing transport behavior.
+        # payload["lora"] = [{"id": int(adapter_id), "scale": float(adapter_scale)}]
 
     def bind_tools(
         self,
@@ -222,33 +187,22 @@ class LlamaServerChat(BaseChatModel):
     ) -> ChatResult:
         bound_tools = kwargs.get("tools")
         tool_choice = kwargs.get("tool_choice")
-        tools: list[dict[str, Any]] = []
-        if isinstance(bound_tools, list):
-            tools = [t for t in bound_tools if isinstance(t, dict)]
+        tools = coerce_bound_tools(bound_tools)
 
-        llama_messages = self._to_llama_messages(messages, allow_tool_messages=bool(tools))
-        if tools:
-            # print(json.dumps(tools))
-            tool_instruction = build_tool_instruction(
-                tools,
-                tool_choice,
-                final_answer_tool_name="final_answer",
-                highlight_final_answer=True,
-            )
-            if llama_messages and llama_messages[0].get("role") == "system":
-                existing = (llama_messages[0].get("content") or "").strip()
-                if existing:
-                    llama_messages[0]["content"] = f"{existing}\n\n{tool_instruction}"
-                else:
-                    llama_messages[0]["content"] = tool_instruction
-            else:
-                llama_messages = [
-                    {"role": "system", "content": tool_instruction},
-                    *llama_messages,
-                ]
+        llama_messages = to_provider_messages(
+            messages,
+            allow_tool_messages=bool(tools),
+            tool_message_error="LlamaServerChat does not support tool calling (ToolMessage present).",
+            unsupported_type_label="Llama Server",
+        )
+        llama_messages = inject_tool_instruction(
+            llama_messages,
+            tools=tools,
+            tool_choice=tool_choice,
+            final_answer_tool_name="final_answer",
+            highlight_final_answer=True,
+        )
         llama_messages = self._normalize_llama_messages(llama_messages)
-
-        print(json.dumps(llama_messages))
 
         payload: dict[str, Any] = {
             "model": self.model,
@@ -262,8 +216,7 @@ class LlamaServerChat(BaseChatModel):
             payload["stop"] = stop
         adapter_id = self._resolve_adapter_id(**kwargs)
         adapter_scale = float(kwargs.get("adapter_scale", self.adapter_scale))
-        # if adapter_id is not None:
-        #     payload["lora"] = [{"id": int(adapter_id), "scale": adapter_scale}]
+        self._apply_lora_payload(payload, adapter_id=adapter_id, adapter_scale=adapter_scale)
 
         url = self.base_url.rstrip("/") + "/chat/completions"
         headers = {"Content-Type": "application/json"}
@@ -299,14 +252,7 @@ class LlamaServerChat(BaseChatModel):
         if isinstance(choice_msg, dict):
             content = (choice_msg.get("content") or "").strip()
 
-        allowed_tool_names: AllowedToolNames = {
-            t.get("function", {}).get("name")
-            for t in tools
-            if isinstance(t.get("function"), dict)
-        }
-        allowed_tool_names = {
-            n for n in allowed_tool_names if isinstance(n, str) and n
-        } or None
+        allowed_tool_names: AllowedToolNames = extract_allowed_tool_names(tools)
 
         tool_calls: list[dict[str, Any]] = []
         if tools and isinstance(choice_msg, dict):

@@ -81,6 +81,48 @@ def build_tool_instruction(
     return "\n".join(parts)
 
 
+def coerce_bound_tools(bound_tools: Any) -> list[dict[str, Any]]:
+    """Keep only dict-like bound tools for prompt/tool-call processing."""
+    if not isinstance(bound_tools, list):
+        return []
+    return [tool for tool in bound_tools if isinstance(tool, dict)]
+
+
+def extract_allowed_tool_names(tools: Sequence[dict[str, Any]]) -> AllowedToolNames:
+    """Extract an allow-list of tool names from OpenAI-style tool schemas."""
+    allowed_tool_names: AllowedToolNames = {
+        tool.get("function", {}).get("name")
+        for tool in tools
+        if isinstance(tool.get("function"), dict)
+    }
+    return {name for name in allowed_tool_names if isinstance(name, str) and name} or None
+
+
+def inject_tool_instruction(
+    messages: list[dict[str, str]],
+    *,
+    tools: Sequence[dict[str, Any]],
+    tool_choice: str | None,
+    final_answer_tool_name: str = "final_answer",
+    highlight_final_answer: bool = True,
+) -> list[dict[str, str]]:
+    """Inject tool instruction block into the leading system message."""
+    if not tools:
+        return messages
+
+    tool_instruction = build_tool_instruction(
+        tools,
+        tool_choice,
+        final_answer_tool_name=final_answer_tool_name,
+        highlight_final_answer=highlight_final_answer,
+    )
+    if messages and messages[0].get("role") == "system":
+        existing = (messages[0].get("content") or "").strip()
+        messages[0]["content"] = f"{existing}\n\n{tool_instruction}" if existing else tool_instruction
+        return messages
+    return [{"role": "system", "content": tool_instruction}, *messages]
+
+
 def normalize_tool_calls(
     raw_tool_calls: Any,
     *,

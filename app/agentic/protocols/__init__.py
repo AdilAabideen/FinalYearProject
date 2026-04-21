@@ -13,7 +13,14 @@ from .tool_call_recovery import (
     recover_tool_calls_from_content,
     to_legacy_recovery_output,
 )
-from .tool_protocol import build_tool_instruction, normalize_tool_calls
+from .message_normalizer import to_provider_messages
+from .tool_protocol import (
+    build_tool_instruction,
+    coerce_bound_tools,
+    extract_allowed_tool_names,
+    inject_tool_instruction,
+    normalize_tool_calls,
+)
 
 __all__ = [
     "AllowedToolNames",
@@ -21,6 +28,7 @@ __all__ = [
     "ToolCallParseResult",
     "ToolCallParseSource",
     "normalize_chat_messages",
+    "to_provider_messages",
     "extract_tool_calls_with_priority",
     "recover_from_fenced_json_text",
     "recover_from_jsonl_text",
@@ -28,5 +36,8 @@ __all__ = [
     "recover_tool_calls_from_content",
     "to_legacy_recovery_output",
     "build_tool_instruction",
+    "coerce_bound_tools",
+    "extract_allowed_tool_names",
+    "inject_tool_instruction",
     "normalize_tool_calls",
 ]
