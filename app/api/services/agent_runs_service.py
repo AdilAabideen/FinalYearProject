@@ -165,22 +165,6 @@ def _collect_reliability_issues(
 
     issues: list[_ReliabilityIssue] = []
 
-    for call in llm_calls:
-        if str(call.call_kind or "") == "structured_output" and str(call.error_text or "").strip():
-            issues.append(
-                _ReliabilityIssue(
-                    issue_code="structured_output_generation_failed",
-                    severity="warning",
-                    stage="structured_output",
-                    message="Structured output generation failed; fallback path used.",
-                    details_json={
-                        "error_text": _truncate_optional_text(call.error_text, max_len=2_000),
-                    },
-                    iteration=call.iteration,
-                    call_index=call.call_index,
-                )
-            )
-
     assistant_tool_parse_event_ids: list[int] = []
     for ev in events:
         if ev.event_type != "assistant":
@@ -582,7 +566,6 @@ def _run_agent_and_persist(db: Session, run: AgentRun, seq: int) -> Tuple[int, O
         model_id=model_id,
         agent_name=run.agent_name,
         requires_tools=bool(spec.tools),
-        requires_structured_output=spec.output_model is not None,
     )
     validated_input = spec.input_model.model_validate(run.input_json)
     runtime = AgentRuntime(
@@ -710,7 +693,6 @@ def create_agent_run(payload: AgentRunCreateRequest, db: Session) -> AgentRunCre
             model_id=model_id,
             agent_name=payload.agent_name,
             requires_tools=bool(spec.tools),
-            requires_structured_output=spec.output_model is not None,
         )
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
@@ -752,7 +734,6 @@ def start_agent_run(
             model_id=model_id,
             agent_name=payload.agent_name,
             requires_tools=bool(spec.tools),
-            requires_structured_output=spec.output_model is not None,
         )
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))

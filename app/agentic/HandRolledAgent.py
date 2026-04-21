@@ -412,7 +412,6 @@ class SSEHandrolledAgent:
             require_final_answer_tool=True,
             allow_text_tool_recovery=True,
             allow_plain_json_final_output=False,
-            structured_output_fallback_enabled=False,
             drop_extra_tool_calls=True,
         )
         self.max_tool_calls = int(self.runtime_config.max_tool_calls_per_turn)
@@ -489,25 +488,7 @@ class SSEHandrolledAgent:
         return _final_answer
 
     def _render_system_prompt(self) -> str:
-        if self.response_format is None:
-            return self.system_prompt
-
-        if isinstance(self.response_format, dict):
-            schema = self.response_format
-        elif isinstance(self.response_format, type) and issubclass(self.response_format, BaseModel):
-            schema = self.response_format.model_json_schema()
-        else:
-            schema = {"description": str(self.response_format)}
-
-        # return (
-        #     f"{self.system_prompt}\n"
-        #     "Return your final assistant output as strict JSON matching this schema:\n"
-        #     f"{json.dumps(schema, ensure_ascii=False)}"
-        # )
-
-        return (
-            f"{self.system_prompt}\n"
-        )
+        return self.system_prompt
 
     @staticmethod
     def _payload_to_human_content(payload: Any) -> str:
@@ -538,56 +519,6 @@ class SSEHandrolledAgent:
             return json.loads(raw), raw
         except Exception:
             return None, raw
-
-    @staticmethod
-    def _normalize_final_output(value: Any) -> Any:
-        if not isinstance(value, dict):
-            return value
-
-        normalized = dict(value)
-        has_error = bool(normalized.get("error"))
-        has_recommendation = isinstance(normalized.get("recommendation"), dict)
-        if has_recommendation and not has_error:
-            normalized["ok"] = True
-        elif "ok" not in normalized and not has_error:
-            normalized["ok"] = True
-        return normalized
-
-    @staticmethod
-    def _structured_to_jsonable(value: Any) -> Any:
-        if isinstance(value, BaseModel):
-            return value.model_dump()
-        if hasattr(value, "model_dump") and callable(value.model_dump):
-            try:
-                return value.model_dump()
-            except Exception:
-                pass
-        return value
-
-    async def _generate_structured_response(
-        self,
-        messages: list[BaseMessage],
-        *,
-        iteration: int,
-        timeout_s: float | None = None,
-    ) -> Any | None:
-        if self.response_format is None:
-            return None
-
-        try:
-            structured_model = self.model.with_structured_output(self.response_format)
-            response = await self._ainvoke_with_telemetry(
-                call_kind="structured_output",
-                iteration=iteration,
-                messages=messages,
-                invoke_fn=lambda: structured_model.ainvoke(messages),
-                timeout_s=timeout_s,
-            )
-            return self._structured_to_jsonable(response)
-        except TimeoutError:
-            raise
-        except Exception:
-            return None
 
     @staticmethod
     def _iter_json_objects(text: str) -> Iterable[Any]:

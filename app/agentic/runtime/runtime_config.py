@@ -11,7 +11,6 @@ class RuntimeConfig:
     require_final_answer_tool: bool = True
     allow_text_tool_recovery: bool = True
     allow_plain_json_final_output: bool = False
-    structured_output_fallback_enabled: bool = False
     drop_extra_tool_calls: bool = True
 
     def __post_init__(self) -> None:

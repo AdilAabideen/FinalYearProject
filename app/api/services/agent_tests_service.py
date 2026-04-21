@@ -206,7 +206,6 @@ def start_run(payload: AgentTestRunStartRequest, db: Session) -> AgentTestRunRea
             model_id=model_id,
             agent_name=payload.agent_name,
             requires_tools=bool(spec.tools),
-            requires_structured_output=spec.output_model is not None,
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -489,7 +488,6 @@ def stream_run(run_id: str, db: Session) -> StreamingResponse:
             model_id=model_id,
             agent_name=run.agent_name,
             requires_tools=bool(spec.tools),
-            requires_structured_output=spec.output_model is not None,
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))

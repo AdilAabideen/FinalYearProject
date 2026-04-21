@@ -33,7 +33,6 @@ class ModelSpec(BaseModel):
     capabilities: list[str] = Field(default_factory=list)
     languages: list[str] = Field(default_factory=lambda: ["en"])
     supports_tools: bool = True
-    supports_structured_output: bool = True
     default_temperature: float = 0.7
 
 
@@ -44,7 +43,6 @@ _MODEL_REGISTRY: dict[str, ModelSpec] = {
         provider="openai",
         description="OpenAI GPT-4o mini",
         supports_tools=True,
-        supports_structured_output=True,
         default_temperature=0.7,
         pricing=ModelPricing(input_per_1k=0.001, output_per_1k=0.002),
     ),
@@ -66,7 +64,6 @@ _MODEL_REGISTRY: dict[str, ModelSpec] = {
         ],
         languages=["en", "zh"],
         supports_tools=True,
-        supports_structured_output=True,
         default_temperature=0.7,
     ),
     "esi1": ModelSpec(
@@ -74,7 +71,6 @@ _MODEL_REGISTRY: dict[str, ModelSpec] = {
         provider="llama",
         description="Llama Server ESI-1 adapter profile.",
         supports_tools=True,
-        supports_structured_output=True,
         default_temperature=0,
         pricing=ModelPricing(input_per_1k=0.00015, output_per_1k=0.00060),
         context_length=8192,
@@ -85,7 +81,6 @@ _MODEL_REGISTRY: dict[str, ModelSpec] = {
         provider="llama",
         description="Llama Server ESI-2 adapter profile.",
         supports_tools=True,
-        supports_structured_output=True,
         default_temperature=0,
         pricing=ModelPricing(input_per_1k=0.00015, output_per_1k=0.00060),
         context_length=8192,
@@ -96,7 +91,6 @@ _MODEL_REGISTRY: dict[str, ModelSpec] = {
         provider="llama",
         description="Llama Server ESI-345 adapter profile.",
         supports_tools=True,
-        supports_structured_output=True,
         default_temperature=0,
         pricing=ModelPricing(input_per_1k=0.00015, output_per_1k=0.00060),
         context_length=8192,
@@ -129,7 +123,6 @@ def resolve_model_spec(model_id: str) -> ModelSpec:
         provider="openai",
         description=None,
         supports_tools=True,
-        supports_structured_output=True,
         default_temperature=0.7,
     )
 
@@ -139,16 +132,11 @@ def validate_model_for_agent(
     model_id: str,
     agent_name: str,
     requires_tools: bool,
-    requires_structured_output: bool,
 ) -> ModelSpec:
     spec = resolve_model_spec(model_id)
     if requires_tools and not spec.supports_tools:
         raise ValueError(
             f"Model '{model_id}' does not support tool calling, but agent '{agent_name}' requires tools."
-        )
-    if requires_structured_output and not spec.supports_structured_output:
-        raise ValueError(
-            f"Model '{model_id}' does not support structured output, but agent '{agent_name}' requires it."
         )
     return spec
 
