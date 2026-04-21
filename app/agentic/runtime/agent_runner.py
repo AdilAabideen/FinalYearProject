@@ -73,14 +73,136 @@ class AgentRunner:
         self.emit_event = emit_event
         self.values_state = values_state
 
+    @staticmethod
+    def _resolve_modes(stream_mode: StreamModesInput) -> tuple[str, ...]:
+        return (stream_mode,) if isinstance(stream_mode, str) else tuple(stream_mode or ("updates", "values"))
+
+    def _remaining_timeout_s(self, *, run_started_t: float) -> float | None:
+        if self.run_timeout_s is None:
+            return None
+        remaining = self.run_timeout_s - (time.perf_counter() - run_started_t)
+        if remaining <= 0:
+            raise TimeoutError("run_timeout_exceeded")
+        return remaining
+
+    def _build_call_messages(
+        self,
+        *,
+        human_msg: HumanMessage,
+        scratchpad: list[BaseMessage],
+    ) -> list[BaseMessage]:
+        call_messages: list[BaseMessage] = [SystemMessage(content=self.render_system_prompt()), human_msg]
+        call_messages.extend(scratchpad)
+        return call_messages
+
+    def _extract_normalized_tool_calls(self, ai_msg: AIMessage) -> list[dict[str, Any]]:
+        raw_tool_calls = list(getattr(ai_msg, "tool_calls", []) or [])
+        normalized_calls: list[dict[str, Any]] = []
+        for item in raw_tool_calls:
+            if not isinstance(item, Mapping):
+                continue
+            normalized = self.normalize_tool_call(item)
+            if normalized:
+                normalized_calls.append(normalized)
+        return normalized_calls
+
+    def _apply_tool_call_recovery(
+        self,
+        *,
+        ai_msg: AIMessage,
+        tool_calls: list[dict[str, Any]],
+    ) -> tuple[AIMessage, list[dict[str, Any]]]:
+        content = str(ai_msg.content or "")
+        if not tool_calls and self.runtime_config.allow_text_tool_recovery:
+            recovered = self.recover_tool_calls_from_content(content)
+            if recovered:
+                return (
+                    self.ai_message_with_tool_calls(
+                        ai_msg,
+                        recovered,
+                        extra_additional_kwargs={"raw_recovered_tool_text": content},
+                    ),
+                    recovered,
+                )
+            return ai_msg, tool_calls
+
+        if content.strip():
+            return (
+                self.ai_message_with_tool_calls(
+                    ai_msg,
+                    tool_calls,
+                    extra_additional_kwargs={"raw_tool_text": content},
+                ),
+                tool_calls,
+            )
+
+        return ai_msg, tool_calls
+
+    def _apply_tool_call_limit(
+        self,
+        *,
+        ai_msg: AIMessage,
+        tool_calls: list[dict[str, Any]],
+    ) -> tuple[AIMessage, list[dict[str, Any]]]:
+        limited_tool_calls, dropped_tool_calls = self.limit_tool_calls(tool_calls)
+        if not (dropped_tool_calls and self.runtime_config.drop_extra_tool_calls):
+            return ai_msg, tool_calls
+
+        limited_ai_msg = self.ai_message_with_tool_calls(
+            ai_msg,
+            limited_tool_calls,
+            extra_additional_kwargs={
+                "dropped_tool_calls": [{"id": tc.get("id"), "name": tc.get("name")} for tc in dropped_tool_calls],
+                "dropped_tool_call_count": len(dropped_tool_calls),
+            },
+        )
+        return limited_ai_msg, limited_tool_calls
+
+    def _emit_assistant_event_from_text(self, content: str) -> None:
+        stripped = str(content or "").strip()
+        if not stripped:
+            return
+        parsed, raw = self.json_from_text(stripped)
+        self.emit_event(
+            event_type="assistant",
+            node_name=self.agent_node_name,
+            payload_json=self.parsed_to_payload_json(parsed),
+            payload_text=raw if parsed is None else None,
+        )
+
+    def _emit_tool_call_events(self, tool_calls: list[dict[str, Any]]) -> None:
+        for tool_call in tool_calls:
+            self.emit_event(
+                event_type="tool_call",
+                node_name=self.agent_node_name,
+                tool_name=str(tool_call.get("name") or ""),
+                tool_call_id=(str(tool_call.get("id")) if tool_call.get("id") is not None else None),
+                payload_json={"args": tool_call.get("args")},
+            )
+
+    def _emit_tool_result_event(self, tool_message: ToolMessage) -> None:
+        content = str(getattr(tool_message, "content", "") or "").strip()
+        parsed, raw = self.json_from_text(content)
+        self.emit_event(
+            event_type="tool_result",
+            node_name=self.tools_node_name,
+            tool_name=getattr(tool_message, "name", None),
+            tool_call_id=getattr(tool_message, "tool_call_id", None),
+            status=getattr(tool_message, "status", None),
+            payload_json={"result": parsed} if parsed is not None else None,
+            payload_text=raw if parsed is None else None,
+        )
+
+    @staticmethod
+    def _should_emit(modes: tuple[str, ...], mode: str) -> bool:
+        return mode in modes
+
     async def astream(
         self,
         payload: Any,
         stream_mode: StreamModesInput = None,
     ) -> AsyncGenerator[tuple[str, Any], None]:
-        modes = (
-            (stream_mode,) if isinstance(stream_mode, str) else tuple(stream_mode or ("updates", "values"))
-        )
+        modes = self._resolve_modes(stream_mode)
 
         human_msg = HumanMessage(content=self.payload_to_human_content(payload))
         scratchpad: list[BaseMessage] = []
@@ -91,97 +213,34 @@ class AgentRunner:
         iteration = 0
         run_started_t = time.perf_counter()
 
-        def _remaining_timeout_s() -> float | None:
-            if self.run_timeout_s is None:
-                return None
-            remaining = self.run_timeout_s - (time.perf_counter() - run_started_t)
-            if remaining <= 0:
-                raise TimeoutError("run_timeout_exceeded")
-            return remaining
-
         while not done:
             iteration += 1
 
-            call_messages: list[BaseMessage] = [SystemMessage(content=self.render_system_prompt()), human_msg]
-            call_messages.extend(scratchpad)
+            call_messages = self._build_call_messages(human_msg=human_msg, scratchpad=scratchpad)
 
             ai_msg = await self.ainvoke_with_telemetry(
                 call_kind="main_loop",
                 iteration=iteration,
                 messages=call_messages,
                 invoke_fn=lambda: self.bound_model.ainvoke(call_messages),
-                timeout_s=_remaining_timeout_s(),
+                timeout_s=self._remaining_timeout_s(run_started_t=run_started_t),
             )
 
-            raw_tool_calls = list(getattr(ai_msg, "tool_calls", []) or [])
-            tool_calls: list[dict[str, Any]] = []
-            for item in raw_tool_calls:
-                if isinstance(item, Mapping):
-                    normalized = self.normalize_tool_call(item)
-                    if normalized:
-                        tool_calls.append(normalized)
-
-            if not tool_calls and self.runtime_config.allow_text_tool_recovery:
-                recovered = self.recover_tool_calls_from_content(str(ai_msg.content or ""))
-                if recovered:
-                    ai_msg = self.ai_message_with_tool_calls(
-                        ai_msg,
-                        recovered,
-                        extra_additional_kwargs={
-                            "raw_recovered_tool_text": str(ai_msg.content or ""),
-                        },
-                    )
-                    tool_calls = recovered
-            elif str(ai_msg.content or "").strip():
-                ai_msg = self.ai_message_with_tool_calls(
-                    ai_msg,
-                    tool_calls,
-                    extra_additional_kwargs={
-                        "raw_tool_text": str(ai_msg.content or ""),
-                    },
-                )
-
-            limited_tool_calls, dropped_tool_calls = self.limit_tool_calls(tool_calls)
-            if dropped_tool_calls and self.runtime_config.drop_extra_tool_calls:
-                tool_calls = limited_tool_calls
-                ai_msg = self.ai_message_with_tool_calls(
-                    ai_msg,
-                    tool_calls,
-                    extra_additional_kwargs={
-                        "dropped_tool_calls": [
-                            {"id": tc.get("id"), "name": tc.get("name")} for tc in dropped_tool_calls
-                        ],
-                        "dropped_tool_call_count": len(dropped_tool_calls),
-                    },
-                )
+            tool_calls = self._extract_normalized_tool_calls(ai_msg)
+            ai_msg, tool_calls = self._apply_tool_call_recovery(ai_msg=ai_msg, tool_calls=tool_calls)
+            ai_msg, tool_calls = self._apply_tool_call_limit(ai_msg=ai_msg, tool_calls=tool_calls)
 
             streamed_messages.append(ai_msg)
             scratchpad.append(ai_msg)
+            self._emit_tool_call_events(tool_calls)
 
-            for tc in tool_calls:
-                self.emit_event(
-                    event_type="tool_call",
-                    node_name=self.agent_node_name,
-                    tool_name=str(tc.get("name") or ""),
-                    tool_call_id=(str(tc.get("id")) if tc.get("id") is not None else None),
-                    payload_json={"args": tc.get("args")},
-                )
-
-            if "updates" in modes:
+            if self._should_emit(modes, "updates"):
                 yield "updates", {self.agent_node_name: {"messages": [ai_msg]}}
-            if "values" in modes:
+            if self._should_emit(modes, "values"):
                 yield "values", self.values_state(streamed_messages, iteration, False, None)
 
             if not tool_calls:
-                content = str(ai_msg.content or "").strip()
-                if content:
-                    parsed, raw = self.json_from_text(content)
-                    self.emit_event(
-                        event_type="assistant",
-                        node_name=self.agent_node_name,
-                        payload_json=self.parsed_to_payload_json(parsed),
-                        payload_text=raw if parsed is None else None,
-                    )
+                self._emit_assistant_event_from_text(str(ai_msg.content or ""))
 
                 decision = self.finalization_policy.maybe_finalize_from_assistant_no_tools(ai_msg)
                 if decision.finalized:
@@ -199,7 +258,7 @@ class AgentRunner:
             tool_msgs_by_index: dict[int, ToolMessage] = {}
 
             try:
-                remaining = _remaining_timeout_s()
+                remaining = self._remaining_timeout_s(run_started_t=run_started_t)
                 run_id, agent_name = self.current_telemetry_context()
                 async for idx, tm in self.tool_executor.execute_tool_calls_batched(
                     tool_calls,
@@ -210,23 +269,11 @@ class AgentRunner:
                 ):
                     tool_msgs_by_index[idx] = tm
                     streamed_messages.append(tm)
+                    self._emit_tool_result_event(tm)
 
-                    content = str(getattr(tm, "content", "") or "").strip()
-                    parsed, raw = self.json_from_text(content)
-                    tool_name = getattr(tm, "name", None)
-                    self.emit_event(
-                        event_type="tool_result",
-                        node_name=self.tools_node_name,
-                        tool_name=tool_name,
-                        tool_call_id=getattr(tm, "tool_call_id", None),
-                        status=getattr(tm, "status", None),
-                        payload_json={"result": parsed} if parsed is not None else None,
-                        payload_text=raw if parsed is None else None,
-                    )
-
-                    if "updates" in modes:
+                    if self._should_emit(modes, "updates"):
                         yield "updates", {self.tools_node_name: {"messages": [tm]}}
-                    if "values" in modes:
+                    if self._should_emit(modes, "values"):
                         yield "values", self.values_state(streamed_messages, iteration, False, None)
             except TimeoutError:
                 raise TimeoutError("run_timeout_exceeded")
@@ -244,14 +291,8 @@ class AgentRunner:
                 final_text = decision.output_text or json.dumps(final_output, ensure_ascii=False)
                 final_msg = AIMessage(content=final_text)
                 streamed_messages.append(final_msg)
-                final_parsed, final_raw = self.json_from_text(final_text)
-                self.emit_event(
-                    event_type="assistant",
-                    node_name=self.agent_node_name,
-                    payload_json=self.parsed_to_payload_json(final_parsed),
-                    payload_text=final_raw if final_parsed is None else None,
-                )
-                if "updates" in modes:
+                self._emit_assistant_event_from_text(final_text)
+                if self._should_emit(modes, "updates"):
                     yield "updates", {self.agent_node_name: {"messages": [final_msg]}}
                 done = True
                 break
@@ -261,15 +302,9 @@ class AgentRunner:
             final_output = fallback.output
             final_msg = AIMessage(content=fallback.output_text or json.dumps(final_output, ensure_ascii=False))
             streamed_messages.append(final_msg)
-            final_parsed, final_raw = self.json_from_text(str(final_msg.content or ""))
-            self.emit_event(
-                event_type="assistant",
-                node_name=self.agent_node_name,
-                payload_json=self.parsed_to_payload_json(final_parsed),
-                payload_text=final_raw if final_parsed is None else None,
-            )
-            if "updates" in modes:
+            self._emit_assistant_event_from_text(str(final_msg.content or ""))
+            if self._should_emit(modes, "updates"):
                 yield "updates", {self.agent_node_name: {"messages": [final_msg]}}
 
-        if "values" in modes:
+        if self._should_emit(modes, "values"):
             yield "values", self.values_state(streamed_messages, iteration, True, final_output)
