@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 import json
+import uuid
 from typing import Any, Sequence
+
+from .protocol_types import AllowedToolNames
 
 
 def build_tool_instruction(
@@ -76,3 +79,65 @@ def build_tool_instruction(
 
     parts.append("</available_tools>")
     return "\n".join(parts)
+
+
+def normalize_tool_calls(
+    raw_tool_calls: Any,
+    *,
+    allowed_tool_names: AllowedToolNames = None,
+) -> list[dict[str, Any]]:
+    """Normalize provider/tool-call payloads into a stable list[dict] shape."""
+    # TODO(protocol-types): migrate return type to list[NormalizedToolCall].
+    if not isinstance(raw_tool_calls, list):
+        return []
+
+    normalized: list[dict[str, Any]] = []
+    seen_ids: set[str] = set()
+    for raw_call in raw_tool_calls:
+        if not isinstance(raw_call, dict):
+            continue
+
+        raw_function = raw_call.get("function")
+        if isinstance(raw_function, dict):
+            name = raw_function.get("name")
+            raw_args = raw_function.get("arguments", {})
+        else:
+            name = raw_call.get("name")
+            raw_args = raw_call.get("arguments", raw_call.get("args", {}))
+
+        if not isinstance(name, str) or not name.strip():
+            continue
+        name = name.strip()
+
+        if allowed_tool_names is not None and name not in allowed_tool_names:
+            continue
+
+        args: dict[str, Any]
+        if isinstance(raw_args, str):
+            try:
+                parsed_args = json.loads(raw_args)
+                args = parsed_args if isinstance(parsed_args, dict) else {"input": parsed_args}
+            except Exception:
+                args = {"input": raw_args}
+        elif isinstance(raw_args, dict):
+            args = raw_args
+        else:
+            args = {}
+
+        call_id = raw_call.get("id")
+        if not isinstance(call_id, str) or not call_id.strip():
+            call_id = f"call_{uuid.uuid4().hex[:12]}"
+        if call_id in seen_ids:
+            call_id = f"call_{uuid.uuid4().hex[:12]}"
+        seen_ids.add(call_id)
+
+        normalized.append(
+            {
+                "id": call_id,
+                "name": name,
+                "args": args,
+                "type": "tool_call",
+            }
+        )
+
+    return normalized

@@ -4,7 +4,7 @@ from .protocol_types import (
     ToolCallParseResult,
     ToolCallParseSource,
 )
-from .tool_protocol import build_tool_instruction
+from .tool_protocol import build_tool_instruction, normalize_tool_calls
 
 __all__ = [
     "AllowedToolNames",
@@ -12,4 +12,5 @@ __all__ = [
     "ToolCallParseResult",
     "ToolCallParseSource",
     "build_tool_instruction",
+    "normalize_tool_calls",
 ]
