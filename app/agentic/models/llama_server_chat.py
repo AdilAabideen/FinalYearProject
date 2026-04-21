@@ -18,6 +18,8 @@ from app.agentic.protocols import (
     build_tool_instruction,
     normalize_chat_messages,
     normalize_tool_calls,
+    recover_tool_calls_from_content,
+    to_legacy_recovery_output,
 )
 
 ESI1_ADAPTER_ID = 0
@@ -115,68 +117,12 @@ class LlamaServerChat(BaseChatModel):
         *,
         allowed_tool_names: AllowedToolNames = None,
     ) -> tuple[list[dict[str, Any]], bool]:
-        # TODO(protocol-types): return ToolCallParseResult once parser modules are extracted.
-        stripped = (content or "").strip()
-        if not stripped:
-            return [], False
-
-        candidates = [stripped]
-        if stripped.startswith("```") and stripped.endswith("```"):
-            block = stripped[3:-3].strip()
-            if block.lower().startswith("json"):
-                block = block[4:].strip()
-            candidates.append(block)
-
-        for candidate in candidates:
-            try:
-                parsed = json.loads(candidate)
-            except Exception:
-                # Try JSONL (one JSON object per line) as a fallback.
-                tool_calls: list[dict[str, Any]] = []
-                all_lines_parsed = True
-                for ln in candidate.splitlines():
-                    line = ln.strip()
-                    if not line:
-                        continue
-                    try:
-                        obj = json.loads(line)
-                    except Exception:
-                        all_lines_parsed = False
-                        continue
-
-                    raw_calls: Any = []
-                    if isinstance(obj, dict) and isinstance(obj.get("tool_calls"), list):
-                        raw_calls = obj["tool_calls"]
-                    elif isinstance(obj, dict) and isinstance(obj.get("name"), str):
-                        raw_calls = [obj]
-                    elif isinstance(obj, list):
-                        raw_calls = obj
-
-                    tool_calls.extend(
-                        normalize_tool_calls(
-                            raw_calls, allowed_tool_names=allowed_tool_names
-                        )
-                    )
-
-                if tool_calls:
-                    return tool_calls, all_lines_parsed
-                continue
-
-            raw_calls: Any = []
-            if isinstance(parsed, dict) and isinstance(parsed.get("tool_calls"), list):
-                raw_calls = parsed["tool_calls"]
-            elif isinstance(parsed, dict) and isinstance(parsed.get("name"), str):
-                raw_calls = [parsed]
-            elif isinstance(parsed, list):
-                raw_calls = parsed
-
-            normalized = normalize_tool_calls(
-                raw_calls, allowed_tool_names=allowed_tool_names
-            )
-            if normalized:
-                return normalized, True
-
-        return [], False
+        # TODO(protocol-types): consume ToolCallParseResult directly once callers are migrated.
+        result = recover_tool_calls_from_content(
+            content,
+            allowed_tool_names=allowed_tool_names,
+        )
+        return to_legacy_recovery_output(result)
 
     def _to_llama_messages(
         self,

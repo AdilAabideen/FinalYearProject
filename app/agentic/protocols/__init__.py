@@ -5,6 +5,13 @@ from .protocol_types import (
     ToolCallParseSource,
 )
 from .message_normalizer import normalize_chat_messages
+from .tool_call_recovery import (
+    recover_from_fenced_json_text,
+    recover_from_jsonl_text,
+    recover_from_raw_json_text,
+    recover_tool_calls_from_content,
+    to_legacy_recovery_output,
+)
 from .tool_protocol import build_tool_instruction, normalize_tool_calls
 
 __all__ = [
@@ -13,6 +20,11 @@ __all__ = [
     "ToolCallParseResult",
     "ToolCallParseSource",
     "normalize_chat_messages",
+    "recover_from_fenced_json_text",
+    "recover_from_jsonl_text",
+    "recover_from_raw_json_text",
+    "recover_tool_calls_from_content",
+    "to_legacy_recovery_output",
     "build_tool_instruction",
     "normalize_tool_calls",
 ]

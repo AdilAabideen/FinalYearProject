@@ -38,6 +38,10 @@ class ToolCallParseResult:
     """Result bundle returned by tool-call parsing/recovery."""
 
     calls: list[NormalizedToolCall] = field(default_factory=list)
+    # True when parsing produced at least one normalized tool call.
+    succeeded: bool = False
     # Optional batch-level summary. Use `None` when calls have mixed provenance.
     source: ToolCallParseSource | None = ToolCallParseSource.UNKNOWN
     recovered: bool | None = False
+    # For JSONL parsing, indicates whether every non-empty line parsed.
+    all_lines_parsed: bool | None = None
