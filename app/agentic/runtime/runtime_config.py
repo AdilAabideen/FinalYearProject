@@ -10,7 +10,7 @@ class RuntimeConfig:
     max_tool_calls_per_turn: int = 2
     require_final_answer_tool: bool = True
     allow_text_tool_recovery: bool = True
-    allow_plain_json_final_output: bool = False
+    allow_plain_json_final_output: bool = True
     drop_extra_tool_calls: bool = True
 
     def __post_init__(self) -> None:

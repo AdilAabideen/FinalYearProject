@@ -411,7 +411,7 @@ class SSEHandrolledAgent:
             max_tool_calls_per_turn=max_tool_calls,
             require_final_answer_tool=True,
             allow_text_tool_recovery=True,
-            allow_plain_json_final_output=False,
+            allow_plain_json_final_output=True,
             drop_extra_tool_calls=True,
         )
         self.max_tool_calls = int(self.runtime_config.max_tool_calls_per_turn)

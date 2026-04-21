@@ -82,6 +82,9 @@ class FinalizationPolicy:
                 reason="assistant_plain_text_fallback",
             )
 
+        if not self.config.allow_plain_json_final_output:
+            return FinalizationDecision(finalized=False, reason="plain_json_final_output_disabled")
+
         normalized = self._normalize_final_output(parsed)
         return FinalizationDecision(
             finalized=True,

@@ -167,7 +167,6 @@ class Dr7MedicalChatModel(BaseChatModel):
         #         *dr7_messages,
         #     ]
         if tools:
-            print(tools)
             tool_instruction = build_tool_instruction(
                 tools,
                 tool_choice,
@@ -187,7 +186,7 @@ class Dr7MedicalChatModel(BaseChatModel):
                 ]
         dr7_messages = self._normalize_dr7_messages(dr7_messages)
         
-        # print(json.dumps(dr7_messages))
+        print(json.dumps(dr7_messages))
 
         payload: dict[str, Any] = {
             "model": self.model,
