@@ -13,7 +13,12 @@ from langchain_core.tools import BaseTool
 from langchain_core.utils.function_calling import convert_to_openai_tool
 from pydantic import ConfigDict, Field
 
-from app.agentic.protocols import AllowedToolNames, build_tool_instruction, normalize_tool_calls
+from app.agentic.protocols import (
+    AllowedToolNames,
+    build_tool_instruction,
+    normalize_chat_messages,
+    normalize_tool_calls,
+)
 
 
 class Dr7MedicalChatModel(BaseChatModel):
@@ -189,41 +194,8 @@ class Dr7MedicalChatModel(BaseChatModel):
         )
 
     def _normalize_dr7_messages(self, messages: list[dict[str, str]]) -> list[dict[str, str]]:
-        """
-        Normalize messages for strict llama chat templates.
-
-        Rules:
-        - Keep at most one leading system message (merge any additional system content into it).
-        - Merge consecutive turns that share the same role.
-        """
-        system_parts: list[str] = []
-        normalized: list[dict[str, str]] = []
-
-        for msg in messages:
-            role = str(msg.get("role") or "").strip()
-            content = str(msg.get("content") or "").strip()
-            if not role:
-                continue
-
-            if role == "system":
-                if content:
-                    system_parts.append(content)
-                continue
-
-            if normalized and normalized[-1].get("role") == role:
-                prev = str(normalized[-1].get("content") or "").strip()
-                if prev and content:
-                    normalized[-1]["content"] = f"{prev}\n\n{content}"
-                elif content:
-                    normalized[-1]["content"] = content
-                continue
-
-            normalized.append({"role": role, "content": content})
-
-        if system_parts:
-            normalized = [{"role": "system", "content": "\n\n".join(system_parts)}] + normalized
-
-        return normalized
+        """Normalize provider messages via shared protocol helper."""
+        return normalize_chat_messages(messages)
 
 
     def _generate(
