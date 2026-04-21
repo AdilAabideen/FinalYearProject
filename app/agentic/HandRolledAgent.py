@@ -16,6 +16,7 @@ from langchain_openai import ChatOpenAI
 from pydantic import BaseModel, ConfigDict
 
 from app.agentic.protocols import AllowedToolNames, NormalizedToolCall, ToolCallParseResult
+from app.agentic.runtime.agent_runner import AgentRunner
 from app.agentic.runtime.finalization_policy import FinalizationPolicy
 from app.agentic.runtime.runtime_config import RuntimeConfig
 from app.agentic.runtime.tool_executor import ToolExecutionTrace, ToolExecutor
@@ -436,6 +437,27 @@ class SSEHandrolledAgent:
             self.bound_model = self.model.bind_tools(self.tools, tool_choice="any")
         else:
             self.bound_model = self.model
+        self._agent_runner = AgentRunner(
+            bound_model=self.bound_model,
+            runtime_config=self.runtime_config,
+            run_timeout_s=self.run_timeout_s,
+            agent_node_name=self.agent_node_name,
+            tools_node_name=self.tools_node_name,
+            finalization_policy=self._finalization_policy,
+            tool_executor=self._tool_executor,
+            current_telemetry_context=self._telemetry.current_context,
+            render_system_prompt=self._render_system_prompt,
+            payload_to_human_content=self._payload_to_human_content,
+            ainvoke_with_telemetry=self._ainvoke_with_telemetry,
+            normalize_tool_call=self._normalize_tool_call,
+            recover_tool_calls_from_content=self._recover_tool_calls_from_content,
+            ai_message_with_tool_calls=self._ai_message_with_tool_calls,
+            limit_tool_calls=self._limit_tool_calls,
+            json_from_text=self._json_from_text,
+            parsed_to_payload_json=self._parsed_to_payload_json,
+            emit_event=self._emit_event,
+            values_state=self._values_state,
+        )
 
     @staticmethod
     def _build_model(model: str | Any, llm_kwargs: dict[str, Any] | None) -> Any:
@@ -894,209 +916,8 @@ class SSEHandrolledAgent:
         payload: Any,
         stream_mode: Sequence[str] | str | None = None,
     ) -> AsyncGenerator[tuple[str, Any], None]:
-        modes = (
-            (stream_mode,) if isinstance(stream_mode, str) else tuple(stream_mode or ("updates", "values"))
-        )
-
-        human_msg = HumanMessage(content=self._payload_to_human_content(payload))
-        scratchpad: list[BaseMessage] = []
-        streamed_messages: list[BaseMessage] = []
-
-        final_output: Any = None
-        done = False
-        iteration = 0
-        run_started_t = time.perf_counter()
-
-        def _messages_for_finalization() -> list[BaseMessage]:
-            msgs: list[BaseMessage] = [SystemMessage(content=self._render_system_prompt()), human_msg]
-            msgs.extend(scratchpad)
-            return msgs
-
-        def _remaining_timeout_s() -> float | None:
-            if self.run_timeout_s is None:
-                return None
-            remaining = self.run_timeout_s - (time.perf_counter() - run_started_t)
-            if remaining <= 0:
-                raise TimeoutError("run_timeout_exceeded")
-            return remaining
-
-        while not done:
-            iteration += 1
-
-            call_messages: list[BaseMessage] = [SystemMessage(content=self._render_system_prompt()), human_msg]
-            call_messages.extend(scratchpad)
-
-            ai_msg = await self._ainvoke_with_telemetry(
-                call_kind="main_loop",
-                iteration=iteration,
-                messages=call_messages,
-                invoke_fn=lambda: self.bound_model.ainvoke(call_messages),
-                timeout_s=_remaining_timeout_s(),
-            )
-
-            raw_tool_calls = list(getattr(ai_msg, "tool_calls", []) or [])
-            tool_calls: list[dict[str, Any]] = []
-            for item in raw_tool_calls:
-                if isinstance(item, Mapping):
-                    normalized = self._normalize_tool_call(item)
-                    if normalized:
-                        tool_calls.append(normalized)
-            if not tool_calls and self.runtime_config.allow_text_tool_recovery:
-                recovered = self._recover_tool_calls_from_content(str(ai_msg.content or ""))
-                if recovered:
-                    ai_msg = self._ai_message_with_tool_calls(
-                        ai_msg,
-                        recovered,
-                        extra_additional_kwargs={
-                            "raw_recovered_tool_text": str(ai_msg.content or ""),
-                        },
-                    )
-                    tool_calls = recovered
-            elif str(ai_msg.content or "").strip():
-                ai_msg = self._ai_message_with_tool_calls(
-                    ai_msg,
-                    tool_calls,
-                    extra_additional_kwargs={
-                        "raw_tool_text": str(ai_msg.content or ""),
-                    },
-                )
-
-            limited_tool_calls, dropped_tool_calls = self._limit_tool_calls(tool_calls)
-            if dropped_tool_calls and self.runtime_config.drop_extra_tool_calls:
-                tool_calls = limited_tool_calls
-                ai_msg = self._ai_message_with_tool_calls(
-                    ai_msg,
-                    tool_calls,
-                    extra_additional_kwargs={
-                        "dropped_tool_calls": [
-                            {"id": tc.get("id"), "name": tc.get("name")} for tc in dropped_tool_calls
-                        ],
-                        "dropped_tool_call_count": len(dropped_tool_calls),
-                    },
-                )
-
-            streamed_messages.append(ai_msg)
-            scratchpad.append(ai_msg)
-
-            for tc in tool_calls:
-                self._emit_event(
-                    event_type="tool_call",
-                    node_name=self.agent_node_name,
-                    tool_name=str(tc.get("name") or ""),
-                    tool_call_id=(str(tc.get("id")) if tc.get("id") is not None else None),
-                    payload_json={"args": tc.get("args")},
-                )
-
-            if "updates" in modes:
-                yield "updates", {self.agent_node_name: {"messages": [ai_msg]}}
-            if "values" in modes:
-                yield "values", self._values_state(streamed_messages, iteration, False, None)
-
-            if not tool_calls:
-                content = str(ai_msg.content or "").strip()
-                if content:
-                    parsed, raw = self._json_from_text(content)
-                    self._emit_event(
-                        event_type="assistant",
-                        node_name=self.agent_node_name,
-                        payload_json=self._parsed_to_payload_json(parsed),
-                        payload_text=raw if parsed is None else None,
-                    )
-
-                decision = self._finalization_policy.maybe_finalize_from_assistant_no_tools(ai_msg)
-                if decision.finalized:
-                    final_output = decision.output
-                else:
-                    invalid = self._finalization_policy.finalize_invalid_output(
-                        reason=decision.reason,
-                        raw_output=str(ai_msg.content or ""),
-                    )
-                    final_output = invalid.output
-
-                done = True
-                break
-
-            tool_msgs_by_index: dict[int, ToolMessage] = {}
-
-            try:
-                remaining = _remaining_timeout_s()
-                run_id, agent_name = self._telemetry.current_context()
-                async for idx, tm in self._tool_executor.execute_tool_calls_batched(
-                    tool_calls,
-                    iteration=iteration,
-                    run_id=run_id,
-                    agent_name=agent_name,
-                    timeout_s=remaining,
-                ):
-                    tool_msgs_by_index[idx] = tm
-                    streamed_messages.append(tm)
-
-                    content = str(getattr(tm, "content", "") or "").strip()
-                    parsed, raw = self._json_from_text(content)
-                    tool_name = getattr(tm, "name", None)
-                    self._emit_event(
-                        event_type="tool_result",
-                        node_name=self.tools_node_name,
-                        tool_name=tool_name,
-                        tool_call_id=getattr(tm, "tool_call_id", None),
-                        status=getattr(tm, "status", None),
-                        payload_json={"result": parsed} if parsed is not None else None,
-                        payload_text=raw if parsed is None else None,
-                    )
-
-                    if "updates" in modes:
-                        yield "updates", {self.tools_node_name: {"messages": [tm]}}
-                    if "values" in modes:
-                        yield "values", self._values_state(streamed_messages, iteration, False, None)
-            except TimeoutError:
-                raise TimeoutError("run_timeout_exceeded")
-
-            tool_msgs = [
-                tool_msgs_by_index[idx]
-                for idx in range(len(tool_calls))
-                if idx in tool_msgs_by_index
-            ]
-            for tm in tool_msgs:
-                scratchpad.append(tm)
-
-            for tc, tm in zip(tool_calls, tool_msgs):
-                decision = self._finalization_policy.maybe_finalize_from_tool_result(tc, tm)
-                if not decision.finalized:
-                    continue
-
-                final_output = decision.output
-                final_text = decision.output_text or json.dumps(final_output, ensure_ascii=False)
-                final_msg = AIMessage(content=final_text)
-                streamed_messages.append(final_msg)
-                final_parsed, final_raw = self._json_from_text(final_text)
-                self._emit_event(
-                    event_type="assistant",
-                    node_name=self.agent_node_name,
-                    payload_json=self._parsed_to_payload_json(final_parsed),
-                    payload_text=final_raw if final_parsed is None else None,
-                )
-                if "updates" in modes:
-                    yield "updates", {self.agent_node_name: {"messages": [final_msg]}}
-                done = True
-                break
-
-        if final_output is None:
-            fallback = self._finalization_policy.finalize_no_output()
-            final_output = fallback.output
-            final_msg = AIMessage(content=fallback.output_text or json.dumps(final_output, ensure_ascii=False))
-            streamed_messages.append(final_msg)
-            final_parsed, final_raw = self._json_from_text(str(final_msg.content or ""))
-            self._emit_event(
-                event_type="assistant",
-                node_name=self.agent_node_name,
-                payload_json=self._parsed_to_payload_json(final_parsed),
-                payload_text=final_raw if final_parsed is None else None,
-            )
-            if "updates" in modes:
-                yield "updates", {self.agent_node_name: {"messages": [final_msg]}}
-
-        if "values" in modes:
-            yield "values", self._values_state(streamed_messages, iteration, True, final_output)
+        async for item in self._agent_runner.astream(payload, stream_mode=stream_mode):
+            yield item
 
     async def ainvoke(self, payload: Any) -> Any:
         final_output: Any = None
