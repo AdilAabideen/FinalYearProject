@@ -16,6 +16,7 @@ from langchain_openai import ChatOpenAI
 from pydantic import BaseModel, ConfigDict
 
 from app.agentic.protocols import AllowedToolNames, NormalizedToolCall, ToolCallParseResult
+from app.agentic.runtime.tool_executor import ToolExecutionTrace, ToolExecutor
 
 try:
     import tiktoken
@@ -405,6 +406,11 @@ class SSEHandrolledAgent:
         self._token_estimator = TokenEstimator()
         self._events = EventEmitter()
         self._telemetry = TelemetryEmitter()
+        self._tool_executor = ToolExecutor(
+            tools_by_name=self.tools_by_name,
+            estimate_tool_result_tokens=self._token_estimator.estimate_tool_result_tokens,
+            emit_trace=self._emit_tool_execution_trace,
+        )
 
         self.set_event_handlers(event_handlers)
         self.set_llm_call_handlers(llm_call_handlers)
@@ -515,29 +521,6 @@ class SSEHandrolledAgent:
             return json.loads(raw), raw
         except Exception:
             return None, raw
-
-    @staticmethod
-    def _tool_output_to_text(value: Any) -> str:
-        if isinstance(value, BaseModel):
-            return value.model_dump_json()
-        if isinstance(value, (dict, list, tuple, int, float, bool)) or value is None:
-            return json.dumps(value, ensure_ascii=False, default=SSEHandrolledAgent._json_default)
-        return str(value)
-
-    @staticmethod
-    def _json_default(value: Any) -> Any:
-        if isinstance(value, BaseModel):
-            return value.model_dump()
-        if hasattr(value, "model_dump") and callable(value.model_dump):
-            try:
-                return value.model_dump()
-            except Exception:
-                pass
-        if isinstance(value, Mapping):
-            return dict(value)
-        if isinstance(value, (list, tuple)):
-            return list(value)
-        return str(value)
 
     @staticmethod
     def _normalize_final_output(value: Any) -> Any:
@@ -740,77 +723,26 @@ class SSEHandrolledAgent:
             return tool_calls, []
         return tool_calls[: self.max_tool_calls], tool_calls[self.max_tool_calls :]
 
-    async def _execute_tool_call(self, tool_call: dict[str, Any], *, iteration: int) -> ToolMessage:
-        name = tool_call.get("name")
-        call_id = tool_call.get("id") or f"call_{uuid.uuid4().hex[:24]}"
-        args = tool_call.get("args") or {}
+    def _emit_tool_execution_trace(self, trace: ToolExecutionTrace) -> None:
+        if not trace.run_id or not trace.agent_name:
+            return
 
-        run_id, agent_name = self._telemetry.current_context()
-
-        started_at = datetime.utcnow()
-        t0 = time.perf_counter()
-        status = "error"
-        error_text: str | None = None
-        content = ""
-        metric_tool_name = str(name or "tool")
-
-        if name not in self.tools_by_name:
-            content = f"Unknown tool: {name}"
-            error_text = content
-            tool_message = ToolMessage(
-                content=content,
-                tool_call_id=call_id,
-                name=name,
-                status="error",
+        self._telemetry.emit_tool(
+            ToolExecutionMetric(
+                run_id=trace.run_id,
+                agent_name=trace.agent_name,
+                iteration=trace.iteration,
+                tool_call_id=trace.tool_call_id,
+                tool_name=trace.tool_name,
+                started_at=trace.started_at,
+                ended_at=trace.ended_at,
+                latency_ms=trace.latency_ms,
+                status=trace.status,
+                result_char_count=trace.result_char_count,
+                result_estimated_tokens=trace.result_estimated_tokens,
+                error_text=trace.error_text,
             )
-        else:
-            tool_obj = self.tools_by_name[name]
-            metric_tool_name = str(getattr(tool_obj, "name", name) or "tool")
-            try:
-                result = await tool_obj.ainvoke(args)
-                content = self._tool_output_to_text(result)
-                status = "success"
-                tool_message = ToolMessage(
-                    content=content,
-                    tool_call_id=call_id,
-                    name=name,
-                    artifact=result,
-                    status="success",
-                )
-            except Exception as exc:
-                error_text = str(exc)
-                content = error_text
-                tool_message = ToolMessage(
-                    content=error_text,
-                    tool_call_id=call_id,
-                    name=name,
-                    status="error",
-                )
-
-        ended_at = datetime.utcnow()
-        latency_ms = int((time.perf_counter() - t0) * 1000)
-        if status != "success":
-            status = "error"
-
-        if run_id and agent_name:
-            self._telemetry.emit_tool(
-                ToolExecutionMetric(
-                    run_id=run_id,
-                    agent_name=agent_name,
-                    iteration=iteration,
-                    tool_call_id=str(call_id),
-                    tool_name=metric_tool_name,
-                    started_at=started_at,
-                    ended_at=ended_at,
-                    latency_ms=latency_ms,
-                    status=status,
-                    result_char_count=len(content),
-                    result_estimated_tokens=self._token_estimator.estimate_tool_result_tokens(content),
-                    error_text=error_text,
-                )
-            )
-
-        return tool_message
+        )
 
     @staticmethod
     def _values_state(
@@ -1132,26 +1064,18 @@ class SSEHandrolledAgent:
                 done = True
                 break
 
-            async def _execute_indexed_tool_call(idx: int, tc: dict[str, Any]) -> tuple[int, ToolMessage]:
-                return idx, await self._execute_tool_call(tc, iteration=iteration)
-
-            indexed_tasks = [
-                asyncio.create_task(_execute_indexed_tool_call(idx, tc))
-                for idx, tc in enumerate(tool_calls)
-                if isinstance(tc, dict)
-            ]
             tool_msgs_by_index: dict[int, ToolMessage] = {}
 
             try:
                 remaining = _remaining_timeout_s()
-                iterator = (
-                    asyncio.as_completed(indexed_tasks)
-                    if remaining is None
-                    else asyncio.as_completed(indexed_tasks, timeout=remaining)
-                )
-
-                for task in iterator:
-                    idx, tm = await task
+                run_id, agent_name = self._telemetry.current_context()
+                async for idx, tm in self._tool_executor.execute_tool_calls_batched(
+                    tool_calls,
+                    iteration=iteration,
+                    run_id=run_id,
+                    agent_name=agent_name,
+                    timeout_s=remaining,
+                ):
                     tool_msgs_by_index[idx] = tm
                     streamed_messages.append(tm)
 
@@ -1173,8 +1097,6 @@ class SSEHandrolledAgent:
                     if "values" in modes:
                         yield "values", self._values_state(streamed_messages, iteration, False, None)
             except TimeoutError:
-                for task in indexed_tasks:
-                    task.cancel()
                 raise TimeoutError("run_timeout_exceeded")
 
             tool_msgs = [
