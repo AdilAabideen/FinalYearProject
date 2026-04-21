@@ -50,6 +50,9 @@ class AgentLLMCallRead(BaseModel):
     usage_source: str
     had_tool_calls: Optional[bool] = None
     tool_call_count: Optional[int] = None
+    tool_call_parse_source: Optional[str] = None
+    text_recovered_tool_call_count: int = 0
+    native_tool_call_count: int = 0
     tool_names: list[str] = Field(default_factory=list)
     cost_usd: Optional[float] = None
     error_text: Optional[str] = None

@@ -33,6 +33,9 @@ def append_llm_call(
     cost_usd: Optional[float],
     had_tool_calls: Optional[bool],
     tool_call_count: Optional[int],
+    tool_call_parse_source: Optional[str],
+    text_recovered_tool_call_count: Optional[int],
+    native_tool_call_count: Optional[int],
     tool_names: Optional[list[str]],
     error_text: Optional[str] = None,
 ) -> None:
@@ -54,6 +57,9 @@ def append_llm_call(
         cost_usd=cost_usd,
         had_tool_calls=had_tool_calls,
         tool_call_count=(max(0, int(tool_call_count)) if tool_call_count is not None else None),
+        tool_call_parse_source=tool_call_parse_source,
+        text_recovered_tool_call_count=max(0, int(text_recovered_tool_call_count or 0)),
+        native_tool_call_count=max(0, int(native_tool_call_count or 0)),
         tool_names_json=tool_names,
         error_text=error_text,
     )

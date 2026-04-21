@@ -44,6 +44,9 @@ class LLMCallMetric:
     usage_source: str
     had_tool_calls: bool
     tool_call_count: int
+    tool_call_parse_source: str | None = None
+    text_recovered_tool_call_count: int = 0
+    native_tool_call_count: int = 0
     tool_names: list[str] = field(default_factory=list)
     error_text: str | None = None
 
@@ -632,8 +635,11 @@ class SSEHandrolledAgent:
         return deduped
 
     @classmethod
-    def _extract_provider_tool_calls(cls, msg: AIMessage) -> list[dict[str, Any]]:
-        # TODO(protocol-types): return ToolCallParseResult and normalized dataclass calls.
+    def _extract_provider_tool_calls_with_source(
+        cls,
+        msg: AIMessage,
+    ) -> tuple[list[dict[str, Any]], str | None]:
+        # TODO(protocol-types): return ToolCallParseResult once runtime logic is fully migrated.
         primary = list(getattr(msg, "tool_calls", []) or [])
         normalized_primary: list[dict[str, Any]] = []
         for item in primary:
@@ -643,7 +649,7 @@ class SSEHandrolledAgent:
                     normalized_primary.append(normalized)
 
         if normalized_primary:
-            return normalized_primary
+            return normalized_primary, "native_tool_calls"
 
         additional = getattr(msg, "additional_kwargs", {}) or {}
         additional_tool_calls = additional.get("tool_calls")
@@ -655,16 +661,24 @@ class SSEHandrolledAgent:
                     if normalized:
                         normalized_additional.append(normalized)
         if normalized_additional:
-            return normalized_additional
+            return normalized_additional, "provider_metadata"
 
         function_call = additional.get("function_call")
         if isinstance(function_call, Mapping):
             normalized = cls._normalize_tool_call({"function": function_call, "id": None})
             if normalized:
-                return [normalized]
+                return [normalized], "function_call"
 
         recovered = cls._recover_tool_calls_from_content(str(msg.content or ""))
-        return recovered
+        if recovered:
+            return recovered, "text_recovered"
+
+        return [], None
+
+    @classmethod
+    def _extract_provider_tool_calls(cls, msg: AIMessage) -> list[dict[str, Any]]:
+        calls, _ = cls._extract_provider_tool_calls_with_source(msg)
+        return calls
 
     @staticmethod
     def _ai_message_with_tool_calls(
@@ -824,8 +838,13 @@ class SSEHandrolledAgent:
                 usage_source = "estimated"
 
             tool_calls: list[dict[str, Any]] = []
+            parse_source: str | None = None
+            text_recovered_tool_call_count = 0
+            native_tool_call_count = 0
             if isinstance(response, AIMessage):
-                tool_calls = self._extract_provider_tool_calls(response)
+                tool_calls, parse_source = self._extract_provider_tool_calls_with_source(response)
+                text_recovered_tool_call_count = len(tool_calls) if parse_source == "text_recovered" else 0
+                native_tool_call_count = len(tool_calls) - text_recovered_tool_call_count
             tool_names = [str(tc.get("name", "")) for tc in tool_calls if tc.get("name")]
 
             if run_id and agent_name:
@@ -847,6 +866,9 @@ class SSEHandrolledAgent:
                         usage_source=str(usage_source or "estimated"),
                         had_tool_calls=bool(tool_calls),
                         tool_call_count=len(tool_calls),
+                        tool_call_parse_source=parse_source,
+                        text_recovered_tool_call_count=text_recovered_tool_call_count,
+                        native_tool_call_count=native_tool_call_count,
                         tool_names=tool_names,
                         error_text=None,
                     )
@@ -883,6 +905,9 @@ class SSEHandrolledAgent:
                         usage_source="estimated",
                         had_tool_calls=False,
                         tool_call_count=0,
+                        tool_call_parse_source=None,
+                        text_recovered_tool_call_count=0,
+                        native_tool_call_count=0,
                         tool_names=[],
                         error_text=str(normalized_exc),
                     )

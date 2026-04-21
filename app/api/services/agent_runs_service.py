@@ -627,6 +627,11 @@ def _run_agent_and_persist(db: Session, run: AgentRun, seq: int) -> Tuple[int, O
             cost_usd=cost_usd,
             had_tool_calls=(bool(item.get("had_tool_calls")) if item.get("had_tool_calls") is not None else None),
             tool_call_count=(int(item.get("tool_call_count")) if item.get("tool_call_count") is not None else None),
+            tool_call_parse_source=(
+                str(item.get("tool_call_parse_source")) if item.get("tool_call_parse_source") else None
+            ),
+            text_recovered_tool_call_count=int(item.get("text_recovered_tool_call_count") or 0),
+            native_tool_call_count=int(item.get("native_tool_call_count") or 0),
             tool_names=_normalize_tool_names(item.get("tool_names")),
             error_text=item.get("error_text"),
         )
@@ -800,6 +805,9 @@ def get_agent_run_metrics(run_id: str, db: Session) -> AgentRunMetricsDetail:
             usage_source=c.usage_source,
             had_tool_calls=c.had_tool_calls,
             tool_call_count=c.tool_call_count,
+            tool_call_parse_source=c.tool_call_parse_source,
+            text_recovered_tool_call_count=int(c.text_recovered_tool_call_count or 0),
+            native_tool_call_count=int(c.native_tool_call_count or 0),
             tool_names=_normalize_tool_names(c.tool_names_json),
             cost_usd=c.cost_usd,
             error_text=c.error_text,

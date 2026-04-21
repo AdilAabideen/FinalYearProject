@@ -272,6 +272,15 @@ Additive reliability fields:
 | `finalization_failure_rate` | `float` |
 | `runs_with_reliability_issues` | `int` |
 
+## Metric Output Changes
+
+- `AgentRunMetricsDetail.llm_calls[]` now includes tool-call parse provenance fields:
+  - `tool_call_parse_source: str | null`
+  - `text_recovered_tool_call_count: int`
+  - `native_tool_call_count: int`
+- Frontend verification checkpoint:
+  - In the run metrics view for `GET /api/agent-runs/{run_id}/metrics`, confirm each `llm_calls[]` row renders these three fields and that `text_recovered_tool_call_count + native_tool_call_count == tool_call_count` when tool calls exist.
+
 ## Notes on Backward Compatibility
 
 - Existing event persistence shape is unchanged.
