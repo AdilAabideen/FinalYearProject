@@ -2,12 +2,28 @@ from __future__ import annotations
 
 import json
 import time
-from typing import Any, AsyncGenerator, Callable, Mapping, Sequence
+from typing import Any, AsyncGenerator, Mapping
 
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage, ToolMessage
 
 from .finalization_policy import FinalizationPolicy
 from .runtime_config import RuntimeConfig
+from .runtime_types import (
+    BoundModel,
+    BuildAIMessageWithToolCalls,
+    CurrentTelemetryContext,
+    EmitEvent,
+    InvokeWithTelemetry,
+    JSONFromText,
+    LimitToolCalls,
+    NormalizeToolCall,
+    ParsedToPayloadJSON,
+    PayloadToHumanContent,
+    RecoverToolCalls,
+    RenderSystemPrompt,
+    StreamModesInput,
+    ValuesStateBuilder,
+)
 from .tool_executor import ToolExecutor
 
 
@@ -17,25 +33,25 @@ class AgentRunner:
     def __init__(
         self,
         *,
-        bound_model: Any,
+        bound_model: BoundModel,
         runtime_config: RuntimeConfig,
         run_timeout_s: float | None,
         agent_node_name: str,
         tools_node_name: str,
         finalization_policy: FinalizationPolicy,
         tool_executor: ToolExecutor,
-        current_telemetry_context: Callable[[], tuple[str | None, str | None]],
-        render_system_prompt: Callable[[], str],
-        payload_to_human_content: Callable[[Any], str],
-        ainvoke_with_telemetry: Callable[..., Any],
-        normalize_tool_call: Callable[[Mapping[str, Any]], dict[str, Any] | None],
-        recover_tool_calls_from_content: Callable[[str], list[dict[str, Any]]],
-        ai_message_with_tool_calls: Callable[..., AIMessage],
-        limit_tool_calls: Callable[[list[dict[str, Any]]], tuple[list[dict[str, Any]], list[dict[str, Any]]]],
-        json_from_text: Callable[[str], tuple[Any | None, str]],
-        parsed_to_payload_json: Callable[[Any], dict[str, Any] | None],
-        emit_event: Callable[..., None],
-        values_state: Callable[[list[BaseMessage], int, bool, Any], dict[str, Any]],
+        current_telemetry_context: CurrentTelemetryContext,
+        render_system_prompt: RenderSystemPrompt,
+        payload_to_human_content: PayloadToHumanContent,
+        ainvoke_with_telemetry: InvokeWithTelemetry,
+        normalize_tool_call: NormalizeToolCall,
+        recover_tool_calls_from_content: RecoverToolCalls,
+        ai_message_with_tool_calls: BuildAIMessageWithToolCalls,
+        limit_tool_calls: LimitToolCalls,
+        json_from_text: JSONFromText,
+        parsed_to_payload_json: ParsedToPayloadJSON,
+        emit_event: EmitEvent,
+        values_state: ValuesStateBuilder,
     ) -> None:
         self.bound_model = bound_model
         self.runtime_config = runtime_config
@@ -60,7 +76,7 @@ class AgentRunner:
     async def astream(
         self,
         payload: Any,
-        stream_mode: Sequence[str] | str | None = None,
+        stream_mode: StreamModesInput = None,
     ) -> AsyncGenerator[tuple[str, Any], None]:
         modes = (
             (stream_mode,) if isinstance(stream_mode, str) else tuple(stream_mode or ("updates", "values"))
