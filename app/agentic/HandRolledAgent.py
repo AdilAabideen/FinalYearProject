@@ -16,6 +16,8 @@ from langchain_openai import ChatOpenAI
 from pydantic import BaseModel, ConfigDict
 
 from app.agentic.protocols import AllowedToolNames, NormalizedToolCall, ToolCallParseResult
+from app.agentic.runtime.finalization_policy import FinalizationPolicy
+from app.agentic.runtime.runtime_config import RuntimeConfig
 from app.agentic.runtime.tool_executor import ToolExecutionTrace, ToolExecutor
 
 try:
@@ -379,6 +381,7 @@ class SSEHandrolledAgent:
         llm_call_handlers: Sequence[Callable[[dict[str, Any]], None]] | None = None,
         tool_call_handlers: Sequence[Callable[[dict[str, Any]], None]] | None = None,
         max_tool_calls: int = 2,
+        runtime_config: RuntimeConfig | None = None,
     ) -> None:
         self.model = self._build_model(model=model, llm_kwargs=llm_kwargs)
         self.tools: list[BaseTool] = self._coerce_tools(tools or [])
@@ -402,10 +405,24 @@ class SSEHandrolledAgent:
             raise TypeError("max_tool_calls must be an integer.")
         if max_tool_calls < 1:
             raise ValueError("max_tool_calls must be >= 1.")
-        self.max_tool_calls = max_tool_calls
+        if runtime_config is not None and not isinstance(runtime_config, RuntimeConfig):
+            raise TypeError("runtime_config must be a RuntimeConfig instance when provided.")
+        self.runtime_config = runtime_config or RuntimeConfig(
+            max_tool_calls_per_turn=max_tool_calls,
+            require_final_answer_tool=True,
+            allow_text_tool_recovery=True,
+            allow_plain_json_final_output=False,
+            structured_output_fallback_enabled=False,
+            drop_extra_tool_calls=True,
+        )
+        self.max_tool_calls = int(self.runtime_config.max_tool_calls_per_turn)
         self._token_estimator = TokenEstimator()
         self._events = EventEmitter()
         self._telemetry = TelemetryEmitter()
+        self._finalization_policy = FinalizationPolicy(
+            config=self.runtime_config,
+            final_answer_tool_name=self.final_answer_tool_name,
+        )
         self._tool_executor = ToolExecutor(
             tools_by_name=self.tools_by_name,
             estimate_tool_result_tokens=self._token_estimator.estimate_tool_result_tokens,
@@ -993,7 +1010,7 @@ class SSEHandrolledAgent:
                     normalized = self._normalize_tool_call(item)
                     if normalized:
                         tool_calls.append(normalized)
-            if not tool_calls:
+            if not tool_calls and self.runtime_config.allow_text_tool_recovery:
                 recovered = self._recover_tool_calls_from_content(str(ai_msg.content or ""))
                 if recovered:
                     ai_msg = self._ai_message_with_tool_calls(
@@ -1014,7 +1031,7 @@ class SSEHandrolledAgent:
                 )
 
             limited_tool_calls, dropped_tool_calls = self._limit_tool_calls(tool_calls)
-            if dropped_tool_calls:
+            if dropped_tool_calls and self.runtime_config.drop_extra_tool_calls:
                 tool_calls = limited_tool_calls
                 ai_msg = self._ai_message_with_tool_calls(
                     ai_msg,
@@ -1055,11 +1072,15 @@ class SSEHandrolledAgent:
                         payload_text=raw if parsed is None else None,
                     )
 
-                # TEMP: Disable structured-output fallback during testing so finalization
-                # behavior is driven only by the main tool-call loop / assistant content.
-                # Re-enable `_generate_structured_response(...)` after prompt/tool-call tuning.
-                parsed, raw = self._json_from_text(str(ai_msg.content or ""))
-                final_output = self._normalize_final_output(parsed if parsed is not None else raw)
+                decision = self._finalization_policy.maybe_finalize_from_assistant_no_tools(ai_msg)
+                if decision.finalized:
+                    final_output = decision.output
+                else:
+                    invalid = self._finalization_policy.finalize_invalid_output(
+                        reason=decision.reason,
+                        raw_output=str(ai_msg.content or ""),
+                    )
+                    final_output = invalid.output
 
                 done = True
                 break
@@ -1107,36 +1128,31 @@ class SSEHandrolledAgent:
             for tm in tool_msgs:
                 scratchpad.append(tm)
 
-            if self.final_answer_tool_name:
-                for tc, tm in zip(tool_calls, tool_msgs):
-                    if tc.get("name") != self.final_answer_tool_name:
-                        continue
+            for tc, tm in zip(tool_calls, tool_msgs):
+                decision = self._finalization_policy.maybe_finalize_from_tool_result(tc, tm)
+                if not decision.finalized:
+                    continue
 
-                    parsed, raw = self._json_from_text(str(tm.content or ""))
-                    final_output = self._normalize_final_output(parsed if parsed is not None else raw)
-                    final_text = (
-                        json.dumps(final_output, ensure_ascii=False)
-                        if not isinstance(final_output, str)
-                        else final_output
-                    )
-
-                    final_msg = AIMessage(content=final_text)
-                    streamed_messages.append(final_msg)
-                    final_parsed, final_raw = self._json_from_text(final_text)
-                    self._emit_event(
-                        event_type="assistant",
-                        node_name=self.agent_node_name,
-                        payload_json=self._parsed_to_payload_json(final_parsed),
-                        payload_text=final_raw if final_parsed is None else None,
-                    )
-                    if "updates" in modes:
-                        yield "updates", {self.agent_node_name: {"messages": [final_msg]}}
-                    done = True
-                    break
+                final_output = decision.output
+                final_text = decision.output_text or json.dumps(final_output, ensure_ascii=False)
+                final_msg = AIMessage(content=final_text)
+                streamed_messages.append(final_msg)
+                final_parsed, final_raw = self._json_from_text(final_text)
+                self._emit_event(
+                    event_type="assistant",
+                    node_name=self.agent_node_name,
+                    payload_json=self._parsed_to_payload_json(final_parsed),
+                    payload_text=final_raw if final_parsed is None else None,
+                )
+                if "updates" in modes:
+                    yield "updates", {self.agent_node_name: {"messages": [final_msg]}}
+                done = True
+                break
 
         if final_output is None:
-            final_output = {"ok": False, "error": "no_output"}
-            final_msg = AIMessage(content=json.dumps(final_output, ensure_ascii=False))
+            fallback = self._finalization_policy.finalize_no_output()
+            final_output = fallback.output
+            final_msg = AIMessage(content=fallback.output_text or json.dumps(final_output, ensure_ascii=False))
             streamed_messages.append(final_msg)
             final_parsed, final_raw = self._json_from_text(str(final_msg.content or ""))
             self._emit_event(
