@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 from typing import Any
 
+from langchain_core.messages import AIMessage
+
 from .protocol_types import (
     AllowedToolNames,
     NormalizedToolCall,
@@ -144,18 +146,83 @@ def recover_tool_calls_from_content(
     *,
     allowed_tool_names: AllowedToolNames = None,
 ) -> ToolCallParseResult:
-    raw_result = recover_from_raw_json_text(content, allowed_tool_names=allowed_tool_names)
-    if raw_result.succeeded:
-        return raw_result
-
     fenced_result = recover_from_fenced_json_text(content, allowed_tool_names=allowed_tool_names)
     if fenced_result.succeeded:
         return fenced_result
+
+    raw_result = recover_from_raw_json_text(content, allowed_tool_names=allowed_tool_names)
+    if raw_result.succeeded:
+        return raw_result
 
     jsonl_result = recover_from_jsonl_text(content, allowed_tool_names=allowed_tool_names)
     if jsonl_result.succeeded:
         return jsonl_result
 
+    return ToolCallParseResult()
+
+
+def extract_tool_calls_with_priority(
+    message: AIMessage,
+    *,
+    allowed_tool_names: AllowedToolNames = None,
+    allow_text_recovery: bool = True,
+) -> ToolCallParseResult:
+    """Parse tool calls using a deterministic global priority order.
+
+    Priority:
+    1) native `message.tool_calls`
+    2) provider metadata `additional_kwargs.tool_calls`
+    3) provider metadata `additional_kwargs.function_call`
+    4) text recovery from fenced/raw JSON
+    5) text recovery from JSONL
+    """
+
+    native_calls = normalize_tool_calls(
+        list(getattr(message, "tool_calls", []) or []),
+        allowed_tool_names=allowed_tool_names,
+    )
+    if native_calls:
+        return ToolCallParseResult(
+            calls=_dict_calls_to_dataclasses(native_calls, source=ToolCallParseSource.NATIVE_TOOL_CALLS),
+            succeeded=True,
+            source=ToolCallParseSource.NATIVE_TOOL_CALLS,
+            recovered=False,
+        )
+
+    additional = getattr(message, "additional_kwargs", {}) or {}
+    additional_tool_calls = additional.get("tool_calls")
+    metadata_calls = normalize_tool_calls(
+        additional_tool_calls,
+        allowed_tool_names=allowed_tool_names,
+    )
+    if metadata_calls:
+        return ToolCallParseResult(
+            calls=_dict_calls_to_dataclasses(metadata_calls, source=ToolCallParseSource.PROVIDER_METADATA),
+            succeeded=True,
+            source=ToolCallParseSource.PROVIDER_METADATA,
+            recovered=False,
+        )
+
+    function_call = additional.get("function_call")
+    function_calls = normalize_tool_calls(
+        [{"function": function_call}] if isinstance(function_call, dict) else [],
+        allowed_tool_names=allowed_tool_names,
+    )
+    if function_calls:
+        return ToolCallParseResult(
+            calls=_dict_calls_to_dataclasses(function_calls, source=ToolCallParseSource.FUNCTION_CALL),
+            succeeded=True,
+            source=ToolCallParseSource.FUNCTION_CALL,
+            recovered=False,
+        )
+
+    if not allow_text_recovery:
+        return ToolCallParseResult()
+
+    content = str(getattr(message, "content", "") or "")
+    recovered = recover_tool_calls_from_content(content, allowed_tool_names=allowed_tool_names)
+    if recovered.succeeded:
+        return recovered
     return ToolCallParseResult()
 
 

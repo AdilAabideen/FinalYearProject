@@ -18,8 +18,6 @@ from app.agentic.protocols import (
     build_tool_instruction,
     normalize_chat_messages,
     normalize_tool_calls,
-    recover_tool_calls_from_content,
-    to_legacy_recovery_output,
 )
 
 ESI1_ADAPTER_ID = 0
@@ -110,19 +108,6 @@ class LlamaServerChat(BaseChatModel):
             "adapter": self.adapter,
             "adapter_id": self.adapter_id,
         }
-
-    def _extract_tool_calls_from_text(
-        self,
-        content: str,
-        *,
-        allowed_tool_names: AllowedToolNames = None,
-    ) -> tuple[list[dict[str, Any]], bool]:
-        # TODO(protocol-types): consume ToolCallParseResult directly once callers are migrated.
-        result = recover_tool_calls_from_content(
-            content,
-            allowed_tool_names=allowed_tool_names,
-        )
-        return to_legacy_recovery_output(result)
 
     def _to_llama_messages(
         self,
@@ -329,12 +314,6 @@ class LlamaServerChat(BaseChatModel):
                 choice_msg.get("tool_calls"),
                 allowed_tool_names=allowed_tool_names,
             )
-            if not tool_calls:
-                tool_calls, consumed_entire_text = self._extract_tool_calls_from_text(
-                    content, allowed_tool_names=allowed_tool_names
-                )
-                if consumed_entire_text and tool_calls:
-                    content = ""
 
         message = AIMessage(content=content, tool_calls=tool_calls)
         generation = ChatGeneration(message=message)

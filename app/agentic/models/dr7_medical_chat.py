@@ -18,8 +18,6 @@ from app.agentic.protocols import (
     build_tool_instruction,
     normalize_chat_messages,
     normalize_tool_calls,
-    recover_tool_calls_from_content,
-    to_legacy_recovery_output,
 )
 
 
@@ -49,19 +47,6 @@ class Dr7MedicalChatModel(BaseChatModel):
     @property
     def _identifying_params(self) -> dict[str, Any]:
         return {"model": self.model, "base_url": self.base_url}
-
-    def _extract_tool_calls_from_text(
-        self,
-        content: str,
-        *,
-        allowed_tool_names: AllowedToolNames = None,
-    ) -> tuple[list[dict[str, Any]], bool]:
-        # TODO(protocol-types): consume ToolCallParseResult directly once callers are migrated.
-        result = recover_tool_calls_from_content(
-            content,
-            allowed_tool_names=allowed_tool_names,
-        )
-        return to_legacy_recovery_output(result)
 
     def _to_dr7_messages(
         self,
@@ -247,12 +232,6 @@ class Dr7MedicalChatModel(BaseChatModel):
                 choice_msg.get("tool_calls"),
                 allowed_tool_names=allowed_tool_names,
             )
-            if not tool_calls:
-                tool_calls, consumed_entire_text = self._extract_tool_calls_from_text(
-                    content, allowed_tool_names=allowed_tool_names
-                )
-                if consumed_entire_text and tool_calls:
-                    content = ""
 
         message = AIMessage(content=content, tool_calls=tool_calls)
         generation = ChatGeneration(message=message)

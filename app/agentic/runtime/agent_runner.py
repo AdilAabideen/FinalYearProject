@@ -16,10 +16,8 @@ from .runtime_types import (
     InvokeWithTelemetry,
     JSONFromText,
     LimitToolCalls,
-    NormalizeToolCall,
     ParsedToPayloadJSON,
     PayloadToHumanContent,
-    RecoverToolCalls,
     RenderSystemPrompt,
     StreamModesInput,
     ValuesStateBuilder,
@@ -44,8 +42,6 @@ class AgentRunner:
         render_system_prompt: RenderSystemPrompt,
         payload_to_human_content: PayloadToHumanContent,
         ainvoke_with_telemetry: InvokeWithTelemetry,
-        normalize_tool_call: NormalizeToolCall,
-        recover_tool_calls_from_content: RecoverToolCalls,
         ai_message_with_tool_calls: BuildAIMessageWithToolCalls,
         limit_tool_calls: LimitToolCalls,
         json_from_text: JSONFromText,
@@ -64,8 +60,6 @@ class AgentRunner:
         self.render_system_prompt = render_system_prompt
         self.payload_to_human_content = payload_to_human_content
         self.ainvoke_with_telemetry = ainvoke_with_telemetry
-        self.normalize_tool_call = normalize_tool_call
-        self.recover_tool_calls_from_content = recover_tool_calls_from_content
         self.ai_message_with_tool_calls = ai_message_with_tool_calls
         self.limit_tool_calls = limit_tool_calls
         self.json_from_text = json_from_text
@@ -101,42 +95,19 @@ class AgentRunner:
         for item in raw_tool_calls:
             if not isinstance(item, Mapping):
                 continue
-            normalized = self.normalize_tool_call(item)
+            name = item.get("name")
+            call_id = item.get("id")
+            args = item.get("args", {})
+            if not isinstance(name, str) or not name.strip():
+                continue
+            if not isinstance(call_id, str) or not call_id.strip():
+                continue
+            if not isinstance(args, Mapping):
+                args = {}
+            normalized = {"id": call_id, "name": name.strip(), "args": dict(args)}
             if normalized:
                 normalized_calls.append(normalized)
         return normalized_calls
-
-    def _apply_tool_call_recovery(
-        self,
-        *,
-        ai_msg: AIMessage,
-        tool_calls: list[dict[str, Any]],
-    ) -> tuple[AIMessage, list[dict[str, Any]]]:
-        content = str(ai_msg.content or "")
-        if not tool_calls and self.runtime_config.allow_text_tool_recovery:
-            recovered = self.recover_tool_calls_from_content(content)
-            if recovered:
-                return (
-                    self.ai_message_with_tool_calls(
-                        ai_msg,
-                        recovered,
-                        extra_additional_kwargs={"raw_recovered_tool_text": content},
-                    ),
-                    recovered,
-                )
-            return ai_msg, tool_calls
-
-        if content.strip():
-            return (
-                self.ai_message_with_tool_calls(
-                    ai_msg,
-                    tool_calls,
-                    extra_additional_kwargs={"raw_tool_text": content},
-                ),
-                tool_calls,
-            )
-
-        return ai_msg, tool_calls
 
     def _apply_tool_call_limit(
         self,
@@ -227,7 +198,12 @@ class AgentRunner:
             )
 
             tool_calls = self._extract_normalized_tool_calls(ai_msg)
-            ai_msg, tool_calls = self._apply_tool_call_recovery(ai_msg=ai_msg, tool_calls=tool_calls)
+            if tool_calls and str(ai_msg.content or "").strip():
+                ai_msg = self.ai_message_with_tool_calls(
+                    ai_msg,
+                    tool_calls,
+                    extra_additional_kwargs={"raw_tool_text": str(ai_msg.content or "")},
+                )
             ai_msg, tool_calls = self._apply_tool_call_limit(ai_msg=ai_msg, tool_calls=tool_calls)
 
             streamed_messages.append(ai_msg)

@@ -6,6 +6,7 @@ from .protocol_types import (
 )
 from .message_normalizer import normalize_chat_messages
 from .tool_call_recovery import (
+    extract_tool_calls_with_priority,
     recover_from_fenced_json_text,
     recover_from_jsonl_text,
     recover_from_raw_json_text,
@@ -20,6 +21,7 @@ __all__ = [
     "ToolCallParseResult",
     "ToolCallParseSource",
     "normalize_chat_messages",
+    "extract_tool_calls_with_priority",
     "recover_from_fenced_json_text",
     "recover_from_jsonl_text",
     "recover_from_raw_json_text",

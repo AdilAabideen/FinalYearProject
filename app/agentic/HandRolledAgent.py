@@ -4,18 +4,17 @@ import asyncio
 import json
 import threading
 import time
-import uuid
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from queue import Queue
-from typing import Any, AsyncGenerator, Callable, Iterable, Mapping, Sequence
+from typing import Any, AsyncGenerator, Callable, Mapping, Sequence
 
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage, ToolMessage
 from langchain_core.tools import BaseTool, tool as lc_tool
 from langchain_openai import ChatOpenAI
 from pydantic import BaseModel, ConfigDict
 
-from app.agentic.protocols import AllowedToolNames, NormalizedToolCall, ToolCallParseResult
+from app.agentic.protocols import extract_tool_calls_with_priority
 from app.agentic.runtime.agent_runner import AgentRunner
 from app.agentic.runtime.finalization_policy import FinalizationPolicy
 from app.agentic.runtime.runtime_config import RuntimeConfig
@@ -452,8 +451,6 @@ class SSEHandrolledAgent:
             render_system_prompt=self._render_system_prompt,
             payload_to_human_content=self._payload_to_human_content,
             ainvoke_with_telemetry=self._ainvoke_with_telemetry,
-            normalize_tool_call=self._normalize_tool_call,
-            recover_tool_calls_from_content=self._recover_tool_calls_from_content,
             ai_message_with_tool_calls=self._ai_message_with_tool_calls,
             limit_tool_calls=self._limit_tool_calls,
             json_from_text=self._json_from_text,
@@ -544,141 +541,6 @@ class SSEHandrolledAgent:
             return json.loads(raw), raw
         except Exception:
             return None, raw
-
-    @staticmethod
-    def _iter_json_objects(text: str) -> Iterable[Any]:
-        decoder = json.JSONDecoder()
-        idx = 0
-        n = len(text)
-        while idx < n:
-            while idx < n and text[idx].isspace():
-                idx += 1
-            if idx >= n:
-                break
-
-            if text[idx] not in "[{":
-                idx += 1
-                continue
-
-            try:
-                obj, end = decoder.raw_decode(text, idx)
-                yield obj
-                idx = end
-            except json.JSONDecodeError:
-                idx += 1
-
-    @classmethod
-    def _normalize_tool_call(cls, obj: Mapping[str, Any]) -> dict[str, Any] | None:
-        # TODO(protocol-types): return NormalizedToolCall once runtime logic is migrated.
-        name = obj.get("name") or obj.get("tool_name")
-        args = obj.get("args", obj.get("arguments", {}))
-        call_id = obj.get("id") or obj.get("tool_call_id") or f"call_{uuid.uuid4().hex[:24]}"
-
-        function = obj.get("function")
-        if not name and isinstance(function, Mapping):
-            name = function.get("name")
-            args = function.get("arguments", args)
-
-        if not name:
-            return None
-
-        if isinstance(args, str):
-            try:
-                args = json.loads(args)
-            except Exception:
-                args = {}
-
-        if not isinstance(args, Mapping):
-            args = {}
-
-        return {
-            "id": str(call_id),
-            "name": str(name),
-            "args": dict(args),
-        }
-
-    @classmethod
-    def _recover_tool_calls_from_content(cls, content: str) -> list[dict[str, Any]]:
-        # TODO(protocol-types): return ToolCallParseResult with parse-source metadata.
-        recovered: list[dict[str, Any]] = []
-
-        for obj in cls._iter_json_objects(content):
-            if isinstance(obj, Mapping):
-                tool_calls = obj.get("tool_calls")
-                if isinstance(tool_calls, list):
-                    for item in tool_calls:
-                        if isinstance(item, Mapping):
-                            normalized = cls._normalize_tool_call(item)
-                            if normalized:
-                                recovered.append(normalized)
-                else:
-                    normalized = cls._normalize_tool_call(obj)
-                    if normalized:
-                        recovered.append(normalized)
-
-            elif isinstance(obj, list):
-                for item in obj:
-                    if isinstance(item, Mapping):
-                        normalized = cls._normalize_tool_call(item)
-                        if normalized:
-                            recovered.append(normalized)
-
-        deduped: list[dict[str, Any]] = []
-        seen: set[str] = set()
-        for item in recovered:
-            call_id = item["id"]
-            if call_id in seen:
-                continue
-            seen.add(call_id)
-            deduped.append(item)
-
-        return deduped
-
-    @classmethod
-    def _extract_provider_tool_calls_with_source(
-        cls,
-        msg: AIMessage,
-    ) -> tuple[list[dict[str, Any]], str | None]:
-        # TODO(protocol-types): return ToolCallParseResult once runtime logic is fully migrated.
-        primary = list(getattr(msg, "tool_calls", []) or [])
-        normalized_primary: list[dict[str, Any]] = []
-        for item in primary:
-            if isinstance(item, Mapping):
-                normalized = cls._normalize_tool_call(item)
-                if normalized:
-                    normalized_primary.append(normalized)
-
-        if normalized_primary:
-            return normalized_primary, "native_tool_calls"
-
-        additional = getattr(msg, "additional_kwargs", {}) or {}
-        additional_tool_calls = additional.get("tool_calls")
-        normalized_additional: list[dict[str, Any]] = []
-        if isinstance(additional_tool_calls, list):
-            for item in additional_tool_calls:
-                if isinstance(item, Mapping):
-                    normalized = cls._normalize_tool_call(item)
-                    if normalized:
-                        normalized_additional.append(normalized)
-        if normalized_additional:
-            return normalized_additional, "provider_metadata"
-
-        function_call = additional.get("function_call")
-        if isinstance(function_call, Mapping):
-            normalized = cls._normalize_tool_call({"function": function_call, "id": None})
-            if normalized:
-                return [normalized], "function_call"
-
-        recovered = cls._recover_tool_calls_from_content(str(msg.content or ""))
-        if recovered:
-            return recovered, "text_recovered"
-
-        return [], None
-
-    @classmethod
-    def _extract_provider_tool_calls(cls, msg: AIMessage) -> list[dict[str, Any]]:
-        calls, _ = cls._extract_provider_tool_calls_with_source(msg)
-        return calls
 
     @staticmethod
     def _ai_message_with_tool_calls(
@@ -842,9 +704,38 @@ class SSEHandrolledAgent:
             text_recovered_tool_call_count = 0
             native_tool_call_count = 0
             if isinstance(response, AIMessage):
-                tool_calls, parse_source = self._extract_provider_tool_calls_with_source(response)
-                text_recovered_tool_call_count = len(tool_calls) if parse_source == "text_recovered" else 0
-                native_tool_call_count = len(tool_calls) - text_recovered_tool_call_count
+                parse_result = extract_tool_calls_with_priority(
+                    response,
+                    allow_text_recovery=self.runtime_config.allow_text_tool_recovery,
+                )
+                tool_calls = [
+                    {
+                        "id": call.id,
+                        "name": call.name,
+                        "args": dict(call.args),
+                    }
+                    for call in parse_result.calls
+                ]
+                parse_source = (
+                    parse_result.source.value
+                    if parse_result.succeeded and getattr(parse_result, "source", None) is not None
+                    else None
+                )
+                text_recovered_tool_call_count = sum(1 for call in parse_result.calls if call.recovered)
+                native_tool_call_count = max(0, len(tool_calls) - text_recovered_tool_call_count)
+                response = AIMessage(
+                    content=str(getattr(response, "content", "") or ""),
+                    tool_calls=tool_calls,
+                    additional_kwargs={
+                        **(getattr(response, "additional_kwargs", {}) or {}),
+                        "tool_call_parse_source": parse_source,
+                        "tool_call_recovered": bool(parse_result.recovered),
+                        "tool_call_parse_all_lines_parsed": parse_result.all_lines_parsed,
+                    },
+                    response_metadata=getattr(response, "response_metadata", {}),
+                    id=getattr(response, "id", None),
+                    name=getattr(response, "name", None),
+                )
             tool_names = [str(tc.get("name", "")) for tc in tool_calls if tc.get("name")]
 
             if run_id and agent_name:
