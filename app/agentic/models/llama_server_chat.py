@@ -14,6 +14,8 @@ from langchain_core.tools import BaseTool
 from langchain_core.utils.function_calling import convert_to_openai_tool
 from pydantic import ConfigDict, Field
 
+from app.agentic.protocols import AllowedToolNames
+
 ESI1_ADAPTER_ID = 0
 ESI2_ADAPTER_ID = 1
 ESI345_ADAPTER_ID = 2
@@ -181,8 +183,9 @@ class LlamaServerChat(BaseChatModel):
         self,
         raw_tool_calls: Any,
         *,
-        allowed_tool_names: Optional[set[str]] = None,
+        allowed_tool_names: AllowedToolNames = None,
     ) -> list[dict[str, Any]]:
+        # TODO(protocol-types): migrate return type to list[NormalizedToolCall].
         if not isinstance(raw_tool_calls, list):
             return []
 
@@ -241,8 +244,9 @@ class LlamaServerChat(BaseChatModel):
         self,
         content: str,
         *,
-        allowed_tool_names: Optional[set[str]] = None,
+        allowed_tool_names: AllowedToolNames = None,
     ) -> tuple[list[dict[str, Any]], bool]:
+        # TODO(protocol-types): return ToolCallParseResult once parser modules are extracted.
         stripped = (content or "").strip()
         if not stripped:
             return [], False
@@ -523,7 +527,7 @@ class LlamaServerChat(BaseChatModel):
         if isinstance(choice_msg, dict):
             content = (choice_msg.get("content") or "").strip()
 
-        allowed_tool_names = {
+        allowed_tool_names: AllowedToolNames = {
             t.get("function", {}).get("name")
             for t in tools
             if isinstance(t.get("function"), dict)

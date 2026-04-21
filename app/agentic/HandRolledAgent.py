@@ -15,6 +15,8 @@ from langchain_core.tools import BaseTool, tool as lc_tool
 from langchain_openai import ChatOpenAI
 from pydantic import BaseModel, ConfigDict
 
+from app.agentic.protocols import AllowedToolNames, NormalizedToolCall, ToolCallParseResult
+
 try:
     import tiktoken
 except Exception:  # pragma: no cover - optional dependency at runtime
@@ -611,6 +613,7 @@ class SSEHandrolledAgent:
 
     @classmethod
     def _normalize_tool_call(cls, obj: Mapping[str, Any]) -> dict[str, Any] | None:
+        # TODO(protocol-types): return NormalizedToolCall once runtime logic is migrated.
         name = obj.get("name") or obj.get("tool_name")
         args = obj.get("args", obj.get("arguments", {}))
         call_id = obj.get("id") or obj.get("tool_call_id") or f"call_{uuid.uuid4().hex[:24]}"
@@ -640,6 +643,7 @@ class SSEHandrolledAgent:
 
     @classmethod
     def _recover_tool_calls_from_content(cls, content: str) -> list[dict[str, Any]]:
+        # TODO(protocol-types): return ToolCallParseResult with parse-source metadata.
         recovered: list[dict[str, Any]] = []
 
         for obj in cls._iter_json_objects(content):
@@ -676,6 +680,7 @@ class SSEHandrolledAgent:
 
     @classmethod
     def _extract_provider_tool_calls(cls, msg: AIMessage) -> list[dict[str, Any]]:
+        # TODO(protocol-types): return ToolCallParseResult and normalized dataclass calls.
         primary = list(getattr(msg, "tool_calls", []) or [])
         normalized_primary: list[dict[str, Any]] = []
         for item in primary:
