@@ -1,0 +1,78 @@
+from __future__ import annotations
+
+import json
+from typing import Any, Sequence
+
+
+def build_tool_instruction(
+    tools: Sequence[dict[str, Any]],
+    tool_choice: str | None,
+    *,
+    final_answer_tool_name: str = "final_answer",
+    highlight_final_answer: bool = True,
+) -> str:
+    """Build a canonical prompt block describing tool-call contract and schemas."""
+    prompt_tools: list[dict[str, Any]] = []
+    for tool in tools:
+        fn = tool.get("function", {})
+        if not isinstance(fn, dict):
+            continue
+        name = fn.get("name")
+        if not isinstance(name, str) or not name:
+            continue
+        prompt_tools.append(
+            {
+                "name": name,
+                "description": fn.get("description", ""),
+                "parameters": fn.get("parameters", {}),
+            }
+        )
+
+    parts = [
+        "<tool_rules> - When tools are available, you MUST follow this tool-calling contract.",
+        " - Return a SINGLE JSON object (no markdown, no extra text).",
+        " - Tool-call format (exact):",
+        ' - {"tool_calls":[{"id":"call_<unique_id>","name":"<tool_name>","arguments":{...}}]}',
+        " - Do NOT output multiple JSON objects. If you need multiple tool calls, put them in the single tool_calls array.",
+        f" - When you are ready to finalize, call the {final_answer_tool_name} tool with the full final payload.",
+        " - Tool call ids must be unique per call.",
+    ]
+
+    if tool_choice == "any":
+        parts.append("You must call at least one tool (tool call is required).")
+    elif tool_choice and tool_choice not in {"auto", "none"}:
+        parts.append(f'You must call the tool "{tool_choice}".')
+    else:
+        parts.append("If no tool is needed, respond with normal assistant text (not JSON).")
+
+    parts.append("</tool_rules> \n<available_tools>")
+
+    for tool in prompt_tools:
+        name = str(tool.get("name", ""))
+        desc = str(tool.get("description", ""))
+        parameters = tool.get("parameters", {}) if isinstance(tool.get("parameters"), dict) else {}
+        properties = parameters.get("properties", {})
+        required = parameters.get("required", [])
+
+        is_final_answer_tool = highlight_final_answer and name == final_answer_tool_name
+        header = (
+            "FINAL ANSWER TOOL -- CALL THIS WHEN YOU WANT TO OUTPUT THE FINAL ANSWER"
+            if is_final_answer_tool
+            else "TOOL"
+        )
+
+        parts.append(
+            "\n".join(
+                [
+                    "",
+                    f"[{header}]",
+                    f"TOOL NAME: {name}",
+                    f"TOOL DESCRIPTION: {desc}",
+                    f"TOOL PARAMETERS (arguments schema): {json.dumps(properties, ensure_ascii=False)}",
+                    f"TOOL REQUIRED PARAMETERS: {json.dumps(required, ensure_ascii=False)}",
+                ]
+            )
+        )
+
+    parts.append("</available_tools>")
+    return "\n".join(parts)
