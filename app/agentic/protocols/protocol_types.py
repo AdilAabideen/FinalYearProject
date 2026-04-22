@@ -17,6 +17,8 @@ class ToolCallParseSource(str, Enum):
     TEXT_JSON = "text_json"
     TEXT_FENCED_JSON = "text_fenced_json"
     TEXT_JSONL = "text_jsonl"
+    TEXT_PARTIAL_JSON = "text_partial_json"
+    TEXT_TOOL_CALLS_ARRAY = "text_tool_calls_array"
     UNKNOWN = "unknown"
 
 

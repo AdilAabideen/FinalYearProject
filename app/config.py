@@ -37,7 +37,7 @@ class Settings(BaseSettings):
 
     # Agent runtime safety
     AGENT_RUN_TIMEOUT_S: float = 120.0
-    TEST_CASE_BACKOFF_S: float = 10.0
+    TEST_CASE_BACKOFF_S: float = 5.0
 
     #LangSmith settings
     # LANGSMITH_API_KEY: Optional[str] = None

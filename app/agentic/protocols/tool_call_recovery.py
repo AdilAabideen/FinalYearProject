@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from typing import Any
 
 from langchain_core.messages import AIMessage
@@ -141,6 +142,139 @@ def recover_from_jsonl_text(
     )
 
 
+def _extract_balanced_json_segment(
+    text: str,
+    *,
+    open_char: str,
+    close_char: str,
+    start_index: int,
+) -> str | None:
+    """Extract first balanced JSON-like segment from `start_index`."""
+    if start_index < 0 or start_index >= len(text):
+        return None
+    if text[start_index] != open_char:
+        return None
+
+    depth = 0
+    in_string = False
+    escaped = False
+    for i in range(start_index, len(text)):
+        ch = text[i]
+        if in_string:
+            if escaped:
+                escaped = False
+            elif ch == "\\":
+                escaped = True
+            elif ch == '"':
+                in_string = False
+            continue
+
+        if ch == '"':
+            in_string = True
+            continue
+        if ch == open_char:
+            depth += 1
+            continue
+        if ch == close_char:
+            depth -= 1
+            if depth == 0:
+                return text[start_index : i + 1]
+
+    return None
+
+
+def recover_from_partial_json_text(
+    content: str,
+    *,
+    allowed_tool_names: AllowedToolNames = None,
+) -> ToolCallParseResult:
+    """
+    Recover from partial JSON by extracting first balanced object and parsing it.
+
+    Useful when output contains valid tool-call JSON plus trailing garbage.
+    """
+    stripped = (content or "").strip()
+    if not stripped:
+        return ToolCallParseResult()
+
+    first_obj_start = stripped.find("{")
+    if first_obj_start < 0:
+        return ToolCallParseResult()
+
+    candidate = _extract_balanced_json_segment(
+        stripped,
+        open_char="{",
+        close_char="}",
+        start_index=first_obj_start,
+    )
+    if not candidate:
+        return ToolCallParseResult()
+
+    try:
+        parsed = json.loads(candidate)
+    except Exception:
+        return ToolCallParseResult()
+
+    raw_calls = _extract_raw_calls(parsed)
+    normalized = normalize_tool_calls(raw_calls, allowed_tool_names=allowed_tool_names)
+    calls = _dict_calls_to_dataclasses(normalized, source=ToolCallParseSource.TEXT_PARTIAL_JSON)
+    return ToolCallParseResult(
+        calls=calls,
+        succeeded=bool(calls),
+        source=ToolCallParseSource.TEXT_PARTIAL_JSON,
+        recovered=bool(calls),
+    )
+
+
+def recover_from_tool_calls_array_text(
+    content: str,
+    *,
+    allowed_tool_names: AllowedToolNames = None,
+) -> ToolCallParseResult:
+    """
+    Recover by extracting a balanced `tool_calls` array and wrapping it as JSON.
+
+    Useful when the model emits malformed object wrappers but the `tool_calls` array
+    itself is still syntactically valid.
+    """
+    stripped = (content or "").strip()
+    if not stripped:
+        return ToolCallParseResult()
+
+    key_match = re.search(r'"tool_calls"\s*:', stripped)
+    if not key_match:
+        return ToolCallParseResult()
+
+    array_start = stripped.find("[", key_match.end())
+    if array_start < 0:
+        return ToolCallParseResult()
+
+    array_segment = _extract_balanced_json_segment(
+        stripped,
+        open_char="[",
+        close_char="]",
+        start_index=array_start,
+    )
+    if not array_segment:
+        return ToolCallParseResult()
+
+    candidate = f'{{"tool_calls":{array_segment}}}'
+    try:
+        parsed = json.loads(candidate)
+    except Exception:
+        return ToolCallParseResult()
+
+    raw_calls = _extract_raw_calls(parsed)
+    normalized = normalize_tool_calls(raw_calls, allowed_tool_names=allowed_tool_names)
+    calls = _dict_calls_to_dataclasses(normalized, source=ToolCallParseSource.TEXT_TOOL_CALLS_ARRAY)
+    return ToolCallParseResult(
+        calls=calls,
+        succeeded=bool(calls),
+        source=ToolCallParseSource.TEXT_TOOL_CALLS_ARRAY,
+        recovered=bool(calls),
+    )
+
+
 def recover_tool_calls_from_content(
     content: str,
     *,
@@ -154,11 +288,53 @@ def recover_tool_calls_from_content(
     if raw_result.succeeded:
         return raw_result
 
+    partial_result = recover_from_partial_json_text(content, allowed_tool_names=allowed_tool_names)
+    if partial_result.succeeded:
+        return partial_result
+
+    tool_calls_array_result = recover_from_tool_calls_array_text(
+        content,
+        allowed_tool_names=allowed_tool_names,
+    )
+    if tool_calls_array_result.succeeded:
+        return tool_calls_array_result
+
     jsonl_result = recover_from_jsonl_text(content, allowed_tool_names=allowed_tool_names)
     if jsonl_result.succeeded:
         return jsonl_result
 
     return ToolCallParseResult()
+
+
+def looks_like_malformed_tool_call_content(
+    content: str,
+    *,
+    allowed_tool_names: AllowedToolNames = None,
+) -> bool:
+    """
+    Heuristic detector for malformed tool-call intent.
+
+    Returns True only when content strongly suggests tool-call intent but could not be
+    parsed/recovered into normalized calls.
+    """
+    text = (content or "").strip()
+    if not text:
+        return False
+
+    if recover_tool_calls_from_content(text, allowed_tool_names=allowed_tool_names).succeeded:
+        return False
+
+    lowered = text.lower()
+    if '"tool_calls"' in lowered or "'tool_calls'" in lowered:
+        return True
+
+    if "arguments" in lowered or '"name"' in lowered:
+        if allowed_tool_names:
+            lowered_names = {str(n).lower() for n in allowed_tool_names}
+            if any(name in lowered for name in lowered_names):
+                return True
+
+    return False
 
 
 def extract_tool_calls_with_priority(

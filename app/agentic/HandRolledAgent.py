@@ -13,7 +13,7 @@ from langchain_core.tools import BaseTool, tool as lc_tool
 from langchain_openai import ChatOpenAI
 from pydantic import BaseModel, ConfigDict
 
-from app.agentic.protocols import extract_tool_calls_with_priority
+from app.agentic.protocols import extract_tool_calls_with_priority, looks_like_malformed_tool_call_content
 from app.agentic.runtime.agent_runner import AgentRunner
 from app.agentic.runtime.finalization_policy import FinalizationPolicy
 from app.agentic.runtime.runtime_config import RuntimeConfig
@@ -354,9 +354,12 @@ class SSEHandrolledAgent:
             parse_source: str | None = None
             text_recovered_tool_call_count = 0
             native_tool_call_count = 0
+            malformed_tool_call_detected = False
             if isinstance(response, AIMessage):
+                allowed_tool_names = set(self.tools_by_name.keys()) or None
                 parse_result = extract_tool_calls_with_priority(
                     response,
+                    allowed_tool_names=allowed_tool_names,
                     allow_text_recovery=self.runtime_config.allow_text_tool_recovery,
                 )
                 tool_calls = [
@@ -374,6 +377,13 @@ class SSEHandrolledAgent:
                 )
                 text_recovered_tool_call_count = sum(1 for call in parse_result.calls if call.recovered)
                 native_tool_call_count = max(0, len(tool_calls) - text_recovered_tool_call_count)
+                malformed_tool_call_detected = (
+                    not parse_result.succeeded
+                    and looks_like_malformed_tool_call_content(
+                        str(getattr(response, "content", "") or ""),
+                        allowed_tool_names=allowed_tool_names,
+                    )
+                )
                 response = AIMessage(
                     content=str(getattr(response, "content", "") or ""),
                     tool_calls=tool_calls,
@@ -382,6 +392,7 @@ class SSEHandrolledAgent:
                         "tool_call_parse_source": parse_source,
                         "tool_call_recovered": bool(parse_result.recovered),
                         "tool_call_parse_all_lines_parsed": parse_result.all_lines_parsed,
+                        "malformed_tool_call_detected": malformed_tool_call_detected,
                     },
                     response_metadata=getattr(response, "response_metadata", {}),
                     id=getattr(response, "id", None),

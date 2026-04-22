@@ -85,10 +85,36 @@ class AgentRunner:
         *,
         human_msg: HumanMessage,
         scratchpad: Scratchpad,
+        retry_feedback: HumanMessage | None = None,
     ) -> list[BaseMessage]:
         call_messages: list[BaseMessage] = [SystemMessage(content=self.render_system_prompt()), human_msg]
         call_messages.extend(scratchpad.messages())
+        if retry_feedback is not None:
+            call_messages.append(retry_feedback)
         return call_messages
+
+    @staticmethod
+    def _short_excerpt(text: str, *, max_chars: int = 400) -> str:
+        value = str(text or "").strip()
+        if len(value) <= max_chars:
+            return value
+        return value[:max_chars] + "...(truncated)"
+
+    def _build_malformed_tool_retry_feedback(self, ai_msg: AIMessage) -> HumanMessage:
+        excerpt = self._short_excerpt(str(getattr(ai_msg, "content", "") or ""))
+        content = (
+            "MALFORMED TOOL CALL DETECTED.\n"
+            "Your previous response was not valid for the tool-calling contract.\n"
+            "Return EXACTLY one JSON object and no extra text.\n"
+            'Required format: {"tool_calls":[{"id":"call_<unique_id>","name":"<tool_name>","arguments":{...}}]}\n'
+            "Rules:\n"
+            "- Do not use markdown or code fences.\n"
+            "- Do not add extra top-level keys.\n"
+            "- Put all tool calls inside the single tool_calls array.\n"
+            "- Use valid JSON only.\n"
+            f"Previous malformed output excerpt:\n{excerpt}"
+        )
+        return HumanMessage(content=content)
 
     def _extract_normalized_tool_calls(self, ai_msg: AIMessage) -> list[dict[str, Any]]:
         raw_tool_calls = list(getattr(ai_msg, "tool_calls", []) or [])
@@ -190,12 +216,19 @@ class AgentRunner:
         final_output: Any = None
         done = False
         iteration = 0
+        malformed_tool_retry_count = 0
+        pending_retry_feedback: HumanMessage | None = None
         run_started_t = time.perf_counter()
 
         while not done:
             iteration += 1
 
-            call_messages = self._build_call_messages(human_msg=human_msg, scratchpad=scratchpad)
+            call_messages = self._build_call_messages(
+                human_msg=human_msg,
+                scratchpad=scratchpad,
+                retry_feedback=pending_retry_feedback,
+            )
+            pending_retry_feedback = None
 
             ai_msg = await self.ainvoke_with_telemetry(
                 call_kind="main_loop",
@@ -225,6 +258,29 @@ class AgentRunner:
                 yield "values", self.values_state(streamed_messages, iteration, False, None)
 
             if not tool_calls:
+                malformed_detected = bool(
+                    (getattr(ai_msg, "additional_kwargs", {}) or {}).get("malformed_tool_call_detected")
+                )
+                if (
+                    malformed_detected
+                    and self.runtime_config.malformed_tool_retry_enabled
+                    and malformed_tool_retry_count < self.runtime_config.max_malformed_tool_retries
+                ):
+                    malformed_tool_retry_count += 1
+                    pending_retry_feedback = self._build_malformed_tool_retry_feedback(ai_msg)
+                    self.emit_event(
+                        event_type="runtime_decision",
+                        node_name=self.agent_node_name,
+                        payload_json={
+                            "decision": "retry_after_malformed_tool_call",
+                            "retry_index": malformed_tool_retry_count,
+                            "max_retries": self.runtime_config.max_malformed_tool_retries,
+                        },
+                    )
+                    if self._should_emit(modes, "values"):
+                        yield "values", self.values_state(streamed_messages, iteration, False, None)
+                    continue
+
                 self._emit_assistant_event_from_text(str(ai_msg.content or ""))
                 scratchpad.append_final_assistant(ai_msg)
 
