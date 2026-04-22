@@ -147,6 +147,15 @@ Examples:
 9. Return final output strictly in the ES1AgentOutput schema.
 </workflow_information>
 
+FINAL REMINDER
+Be strict.
+If immediate life-saving intervention is not clearly required now, output NOT ESI-1.
+Do not finalize the case unless S1 and S2 have both been assessed in the reasoning trace.
+ONLY 1 TOOL CALL PER STEP and ITERATION. DO NOT TRY CALL MULTIPLE TOOLS AT THE SAME TIME.
+
+"""
+
+SINGLE_AGENT_OUTPUT_REQURIEMENTS = """
 <output_requirements>
 Return ES1AgentOutput with:
 - is_esi1: true if ESI-1, false otherwise
@@ -156,11 +165,25 @@ Return ES1AgentOutput with:
 - missing_information: only genuinely decision-relevant missing information
 - justification: concise and specific
 </output_requirements>
+"""
 
-FINAL REMINDER
-Be strict.
-If immediate life-saving intervention is not clearly required now, output NOT ESI-1.
-Do not finalize the case unless S1 and S2 have both been assessed in the reasoning trace.
-ONLY 1 TOOL CALL PER STEP and ITERATION. DO NOT TRY CALL MULTIPLE TOOLS AT THE SAME TIME.
+HANDOFF_REQUIREMENTS = """
+<handoff_requriements>
+YOU HAVE TO CALL EITHER OF THE HANDOFF TOOLS. THIS TRANSFERS CONTROL TO ANOTHER AGENT. YOU HAVE 2 CHOICE 
 
+HANDOFF TO ESI2 AGENT IF YOU THINK IT IS NOT ESI1 ( HANDOFF USING ESI1ToESI2Payload ) :
+- esi1_result: usually "not_esi1"
+- brief_reason: short explanation of why immediate life-saving intervention is not clearly required
+- carry_forward_concerns: key unresolved concerns for ESI-2 review
+- focus_for_esi2: short instruction on what ESI-2 should assess next
+
+HANDOFF TO DOCTOR AGENT IF YOU THINK IT IS ESI1 ( HAND OFF USING ESI1ToDoctorPayload ) :
+- decision: typically "esi1"
+- urgency: short urgency label such as "immediate" or "critical"
+- reason: brief explanation of why the patient appears to meet ESI-1 criteria
+- critical_concerns: key immediate threats or red flags identified
+- request: short escalation request for the doctor agent
+
+YOU MUST CALL A HANDOFF TOOL
+</handoff_requriements>
 """

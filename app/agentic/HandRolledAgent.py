@@ -13,7 +13,11 @@ from langchain_core.tools import BaseTool, tool as lc_tool
 from langchain_openai import ChatOpenAI
 from pydantic import BaseModel, ConfigDict
 
-from app.agentic.protocols import extract_tool_calls_with_priority, looks_like_malformed_tool_call_content
+from app.agentic.protocols import (
+    build_system_prompt,
+    extract_tool_calls_with_priority,
+    looks_like_malformed_tool_call_content,
+)
 from app.agentic.runtime.agent_runner import AgentRunner
 from app.agentic.runtime.finalization_policy import FinalizationPolicy
 from app.agentic.runtime.runtime_config import RuntimeConfig
@@ -43,6 +47,9 @@ class SSEHandrolledAgent:
         system_prompt: str = "You are a helpful assistant.",
         response_format: dict[str, Any] | type[BaseModel] | None = None,
         *,
+        single_agent_prompt_addon: str | None = None,
+        multi_agent_prompt_addon: str | None = None,
+        prompt_extra_sections: Sequence[str] | None = None,
         final_answer_tool_name: str | None = "final_answer",
         llm_kwargs: dict[str, Any] | None = None,
         agent_node_name: str = "agent",
@@ -60,6 +67,21 @@ class SSEHandrolledAgent:
         self.system_prompt = (
             system_prompt if isinstance(system_prompt, str) and system_prompt.strip() else "You are a helpful assistant."
         )
+        self.single_agent_prompt_addon = (
+            single_agent_prompt_addon.strip()
+            if isinstance(single_agent_prompt_addon, str) and single_agent_prompt_addon.strip()
+            else None
+        )
+        self.multi_agent_prompt_addon = (
+            multi_agent_prompt_addon.strip()
+            if isinstance(multi_agent_prompt_addon, str) and multi_agent_prompt_addon.strip()
+            else None
+        )
+        self.prompt_extra_sections = [
+            str(section).strip()
+            for section in list(prompt_extra_sections or [])
+            if isinstance(section, str) and section.strip()
+        ]
         self.response_format = response_format
         self.final_answer_tool_name = final_answer_tool_name
 
@@ -189,7 +211,13 @@ class SSEHandrolledAgent:
             return str(exc)
 
     def _render_system_prompt(self) -> str:
-        return self.system_prompt
+        return build_system_prompt(
+            self.system_prompt,
+            multi_agent_addon=self.multi_agent_prompt_addon,
+            single_agent_addon=self.single_agent_prompt_addon,
+            multi_agent=bool(self.runtime_config.multi_agent),
+            extra_sections=self.prompt_extra_sections,
+        )
 
     @staticmethod
     def _payload_to_human_content(payload: Any) -> str:

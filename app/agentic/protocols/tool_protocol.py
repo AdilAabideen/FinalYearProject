@@ -2,19 +2,22 @@ from __future__ import annotations
 
 import json
 import uuid
-from typing import Any, Sequence
+from typing import Any, Optional, Sequence
 
 from .protocol_types import AllowedToolNames, NormalizedToolCall, ToolCallParseSource
 
 
 def build_tool_instruction(
     tools: Sequence[dict[str, Any]],
-    tool_choice: str | None,
+    tool_choice: Optional[str],
+    multi_agent: bool = False,
+    handoff_names: Optional[list[str]] = None,
     *,
     final_answer_tool_name: str = "final_answer",
     highlight_final_answer: bool = True,
 ) -> str:
     """Build a canonical prompt block describing tool-call contract and schemas."""
+    handoff_names = list(handoff_names or [])
     prompt_tools: list[dict[str, Any]] = []
     for tool in tools:
         fn = tool.get("function", {})
@@ -37,9 +40,23 @@ def build_tool_instruction(
         " - Tool-call format (exact):",
         ' - {"tool_calls":[{"id":"call_<unique_id>","name":"<tool_name>","arguments":{...}}]}',
         " - Do NOT output multiple JSON objects. If you need multiple tool calls, put them in the single tool_calls array.",
-        f" - When you are ready to finalize, call the {final_answer_tool_name} tool with the full final payload.",
-        " - Tool call ids must be unique per call.",
     ]
+
+    if multi_agent and handoff_names:
+        parts.extend(
+            [
+                " - When you are ready to transfer control, call exactly one matching handoff tool with the full payload.",
+                f" - Available handoff tools: {', '.join(handoff_names)}",
+                " - Tool call ids must be unique per call.",
+            ]
+        )
+    else:
+        parts.extend(
+            [
+                f" - When you are ready to finalize, call the {final_answer_tool_name} tool with the full final payload.",
+                " - Tool call ids must be unique per call.",
+            ]
+        )
 
     if tool_choice == "any":
         parts.append("You must call at least one tool (tool call is required).")
@@ -57,12 +74,20 @@ def build_tool_instruction(
         properties = parameters.get("properties", {})
         required = parameters.get("required", [])
 
-        is_final_answer_tool = highlight_final_answer and name == final_answer_tool_name
-        header = (
-            "FINAL ANSWER TOOL -- CALL THIS WHEN YOU WANT TO OUTPUT THE FINAL ANSWER"
-            if is_final_answer_tool
-            else "TOOL"
-        )
+        if not multi_agent or len(handoff_names) <= 0:
+            is_final_answer_tool = highlight_final_answer and name == final_answer_tool_name
+            header = (
+                "FINAL ANSWER TOOL -- CALL THIS WHEN YOU WANT TO OUTPUT THE FINAL ANSWER"
+                if is_final_answer_tool
+                else "TOOL"
+            )
+        else:
+            is_handoff_tool = multi_agent and name in handoff_names
+            header = (
+                "HANDOFF TOOL - CALL THIS WHEN YOU WANT TO HANDOFF TO ANOTHER AGENT "
+                if is_handoff_tool
+                else "TOOL"
+            )
 
         parts.append(
             "\n".join(
@@ -102,7 +127,9 @@ def inject_tool_instruction(
     messages: list[dict[str, str]],
     *,
     tools: Sequence[dict[str, Any]],
-    tool_choice: str | None,
+    tool_choice: Optional[str],
+    multi_agent: bool = False,
+    handoff_names: Optional[list[str]] = None,
     final_answer_tool_name: str = "final_answer",
     highlight_final_answer: bool = True,
 ) -> list[dict[str, str]]:
@@ -113,6 +140,8 @@ def inject_tool_instruction(
     tool_instruction = build_tool_instruction(
         tools,
         tool_choice,
+        multi_agent=multi_agent,
+        handoff_names=handoff_names,
         final_answer_tool_name=final_answer_tool_name,
         highlight_final_answer=highlight_final_answer,
     )
