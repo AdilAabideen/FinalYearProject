@@ -636,12 +636,35 @@ class SSEHandrolledAgent:
         payload: Any,
         stream_mode: Sequence[str] | str | None = None,
     ):
+        async_gen = self.astream(payload, stream_mode=stream_mode)
+        yield from self._stream_async_in_thread(async_gen)
+
+    @staticmethod
+    def _run_async_in_thread(coro: Any) -> Any:
+        q: Queue[Any] = Queue()
+
+        def _runner() -> None:
+            try:
+                result = asyncio.run(coro)
+                q.put(("result", result))
+            except Exception as exc:
+                q.put(("error", exc))
+
+        thread = threading.Thread(target=_runner, daemon=True)
+        thread.start()
+        kind, value = q.get()
+        if kind == "error":
+            raise value
+        return value
+
+    @staticmethod
+    def _stream_async_in_thread(async_gen: AsyncGenerator[tuple[str, Any], None]):
         q: Queue[Any] = Queue()
         sentinel = object()
 
         async def _producer() -> None:
             try:
-                async for item in self.astream(payload, stream_mode=stream_mode):
+                async for item in async_gen:
                     q.put(("item", item))
             except Exception as exc:
                 q.put(("error", exc))
@@ -662,21 +685,3 @@ class SSEHandrolledAgent:
                 raise value
             else:
                 break
-
-    @staticmethod
-    def _run_async_in_thread(coro: Any) -> Any:
-        q: Queue[Any] = Queue()
-
-        def _runner() -> None:
-            try:
-                result = asyncio.run(coro)
-                q.put(("result", result))
-            except Exception as exc:
-                q.put(("error", exc))
-
-        thread = threading.Thread(target=_runner, daemon=True)
-        thread.start()
-        kind, value = q.get()
-        if kind == "error":
-            raise value
-        return value
