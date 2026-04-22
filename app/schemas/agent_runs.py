@@ -50,6 +50,9 @@ class AgentLLMCallRead(BaseModel):
     usage_source: str
     had_tool_calls: Optional[bool] = None
     tool_call_count: Optional[int] = None
+    tool_call_parse_source: Optional[str] = None
+    text_recovered_tool_call_count: int = 0
+    native_tool_call_count: int = 0
     tool_names: list[str] = Field(default_factory=list)
     cost_usd: Optional[float] = None
     error_text: Optional[str] = None
@@ -155,15 +158,18 @@ class AgentRunReliabilityIssueRead(BaseModel):
     created_at: datetime
 
 
-class AgentRunReliabilityIssueCount(BaseModel):
+class AgentRunReliabilityCategoryCount(BaseModel):
     issue_code: str
+    severity: Literal["error", "warning", "info"]
     count: int
 
 
 class AgentRunReliabilitySummary(BaseModel):
     total_issues: int
     error_issues: int
-    by_code: list[AgentRunReliabilityIssueCount] = Field(default_factory=list)
+    warning_issues: int = 0
+    info_issues: int = 0
+    by_category: list[AgentRunReliabilityCategoryCount] = Field(default_factory=list)
 
 
 class AgentRunReliabilityIssuePage(BaseModel):

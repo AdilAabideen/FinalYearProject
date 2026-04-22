@@ -33,6 +33,9 @@ def append_llm_call(
     cost_usd: Optional[float],
     had_tool_calls: Optional[bool],
     tool_call_count: Optional[int],
+    tool_call_parse_source: Optional[str],
+    text_recovered_tool_call_count: Optional[int],
+    native_tool_call_count: Optional[int],
     tool_names: Optional[list[str]],
     error_text: Optional[str] = None,
 ) -> None:
@@ -54,6 +57,9 @@ def append_llm_call(
         cost_usd=cost_usd,
         had_tool_calls=had_tool_calls,
         tool_call_count=(max(0, int(tool_call_count)) if tool_call_count is not None else None),
+        tool_call_parse_source=tool_call_parse_source,
+        text_recovered_tool_call_count=max(0, int(text_recovered_tool_call_count or 0)),
+        native_tool_call_count=max(0, int(native_tool_call_count or 0)),
         tool_names_json=tool_names,
         error_text=error_text,
     )
@@ -260,14 +266,21 @@ def count_reliability_issues_filtered(
     return int(db.execute(stmt).scalar_one() or 0)
 
 
-def list_reliability_issue_code_counts(db: Session, run_id: str) -> list[tuple[str, int]]:
+def list_reliability_issue_category_counts(db: Session, run_id: str) -> list[tuple[str, str, int]]:
     stmt = (
-        select(AgentRunReliabilityIssue.issue_code, func.count())
+        select(
+            AgentRunReliabilityIssue.issue_code,
+            AgentRunReliabilityIssue.severity,
+            func.count(),
+        )
         .where(AgentRunReliabilityIssue.run_id == run_id)
-        .group_by(AgentRunReliabilityIssue.issue_code)
+        .group_by(
+            AgentRunReliabilityIssue.issue_code,
+            AgentRunReliabilityIssue.severity,
+        )
     )
     rows = db.execute(stmt).all()
-    return [(str(code), int(count)) for code, count in rows]
+    return [(str(code), str(severity), int(count)) for code, severity, count in rows]
 
 
 def list_run_metrics(
@@ -341,16 +354,23 @@ def count_reliability_issues(db: Session, run_id: str) -> tuple[int, int, int, i
             AgentRunReliabilityIssue.severity == "error",
         )
     )
-    grouped = dict(list_reliability_issue_code_counts(db, run_id))
+    grouped: dict[str, int] = {}
+    for code, _severity, count in list_reliability_issue_category_counts(db, run_id):
+        grouped[code] = grouped.get(code, 0) + int(count)
     finalization_codes = {
         "final_output_missing",
         "final_output_unparseable",
         "final_output_schema_invalid",
+        "final_output_invalid",
+        "schema_validation_error",
     }
     tool_recovery_codes = {
         "assistant_tool_call_json_unparseable",
         "assistant_tool_call_recovery_failed",
         "assistant_tool_call_name_not_allowed",
+        "native_tool_parse_failure",
+        "text_recovery_used",
+        "text_recovery_failure",
     }
     finalization_count = sum(int(grouped.get(code, 0)) for code in finalization_codes)
     tool_recovery_count = sum(int(grouped.get(code, 0)) for code in tool_recovery_codes)

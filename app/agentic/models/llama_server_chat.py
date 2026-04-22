@@ -1,18 +1,26 @@
 from __future__ import annotations
 
-import json
-import uuid
 from typing import Any, Callable, Literal, Optional, Sequence, Union
 
 import httpx
 from langchain_core.language_models import LanguageModelInput
 from langchain_core.language_models.chat_models import BaseChatModel
-from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage, ToolMessage
+from langchain_core.messages import AIMessage, BaseMessage
 from langchain_core.outputs import ChatGeneration, ChatResult
 from langchain_core.runnables import Runnable
 from langchain_core.tools import BaseTool
 from langchain_core.utils.function_calling import convert_to_openai_tool
 from pydantic import ConfigDict, Field
+
+from app.agentic.protocols import (
+    AllowedToolNames,
+    coerce_bound_tools,
+    extract_allowed_tool_names,
+    inject_tool_instruction,
+    normalize_chat_messages,
+    to_provider_messages,
+    normalize_tool_calls,
+)
 
 ESI1_ADAPTER_ID = 0
 ESI2_ADAPTER_ID = 1
@@ -103,294 +111,9 @@ class LlamaServerChat(BaseChatModel):
             "adapter_id": self.adapter_id,
         }
 
-    def _tool_instruction(
-        self,
-        tools: Sequence[dict[str, Any]],
-        tool_choice: Optional[str],
-    ) -> str:
-        prompt_tools: list[dict[str, Any]] = []
-        for tool in tools:
-            fn = tool.get("function", {})
-            if not isinstance(fn, dict):
-                continue
-            name = fn.get("name")
-            if not isinstance(name, str) or not name:
-                continue
-            prompt_tools.append(
-                {
-                    "name": name,
-                    "description": fn.get("description", ""),
-                    "parameters": fn.get("parameters", {}),
-                }
-            )
-
-        parts = [
-            "<tool_rules>"
-            " - When tools are available, you MUST follow this tool-calling contract.",
-            " - Return a SINGLE JSON object (no markdown, no extra text).",
-            " - Tool-call format (exact):",
-            ' - {"tool_calls":[{"id":"call_<unique_id>","name":"<tool_name>","arguments":{...}}]}',
-            " - Do NOT output multiple JSON objects. If you need multiple tool calls, put them in the single tool_calls array.",
-            " - When you are ready to finalize, call the final_answer tool with the full final payload.",
-            " - Tool call ids must be unique per call.",
-        ]
-
-        if tool_choice == "any":
-            parts.append("You must call at least one tool (tool call is required).")
-        elif tool_choice and tool_choice not in {"auto", "none"}:
-            parts.append(f'You must call the tool "{tool_choice}".')
-        else:
-            parts.append("If no tool is needed, respond with normal assistant text (not JSON).")
-        
-        parts.append(
-            "</tool_rules> \n"
-            "<available_tools>",
-        )
-
-        for tool in prompt_tools:
-            name = str(tool.get("name", ""))
-            desc = str(tool.get("description", ""))
-            parameters = tool.get("parameters", {}) if isinstance(tool.get("parameters"), dict) else {}
-            properties = parameters.get("properties", {})
-            required = parameters.get("required", [])
-
-            header = (
-                "FINAL ANSWER TOOL -- CALL THIS WHEN YOU WANT TO OUTPUT THE FINAL ANSWER"
-                if name == "final_answer"
-                else "TOOL"
-            )
-
-            parts.append(
-                "\n".join(
-                    [
-                        "",
-                        f"[{header}]",
-                        f"TOOL NAME: {name}",
-                        f"TOOL DESCRIPTION: {desc}",
-                        f"TOOL PARAMETERS (arguments schema): {json.dumps(properties, ensure_ascii=False)}",
-                        f"TOOL REQUIRED PARAMETERS: {json.dumps(required, ensure_ascii=False)}",
-                    ]
-                )
-            )
-
-        parts.append("</available_tools>")
-        return "\n".join(parts)
-
-
-    def _normalize_tool_calls(
-        self,
-        raw_tool_calls: Any,
-        *,
-        allowed_tool_names: Optional[set[str]] = None,
-    ) -> list[dict[str, Any]]:
-        if not isinstance(raw_tool_calls, list):
-            return []
-
-        normalized: list[dict[str, Any]] = []
-        seen_ids: set[str] = set()
-        for raw_call in raw_tool_calls:
-            if not isinstance(raw_call, dict):
-                continue
-
-            raw_function = raw_call.get("function")
-            if isinstance(raw_function, dict):
-                name = raw_function.get("name")
-                raw_args = raw_function.get("arguments", {})
-            else:
-                name = raw_call.get("name")
-                raw_args = raw_call.get("arguments", raw_call.get("args", {}))
-
-            if not isinstance(name, str) or not name.strip():
-                continue
-            name = name.strip()
-
-            if allowed_tool_names is not None and name not in allowed_tool_names:
-                continue
-
-            args: dict[str, Any]
-            if isinstance(raw_args, str):
-                try:
-                    parsed_args = json.loads(raw_args)
-                    args = parsed_args if isinstance(parsed_args, dict) else {"input": parsed_args}
-                except Exception:
-                    args = {"input": raw_args}
-            elif isinstance(raw_args, dict):
-                args = raw_args
-            else:
-                args = {}
-
-            call_id = raw_call.get("id")
-            if not isinstance(call_id, str) or not call_id.strip():
-                call_id = f"call_{uuid.uuid4().hex[:12]}"
-            if call_id in seen_ids:
-                call_id = f"call_{uuid.uuid4().hex[:12]}"
-            seen_ids.add(call_id)
-
-            normalized.append(
-                {
-                    "id": call_id,
-                    "name": name,
-                    "args": args,
-                    "type": "tool_call",
-                }
-            )
-
-        return normalized
-
-    def _extract_tool_calls_from_text(
-        self,
-        content: str,
-        *,
-        allowed_tool_names: Optional[set[str]] = None,
-    ) -> tuple[list[dict[str, Any]], bool]:
-        stripped = (content or "").strip()
-        if not stripped:
-            return [], False
-
-        candidates = [stripped]
-        if stripped.startswith("```") and stripped.endswith("```"):
-            block = stripped[3:-3].strip()
-            if block.lower().startswith("json"):
-                block = block[4:].strip()
-            candidates.append(block)
-
-        for candidate in candidates:
-            try:
-                parsed = json.loads(candidate)
-            except Exception:
-                # Try JSONL (one JSON object per line) as a fallback.
-                tool_calls: list[dict[str, Any]] = []
-                all_lines_parsed = True
-                for ln in candidate.splitlines():
-                    line = ln.strip()
-                    if not line:
-                        continue
-                    try:
-                        obj = json.loads(line)
-                    except Exception:
-                        all_lines_parsed = False
-                        continue
-
-                    raw_calls: Any = []
-                    if isinstance(obj, dict) and isinstance(obj.get("tool_calls"), list):
-                        raw_calls = obj["tool_calls"]
-                    elif isinstance(obj, dict) and isinstance(obj.get("name"), str):
-                        raw_calls = [obj]
-                    elif isinstance(obj, list):
-                        raw_calls = obj
-
-                    tool_calls.extend(
-                        self._normalize_tool_calls(
-                            raw_calls, allowed_tool_names=allowed_tool_names
-                        )
-                    )
-
-                if tool_calls:
-                    return tool_calls, all_lines_parsed
-                continue
-
-            raw_calls: Any = []
-            if isinstance(parsed, dict) and isinstance(parsed.get("tool_calls"), list):
-                raw_calls = parsed["tool_calls"]
-            elif isinstance(parsed, dict) and isinstance(parsed.get("name"), str):
-                raw_calls = [parsed]
-            elif isinstance(parsed, list):
-                raw_calls = parsed
-
-            normalized = self._normalize_tool_calls(
-                raw_calls, allowed_tool_names=allowed_tool_names
-            )
-            if normalized:
-                return normalized, True
-
-        return [], False
-
-    def _to_llama_messages(
-        self,
-        messages: Sequence[BaseMessage],
-        *,
-        allow_tool_messages: bool = False,
-    ) -> list[dict[str, str]]:
-        out: list[dict[str, str]] = []
-        for msg in messages:
-            if isinstance(msg, SystemMessage):
-                role = "system"
-            elif isinstance(msg, HumanMessage):
-                role = "user"
-            elif isinstance(msg, AIMessage):
-                role = "assistant"
-            elif isinstance(msg, ToolMessage):
-                if not allow_tool_messages:
-                    raise ValueError(
-                        "LlamaServerChat does not support tool calling (ToolMessage present)."
-                    )
-                role = "user"
-            else:
-                raise ValueError(f"Unsupported message type for Llama Server: {type(msg).__name__}")
-
-            if isinstance(msg, ToolMessage):
-                tool_name = getattr(msg, "name", None) or "tool"
-                tool_status = getattr(msg, "status", None) or "success"
-                tool_id = getattr(msg, "tool_call_id", None) or "unknown"
-                raw_content = (getattr(msg, "content", None) or "").strip()
-                content = (
-                    f"Tool result ({tool_name}, id={tool_id}, status={tool_status}):\n{raw_content}"
-                )
-            else:
-                content = (getattr(msg, "content", None) or "").strip()
-                if isinstance(msg, AIMessage) and getattr(msg, "tool_calls", None):
-                    tool_calls = [
-                        {
-                            "id": tc.get("id"),
-                            "name": tc.get("name"),
-                            "arguments": tc.get("args", {}),
-                        }
-                        for tc in msg.tool_calls
-                    ]
-                    rendered_calls = json.dumps({"tool_calls": tool_calls}, ensure_ascii=False)
-                    if content:
-                        content = f"{content}\n\n{rendered_calls}"
-                    else:
-                        content = rendered_calls
-            out.append({"role": role, "content": content})
-        return out
-
     def _normalize_llama_messages(self, messages: list[dict[str, str]]) -> list[dict[str, str]]:
-        """
-        Normalize messages for strict llama chat templates.
-
-        Rules:
-        - Keep at most one leading system message (merge any additional system content into it).
-        - Merge consecutive turns that share the same role.
-        """
-        system_parts: list[str] = []
-        normalized: list[dict[str, str]] = []
-
-        for msg in messages:
-            role = str(msg.get("role") or "").strip()
-            content = str(msg.get("content") or "").strip()
-            if not role:
-                continue
-
-            if role == "system":
-                if content:
-                    system_parts.append(content)
-                continue
-
-            if normalized and normalized[-1].get("role") == role:
-                prev = str(normalized[-1].get("content") or "").strip()
-                if prev and content:
-                    normalized[-1]["content"] = f"{prev}\n\n{content}"
-                elif content:
-                    normalized[-1]["content"] = content
-                continue
-
-            normalized.append({"role": role, "content": content})
-
-        if system_parts:
-            normalized = [{"role": "system", "content": "\n\n".join(system_parts)}] + normalized
-
-        return normalized
+        """Normalize provider messages via shared protocol helper."""
+        return normalize_chat_messages(messages)
 
     def _resolve_adapter_id(self, **kwargs: Any) -> Optional[int]:
         raw_adapter_id = kwargs.get("adapter_id", self.adapter_id)
@@ -415,6 +138,19 @@ class LlamaServerChat(BaseChatModel):
 
         model_key = self.model.strip().lower()
         return ESI_ADAPTER_ID_BY_NAME.get(model_key)
+
+    def _apply_lora_payload(
+        self,
+        payload: dict[str, Any],
+        *,
+        adapter_id: Optional[int],
+        adapter_scale: float,
+    ) -> None:
+        """Apply llama-only LoRA payload fields."""
+        if adapter_id is None:
+            return
+        # Intentionally disabled to preserve existing transport behavior.
+        payload["lora"] = [{"id": int(adapter_id), "scale": float(1.0)}]
 
     def bind_tools(
         self,
@@ -451,28 +187,22 @@ class LlamaServerChat(BaseChatModel):
     ) -> ChatResult:
         bound_tools = kwargs.get("tools")
         tool_choice = kwargs.get("tool_choice")
-        tools: list[dict[str, Any]] = []
-        if isinstance(bound_tools, list):
-            tools = [t for t in bound_tools if isinstance(t, dict)]
+        tools = coerce_bound_tools(bound_tools)
 
-        llama_messages = self._to_llama_messages(messages, allow_tool_messages=bool(tools))
-        if tools:
-            # print(json.dumps(tools))
-            tool_instruction = self._tool_instruction(tools, tool_choice)
-            if llama_messages and llama_messages[0].get("role") == "system":
-                existing = (llama_messages[0].get("content") or "").strip()
-                if existing:
-                    llama_messages[0]["content"] = f"{existing}\n\n{tool_instruction}"
-                else:
-                    llama_messages[0]["content"] = tool_instruction
-            else:
-                llama_messages = [
-                    {"role": "system", "content": tool_instruction},
-                    *llama_messages,
-                ]
+        llama_messages = to_provider_messages(
+            messages,
+            allow_tool_messages=bool(tools),
+            tool_message_error="LlamaServerChat does not support tool calling (ToolMessage present).",
+            unsupported_type_label="Llama Server",
+        )
+        llama_messages = inject_tool_instruction(
+            llama_messages,
+            tools=tools,
+            tool_choice=tool_choice,
+            final_answer_tool_name="final_answer",
+            highlight_final_answer=True,
+        )
         llama_messages = self._normalize_llama_messages(llama_messages)
-
-        print(json.dumps(llama_messages))
 
         payload: dict[str, Any] = {
             "model": self.model,
@@ -486,8 +216,8 @@ class LlamaServerChat(BaseChatModel):
             payload["stop"] = stop
         adapter_id = self._resolve_adapter_id(**kwargs)
         adapter_scale = float(kwargs.get("adapter_scale", self.adapter_scale))
-        # if adapter_id is not None:
-        #     payload["lora"] = [{"id": int(adapter_id), "scale": adapter_scale}]
+        self._apply_lora_payload(payload, adapter_id=adapter_id, adapter_scale=adapter_scale)
+
 
         url = self.base_url.rstrip("/") + "/chat/completions"
         headers = {"Content-Type": "application/json"}
@@ -523,27 +253,14 @@ class LlamaServerChat(BaseChatModel):
         if isinstance(choice_msg, dict):
             content = (choice_msg.get("content") or "").strip()
 
-        allowed_tool_names = {
-            t.get("function", {}).get("name")
-            for t in tools
-            if isinstance(t.get("function"), dict)
-        }
-        allowed_tool_names = {
-            n for n in allowed_tool_names if isinstance(n, str) and n
-        } or None
+        allowed_tool_names: AllowedToolNames = extract_allowed_tool_names(tools)
 
         tool_calls: list[dict[str, Any]] = []
         if tools and isinstance(choice_msg, dict):
-            tool_calls = self._normalize_tool_calls(
+            tool_calls = normalize_tool_calls(
                 choice_msg.get("tool_calls"),
                 allowed_tool_names=allowed_tool_names,
             )
-            if not tool_calls:
-                tool_calls, consumed_entire_text = self._extract_tool_calls_from_text(
-                    content, allowed_tool_names=allowed_tool_names
-                )
-                if consumed_entire_text and tool_calls:
-                    content = ""
 
         message = AIMessage(content=content, tool_calls=tool_calls)
         generation = ChatGeneration(message=message)

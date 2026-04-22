@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session
 from app.agentic.agents.agents import get_agent_spec, supported_agent_names
 from app.agentic.model_registry import get_chat_model, validate_model_for_agent
 from app.agentic.runtime import AgentRuntime
+from app.agentic.runtime.failure_taxonomy import FailureCategory
 from app.api.repository import agent_metrics_repository, agent_runs_repository
 from app.config import settings
 from app.database import SessionLocal
@@ -27,7 +28,7 @@ from app.schemas.agent_runs import (
     AgentRunCreateResponse,
     AgentRunReliabilityIssuePage,
     AgentRunReliabilityIssueRead,
-    AgentRunReliabilityIssueCount,
+    AgentRunReliabilityCategoryCount,
     AgentRunReliabilitySummary,
     AgentRunMetricsDetail,
     AgentRunMetricsRead,
@@ -165,22 +166,6 @@ def _collect_reliability_issues(
 
     issues: list[_ReliabilityIssue] = []
 
-    for call in llm_calls:
-        if str(call.call_kind or "") == "structured_output" and str(call.error_text or "").strip():
-            issues.append(
-                _ReliabilityIssue(
-                    issue_code="structured_output_generation_failed",
-                    severity="warning",
-                    stage="structured_output",
-                    message="Structured output generation failed; fallback path used.",
-                    details_json={
-                        "error_text": _truncate_optional_text(call.error_text, max_len=2_000),
-                    },
-                    iteration=call.iteration,
-                    call_index=call.call_index,
-                )
-            )
-
     assistant_tool_parse_event_ids: list[int] = []
     for ev in events:
         if ev.event_type != "assistant":
@@ -191,7 +176,7 @@ def _collect_reliability_issues(
             assistant_tool_parse_event_ids.append(int(ev.seq))
             issues.append(
                 _ReliabilityIssue(
-                    issue_code="assistant_tool_call_json_unparseable",
+                    issue_code=FailureCategory.NATIVE_TOOL_PARSE_FAILURE.value,
                     severity="warning",
                     stage="tool_recovery",
                     message="Assistant output looked like tool calls but could not be parsed as JSON.",
@@ -223,6 +208,82 @@ def _collect_reliability_issues(
             for t in tool_calls[-5:]
         ]
 
+    # Category: text_recovery_used
+    text_recovered_total = sum(int(c.text_recovered_tool_call_count or 0) for c in llm_calls)
+    if text_recovered_total > 0:
+        issues.append(
+            _ReliabilityIssue(
+                issue_code=FailureCategory.TEXT_RECOVERY_USED.value,
+                severity="info",
+                stage="tool_recovery",
+                message="Text-based tool-call recovery was used.",
+                details_json={"text_recovered_tool_call_count": int(text_recovered_total)},
+                iteration=last_iteration,
+                call_index=(last_llm.call_index if last_llm is not None else None),
+            )
+        )
+
+    # Category: unknown_tool / tool_execution_error
+    unknown_tool_rows = [t for t in tool_calls if str(t.status or "").lower() == "error" and str(t.error_text or "").startswith("Unknown tool:")]
+    tool_exec_error_rows = [
+        t
+        for t in tool_calls
+        if str(t.status or "").lower() == "error" and t not in unknown_tool_rows
+    ]
+    if unknown_tool_rows:
+        issues.append(
+            _ReliabilityIssue(
+                issue_code=FailureCategory.UNKNOWN_TOOL.value,
+                severity="error",
+                stage="tool_execution",
+                message="One or more tool calls referenced unknown tools.",
+                details_json={"count": len(unknown_tool_rows)},
+                iteration=unknown_tool_rows[-1].iteration if unknown_tool_rows[-1].iteration is not None else last_iteration,
+                tool_call_id=unknown_tool_rows[-1].tool_call_id,
+                tool_name=unknown_tool_rows[-1].tool_name,
+            )
+        )
+    if tool_exec_error_rows:
+        issues.append(
+            _ReliabilityIssue(
+                issue_code=FailureCategory.TOOL_EXECUTION_ERROR.value,
+                severity="error",
+                stage="tool_execution",
+                message="One or more tool calls failed during execution.",
+                details_json={"count": len(tool_exec_error_rows)},
+                iteration=tool_exec_error_rows[-1].iteration if tool_exec_error_rows[-1].iteration is not None else last_iteration,
+                tool_call_id=tool_exec_error_rows[-1].tool_call_id,
+                tool_name=tool_exec_error_rows[-1].tool_name,
+            )
+        )
+
+    # Category: extra_tool_calls_dropped
+    executed_by_iteration: dict[int, int] = {}
+    for t in tool_calls:
+        it = int(t.iteration or 0)
+        executed_by_iteration[it] = executed_by_iteration.get(it, 0) + 1
+    dropped_total = 0
+    for c in llm_calls:
+        it = int(c.iteration or 0)
+        planned = int(c.tool_call_count or 0)
+        if planned <= 0:
+            continue
+        executed = int(executed_by_iteration.get(it, 0))
+        if planned > executed:
+            dropped_total += planned - executed
+    if dropped_total > 0:
+        issues.append(
+            _ReliabilityIssue(
+                issue_code=FailureCategory.EXTRA_TOOL_CALLS_DROPPED.value,
+                severity="warning",
+                stage="tool_execution",
+                message="Some tool calls were dropped due to per-turn limits.",
+                details_json={"dropped_tool_call_count": int(dropped_total)},
+                iteration=last_iteration,
+                call_index=(last_llm.call_index if last_llm is not None else None),
+            )
+        )
+
     if output_json is None:
         raw_output_text = str(raw_output).strip() if isinstance(raw_output, str) else ""
         latest_assistant_text = ""
@@ -236,7 +297,11 @@ def _collect_reliability_issues(
                 break
 
         final_raw_text = raw_output_text or latest_assistant_text
-        issue_code = "final_output_unparseable" if final_raw_text else "final_output_missing"
+        issue_code = (
+            FailureCategory.FINAL_OUTPUT_INVALID.value
+            if final_raw_text
+            else FailureCategory.FINAL_OUTPUT_MISSING.value
+        )
         issues.append(
             _ReliabilityIssue(
                 issue_code=issue_code,
@@ -244,7 +309,7 @@ def _collect_reliability_issues(
                 stage="finalization",
                 message=(
                     "Run ended without a parseable final JSON output."
-                    if issue_code == "final_output_unparseable"
+                    if issue_code == FailureCategory.FINAL_OUTPUT_INVALID.value
                     else "Run ended without any final output."
                 ),
                 details_json={
@@ -263,7 +328,7 @@ def _collect_reliability_issues(
         if contains_tool_calls_hint or assistant_tool_parse_event_ids:
             issues.append(
                 _ReliabilityIssue(
-                    issue_code="assistant_tool_call_recovery_failed",
+                    issue_code=FailureCategory.TEXT_RECOVERY_FAILURE.value,
                     severity="error",
                     stage="tool_recovery",
                     message="Tool-call recovery failed before finalization.",
@@ -281,7 +346,7 @@ def _collect_reliability_issues(
         if schema_error:
             issues.append(
                 _ReliabilityIssue(
-                    issue_code="final_output_schema_invalid",
+                    issue_code=FailureCategory.SCHEMA_VALIDATION_ERROR.value,
                     severity="warning",
                     stage="finalization",
                     message="Final output failed schema validation.",
@@ -346,14 +411,18 @@ def _persist_reliability_issues(
 
 
 def _build_reliability_summary(db: Session, run_id: str) -> AgentRunReliabilitySummary:
-    by_code = agent_metrics_repository.list_reliability_issue_code_counts(db, run_id)
+    by_category = agent_metrics_repository.list_reliability_issue_category_counts(db, run_id)
     total_issues, error_issues, _, _ = agent_metrics_repository.count_reliability_issues(db, run_id)
+    warning_issues = sum(count for _, severity, count in by_category if severity == "warning")
+    info_issues = sum(count for _, severity, count in by_category if severity == "info")
     return AgentRunReliabilitySummary(
         total_issues=total_issues,
         error_issues=error_issues,
-        by_code=[
-            AgentRunReliabilityIssueCount(issue_code=code, count=count)
-            for code, count in sorted(by_code, key=lambda item: item[0])
+        warning_issues=warning_issues,
+        info_issues=info_issues,
+        by_category=[
+            AgentRunReliabilityCategoryCount(issue_code=code, severity=severity, count=count)
+            for code, severity, count in sorted(by_category, key=lambda item: (item[0], item[1]))
         ],
     )
 
@@ -421,7 +490,11 @@ def _persist_run_metrics(db: Session, run: AgentRun, *, agent_system: str) -> No
     failure_reason: Optional[str] = None
     if run.status == "failed":
         err = (run.error_text or "").lower()
-        failure_reason = "timeout" if "timeout" in err else "execution_error"
+        failure_reason = (
+            FailureCategory.TIMEOUT_ERROR.value
+            if "timeout" in err
+            else FailureCategory.PROVIDER_ERROR.value
+        )
 
     agent_metrics_repository.upsert_run_metrics(
         db,
@@ -582,7 +655,6 @@ def _run_agent_and_persist(db: Session, run: AgentRun, seq: int) -> Tuple[int, O
         model_id=model_id,
         agent_name=run.agent_name,
         requires_tools=bool(spec.tools),
-        requires_structured_output=spec.output_model is not None,
     )
     validated_input = spec.input_model.model_validate(run.input_json)
     runtime = AgentRuntime(
@@ -644,6 +716,11 @@ def _run_agent_and_persist(db: Session, run: AgentRun, seq: int) -> Tuple[int, O
             cost_usd=cost_usd,
             had_tool_calls=(bool(item.get("had_tool_calls")) if item.get("had_tool_calls") is not None else None),
             tool_call_count=(int(item.get("tool_call_count")) if item.get("tool_call_count") is not None else None),
+            tool_call_parse_source=(
+                str(item.get("tool_call_parse_source")) if item.get("tool_call_parse_source") else None
+            ),
+            text_recovered_tool_call_count=int(item.get("text_recovered_tool_call_count") or 0),
+            native_tool_call_count=int(item.get("native_tool_call_count") or 0),
             tool_names=_normalize_tool_names(item.get("tool_names")),
             error_text=item.get("error_text"),
         )
@@ -710,7 +787,6 @@ def create_agent_run(payload: AgentRunCreateRequest, db: Session) -> AgentRunCre
             model_id=model_id,
             agent_name=payload.agent_name,
             requires_tools=bool(spec.tools),
-            requires_structured_output=spec.output_model is not None,
         )
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
@@ -752,7 +828,6 @@ def start_agent_run(
             model_id=model_id,
             agent_name=payload.agent_name,
             requires_tools=bool(spec.tools),
-            requires_structured_output=spec.output_model is not None,
         )
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
@@ -819,6 +894,9 @@ def get_agent_run_metrics(run_id: str, db: Session) -> AgentRunMetricsDetail:
             usage_source=c.usage_source,
             had_tool_calls=c.had_tool_calls,
             tool_call_count=c.tool_call_count,
+            tool_call_parse_source=c.tool_call_parse_source,
+            text_recovered_tool_call_count=int(c.text_recovered_tool_call_count or 0),
+            native_tool_call_count=int(c.native_tool_call_count or 0),
             tool_names=_normalize_tool_names(c.tool_names_json),
             cost_usd=c.cost_usd,
             error_text=c.error_text,
@@ -931,7 +1009,7 @@ def get_metrics_summary(
     )
     runs_with_reliability_issues = sum(1 for r in rows if int(r.reliability_issue_count or 0) > 0)
     runs_with_finalization_failures = sum(1 for r in rows if int(r.finalization_failure_count or 0) > 0)
-    timeout_runs = sum(1 for r in rows if (r.failure_reason or "") == "timeout")
+    timeout_runs = sum(1 for r in rows if (r.failure_reason or "") == FailureCategory.TIMEOUT_ERROR.value)
 
     durations = [float(r.duration_ms) for r in rows if r.duration_ms is not None]
     llm_counts = [float(r.llm_call_count) for r in rows]

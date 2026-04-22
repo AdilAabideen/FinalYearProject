@@ -39,6 +39,9 @@ class AgentLLMCall(Base):
 
     had_tool_calls: Mapped[Optional[bool]] = mapped_column(Boolean, nullable=True)
     tool_call_count: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    tool_call_parse_source: Mapped[Optional[str]] = mapped_column(String, nullable=True, index=True)
+    text_recovered_tool_call_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    native_tool_call_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     tool_names_json: Mapped[Optional[list[str]]] = mapped_column(JSON, nullable=True)
 
     error_text: Mapped[Optional[str]] = mapped_column(Text, nullable=True)

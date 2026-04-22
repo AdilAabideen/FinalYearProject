@@ -42,11 +42,20 @@ def ensure_runtime_schema_upgrades() -> None:
                 "iteration": "INTEGER",
                 "had_tool_calls": "BOOLEAN",
                 "tool_call_count": "INTEGER",
+                "tool_call_parse_source": "VARCHAR",
+                "text_recovered_tool_call_count": "INTEGER DEFAULT 0",
+                "native_tool_call_count": "INTEGER DEFAULT 0",
                 "tool_names_json": "JSON",
             }
             for name, sql_type in llm_required.items():
                 if name not in llm_existing:
                     conn.execute(text(f"ALTER TABLE agent_llm_calls ADD COLUMN {name} {sql_type}"))
+            conn.execute(
+                text(
+                    "CREATE INDEX IF NOT EXISTS ix_agent_llm_calls_tool_call_parse_source "
+                    "ON agent_llm_calls (tool_call_parse_source)"
+                )
+            )
 
         if "agent_run_metrics" in table_names:
             metrics_existing = {col["name"] for col in inspector.get_columns("agent_run_metrics")}
