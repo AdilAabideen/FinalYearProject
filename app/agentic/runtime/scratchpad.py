@@ -15,7 +15,6 @@ class ScratchpadConfig:
 
     include_final_assistant_output: bool = False
     include_raw_provider_debug: bool = False
-    compact_assistant_tool_calls: bool = True
     verbose: bool = False
     log_token_estimates: bool = True
     log_message_preview: bool = True
@@ -53,7 +52,6 @@ class Scratchpad:
         self._messages: list[BaseMessage] = []
         self._token_estimator = token_estimator or TokenEstimator()
         self._log_fn = log_fn or print
-        self._pending_tool_call_entries: list[dict[str, Any]] = []
 
     def append_assistant_tool_call(self, message: AIMessage) -> AIMessage:
         """Append an assistant message that contains one or more tool calls."""
@@ -62,9 +60,7 @@ class Scratchpad:
             raise ValueError("append_assistant_tool_call requires AIMessage.tool_calls to be non-empty.")
 
         cloned = self._clone_ai_message(message)
-        assistant_index = len(self._messages)
         self._messages.append(cloned)
-        self._register_pending_tool_call_entry(assistant_index=assistant_index, tool_calls=tool_calls)
         self._emit_append_event(kind="assistant_tool_call", message=cloned)
         return cloned
 
@@ -72,7 +68,6 @@ class Scratchpad:
         """Append a tool result message."""
         cloned = self._clone_tool_message(message)
         self._messages.append(cloned)
-        self._maybe_compact_assistant_after_tool_result(cloned)
         self._emit_append_event(kind="tool_result", message=cloned)
         return cloned
 
@@ -115,108 +110,6 @@ class Scratchpad:
             id=getattr(message, "id", None),
             name=getattr(message, "name", None),
         )
-
-    def _register_pending_tool_call_entry(self, *, assistant_index: int, tool_calls: list[Any]) -> None:
-        if not self.config.compact_assistant_tool_calls:
-            return
-
-        call_ids: set[str] = set()
-        call_names: list[str] = []
-        for tool_call in tool_calls:
-            if not isinstance(tool_call, Mapping):
-                continue
-            call_id = tool_call.get("id")
-            if isinstance(call_id, str) and call_id.strip():
-                call_ids.add(call_id.strip())
-
-            call_name = tool_call.get("name")
-            if isinstance(call_name, str) and call_name.strip():
-                call_names.append(call_name.strip())
-
-        self._pending_tool_call_entries.append(
-            {
-                "assistant_index": int(assistant_index),
-                "call_ids": call_ids,
-                "resolved_call_ids": set(),
-                "call_names": call_names,
-                "compacted": False,
-            }
-        )
-
-    def _maybe_compact_assistant_after_tool_result(self, tool_message: ToolMessage) -> None:
-        if not self.config.compact_assistant_tool_calls:
-            return
-
-        tool_call_id = getattr(tool_message, "tool_call_id", None)
-        if not isinstance(tool_call_id, str) or not tool_call_id.strip():
-            return
-        tool_call_id = tool_call_id.strip()
-
-        for entry in self._pending_tool_call_entries:
-            if entry.get("compacted"):
-                continue
-
-            call_ids = entry.get("call_ids") or set()
-            if call_ids and tool_call_id not in call_ids:
-                continue
-
-            resolved_call_ids: set[str] = entry.get("resolved_call_ids", set())
-            resolved_call_ids.add(tool_call_id)
-            entry["resolved_call_ids"] = resolved_call_ids
-
-            should_compact = False
-            if call_ids:
-                should_compact = resolved_call_ids.issuperset(call_ids)
-            else:
-                # Fallback for missing IDs: compact on first matching result.
-                should_compact = True
-
-            if should_compact:
-                self._compact_assistant_entry(entry)
-            break
-
-    def _compact_assistant_entry(self, entry: Mapping[str, Any]) -> None:
-        assistant_index = int(entry.get("assistant_index", -1))
-        if assistant_index < 0 or assistant_index >= len(self._messages):
-            return
-        current = self._messages[assistant_index]
-        if not isinstance(current, AIMessage):
-            return
-
-        call_names = [str(name) for name in (entry.get("call_names") or []) if str(name)]
-        if len(call_names) == 1:
-            compact_content = f"[Tool Call] {call_names[0]}"
-        else:
-            compact_content = f"[Tool Calls] {', '.join(call_names)}" if call_names else "[Tool Call]"
-
-        additional_kwargs = self._sanitize_additional_kwargs(
-            dict(getattr(current, "additional_kwargs", {}) or {})
-        )
-        compacted = AIMessage(
-            content=compact_content,
-            tool_calls=[],
-            additional_kwargs=additional_kwargs,
-            response_metadata=getattr(current, "response_metadata", {}),
-            id=getattr(current, "id", None),
-            name=getattr(current, "name", None),
-        )
-        self._messages[assistant_index] = compacted
-        if isinstance(entry, dict):
-            entry["compacted"] = True
-
-        if self.config.verbose:
-            self._log_fn(
-                f"{self.config.log_prefix} compacted assistant_index={assistant_index} content={compact_content}"
-            )
-        if self.config.on_message_appended is not None:
-            self.config.on_message_appended(
-                {
-                    "event": "scratchpad_message_compacted",
-                    "assistant_index": assistant_index,
-                    "content": compact_content,
-                    "message_count": len(self._messages),
-                }
-            )
 
     @staticmethod
     def _clone_tool_message(message: ToolMessage) -> ToolMessage:

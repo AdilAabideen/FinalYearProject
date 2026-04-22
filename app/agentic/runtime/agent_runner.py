@@ -181,7 +181,6 @@ class AgentRunner:
             config=ScratchpadConfig(
                 include_final_assistant_output=self.runtime_config.scratchpad_include_final_assistant_output,
                 include_raw_provider_debug=self.runtime_config.scratchpad_include_raw_provider_debug,
-                compact_assistant_tool_calls=self.runtime_config.scratchpad_compact_assistant_tool_calls,
                 verbose=self.runtime_config.scratchpad_verbose,
                 log_token_estimates=self.runtime_config.scratchpad_log_token_estimates,
             )
