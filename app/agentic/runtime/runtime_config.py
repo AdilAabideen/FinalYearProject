@@ -12,6 +12,11 @@ class RuntimeConfig:
     allow_text_tool_recovery: bool = True
     allow_plain_json_final_output: bool = True
     drop_extra_tool_calls: bool = True
+    scratchpad_include_final_assistant_output: bool = False
+    scratchpad_include_raw_provider_debug: bool = False
+    scratchpad_compact_assistant_tool_calls: bool = False
+    scratchpad_verbose: bool = True
+    scratchpad_log_token_estimates: bool = True
 
     def __post_init__(self) -> None:
         if self.max_tool_calls_per_turn < 1:

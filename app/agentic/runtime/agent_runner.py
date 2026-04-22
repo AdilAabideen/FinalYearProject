@@ -8,6 +8,7 @@ from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, System
 
 from .finalization_policy import FinalizationPolicy
 from .runtime_config import RuntimeConfig
+from .scratchpad import Scratchpad, ScratchpadConfig
 from .runtime_types import (
     BoundModel,
     BuildAIMessageWithToolCalls,
@@ -83,10 +84,10 @@ class AgentRunner:
         self,
         *,
         human_msg: HumanMessage,
-        scratchpad: list[BaseMessage],
+        scratchpad: Scratchpad,
     ) -> list[BaseMessage]:
         call_messages: list[BaseMessage] = [SystemMessage(content=self.render_system_prompt()), human_msg]
-        call_messages.extend(scratchpad)
+        call_messages.extend(scratchpad.messages())
         return call_messages
 
     def _extract_normalized_tool_calls(self, ai_msg: AIMessage) -> list[dict[str, Any]]:
@@ -176,7 +177,15 @@ class AgentRunner:
         modes = self._resolve_modes(stream_mode)
 
         human_msg = HumanMessage(content=self.payload_to_human_content(payload))
-        scratchpad: list[BaseMessage] = []
+        scratchpad = Scratchpad(
+            config=ScratchpadConfig(
+                include_final_assistant_output=self.runtime_config.scratchpad_include_final_assistant_output,
+                include_raw_provider_debug=self.runtime_config.scratchpad_include_raw_provider_debug,
+                compact_assistant_tool_calls=self.runtime_config.scratchpad_compact_assistant_tool_calls,
+                verbose=self.runtime_config.scratchpad_verbose,
+                log_token_estimates=self.runtime_config.scratchpad_log_token_estimates,
+            )
+        )
         streamed_messages: list[BaseMessage] = []
 
         final_output: Any = None
@@ -207,7 +216,8 @@ class AgentRunner:
             ai_msg, tool_calls = self._apply_tool_call_limit(ai_msg=ai_msg, tool_calls=tool_calls)
 
             streamed_messages.append(ai_msg)
-            scratchpad.append(ai_msg)
+            if tool_calls:
+                scratchpad.append_assistant_tool_call(ai_msg)
             self._emit_tool_call_events(tool_calls)
 
             if self._should_emit(modes, "updates"):
@@ -217,6 +227,7 @@ class AgentRunner:
 
             if not tool_calls:
                 self._emit_assistant_event_from_text(str(ai_msg.content or ""))
+                scratchpad.append_final_assistant(ai_msg)
 
                 decision = self.finalization_policy.maybe_finalize_from_assistant_no_tools(ai_msg)
                 if decision.finalized:
@@ -256,7 +267,7 @@ class AgentRunner:
 
             tool_msgs = [tool_msgs_by_index[idx] for idx in range(len(tool_calls)) if idx in tool_msgs_by_index]
             for tm in tool_msgs:
-                scratchpad.append(tm)
+                scratchpad.append_tool_result(tm)
 
             for tc, tm in zip(tool_calls, tool_msgs):
                 decision = self.finalization_policy.maybe_finalize_from_tool_result(tc, tm)
@@ -271,6 +282,7 @@ class AgentRunner:
                             content=invalid.output_text or json.dumps(final_output, ensure_ascii=False)
                         )
                         streamed_messages.append(final_msg)
+                        scratchpad.append_final_assistant(final_msg)
                         self._emit_assistant_event_from_text(str(final_msg.content or ""))
                         if self._should_emit(modes, "updates"):
                             yield "updates", {self.agent_node_name: {"messages": [final_msg]}}
@@ -282,6 +294,7 @@ class AgentRunner:
                 final_text = decision.output_text or json.dumps(final_output, ensure_ascii=False)
                 final_msg = AIMessage(content=final_text)
                 streamed_messages.append(final_msg)
+                scratchpad.append_final_assistant(final_msg)
                 self._emit_assistant_event_from_text(final_text)
                 if self._should_emit(modes, "updates"):
                     yield "updates", {self.agent_node_name: {"messages": [final_msg]}}
@@ -293,6 +306,7 @@ class AgentRunner:
             final_output = fallback.output
             final_msg = AIMessage(content=fallback.output_text or json.dumps(final_output, ensure_ascii=False))
             streamed_messages.append(final_msg)
+            scratchpad.append_final_assistant(final_msg)
             self._emit_assistant_event_from_text(str(final_msg.content or ""))
             if self._should_emit(modes, "updates"):
                 yield "updates", {self.agent_node_name: {"messages": [final_msg]}}
