@@ -218,7 +218,6 @@ class LlamaServerChat(BaseChatModel):
         adapter_scale = float(kwargs.get("adapter_scale", self.adapter_scale))
         self._apply_lora_payload(payload, adapter_id=adapter_id, adapter_scale=adapter_scale)
 
-        print(f"Payload {payload}")
 
         url = self.base_url.rstrip("/") + "/chat/completions"
         headers = {"Content-Type": "application/json"}
