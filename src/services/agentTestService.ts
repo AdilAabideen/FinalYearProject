@@ -1,5 +1,8 @@
 import { API_BASE_URL } from '../config/env';
 import type {
+  AgentTestRunBatchCaseDto,
+  AgentTestRunBatchMetricsDto,
+  AgentTestRunBatchMetricsRead,
   AgentTestCaseRead,
   AgentTestCaseReadDto,
   AgentTestRunRead,
@@ -26,6 +29,7 @@ export type AgentTestService = {
     modelId?: string,
     signal?: AbortSignal,
   ) => Promise<AgentTestRunRead>;
+  getRunBatchMetrics: (runId: string, signal?: AbortSignal) => Promise<AgentTestRunBatchMetricsRead>;
 };
 
 export const agentTestService: AgentTestService = {
@@ -103,6 +107,89 @@ export const agentTestService: AgentTestService = {
       finishedAt: data.finished_at ?? null,
       createdAt: data.created_at,
       updatedAt: data.updated_at,
+    };
+  },
+
+  async getRunBatchMetrics(runId, signal) {
+    const url = `${API_BASE_URL}/api/tests/runs/${encodeURIComponent(runId)}/metrics`;
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: { Accept: 'application/json' },
+      signal,
+    });
+
+    if (!response.ok) {
+      const message = await response.text();
+      throw new Error(message || 'Failed to load aggregated run metrics');
+    }
+
+    const data = (await response.json()) as AgentTestRunBatchMetricsDto;
+    const run = data.run;
+    const summary = data.summary ?? {};
+    const cases = Array.isArray(data.cases) ? data.cases : [];
+
+    return {
+      run: {
+        id: run.id,
+        agentName: run.agent_name,
+        name: run.name ?? null,
+        status: run.status,
+        modelName: run.model_name ?? null,
+        selectedCaseIds: run.selected_case_ids_json,
+        metricsJson: run.metrics_json ?? null,
+        startedAt: run.started_at ?? null,
+        finishedAt: run.finished_at ?? null,
+        createdAt: run.created_at,
+        updatedAt: run.updated_at,
+      },
+      summary: {
+        totalRuns: summary.total_runs ?? 0,
+        runsWithAgentRun: summary.runs_with_agent_run ?? 0,
+        successfulRuns: summary.successful_runs ?? 0,
+        failedRuns: summary.failed_runs ?? 0,
+        successRate: summary.success_rate ?? null,
+        missingMetricsCount: summary.missing_metrics_count ?? 0,
+        llmCallCountTotal: summary.llm_call_count_total ?? 0,
+        toolCallCountTotal: summary.tool_call_count_total ?? 0,
+        toolErrorCountTotal: summary.tool_error_count_total ?? 0,
+        inputTokensTotal: summary.input_tokens_total ?? 0,
+        outputTokensTotal: summary.output_tokens_total ?? 0,
+        tokensTotal: summary.tokens_total ?? 0,
+        durationMsTotal: summary.duration_ms_total ?? 0,
+        costUsdTotal: summary.cost_usd_total ?? 0,
+        llmCallCountAvg: summary.llm_call_count_avg ?? 0,
+        toolCallCountAvg: summary.tool_call_count_avg ?? 0,
+        toolErrorCountAvg: summary.tool_error_count_avg ?? 0,
+        inputTokensAvg: summary.input_tokens_avg ?? 0,
+        outputTokensAvg: summary.output_tokens_avg ?? 0,
+        tokensAvg: summary.tokens_avg ?? 0,
+        durationMsAvg: summary.duration_ms_avg ?? 0,
+        costUsdAvg: summary.cost_usd_avg ?? 0,
+        costUsdAvgSuccessful: summary.cost_usd_avg_successful ?? null,
+        failureReasonCounts: summary.failure_reason_counts ?? {},
+      },
+      cases: cases.map((item) => {
+        const row = item as AgentTestRunBatchCaseDto;
+        return {
+          caseId: row.case_id ?? null,
+          testCaseId: row.test_case_id ?? null,
+          name: row.test_case_name ?? row.name ?? null,
+          status: row.status ?? null,
+          passed: typeof row.passed === 'boolean' ? row.passed : null,
+          score: typeof row.score === 'number' ? row.score : null,
+          latencyMs: typeof row.latency_ms === 'number' ? row.latency_ms : null,
+          agentStatus: row.agent_status ?? null,
+          execFailed:
+            typeof row.exec_failed === 'boolean' || typeof row.exec_failed === 'number'
+              ? row.exec_failed
+              : null,
+          invalidPred:
+            typeof row.invalid_pred === 'boolean' || typeof row.invalid_pred === 'number'
+              ? row.invalid_pred
+              : null,
+          raw: item,
+        };
+      }),
     };
   },
 };

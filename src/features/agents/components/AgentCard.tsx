@@ -18,7 +18,7 @@ export function AgentCard({ name, title, description, toolsCount, onOpen }: Agen
     <div
       role={openDisabled ? undefined : 'button'}
       tabIndex={openDisabled ? -1 : 0}
-      className="group flex w-full max-w-sm flex-col rounded-2xl border border-slate-200 border-t-4 border-t-PrimaryBlue bg-white p-5 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
+      className="group flex w-full h-[230px] flex-col rounded-2xl border border-slate-200 border-t-4 border-t-PrimaryBlue bg-white p-5 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
       onClick={openDisabled ? undefined : () => onOpen?.(name)}
       onKeyDown={
         openDisabled

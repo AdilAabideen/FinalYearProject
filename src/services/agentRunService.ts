@@ -114,6 +114,25 @@ export const agentRunService: AgentRunService = {
       throw new Error('Metrics were not returned for this run');
     }
 
+    const reliabilitySummary =
+      data.reliability_summary == null
+        ? null
+        : (() => {
+          const byCategory = data.reliability_summary.by_category.map((item) => ({
+            issueCode: item.issue_code,
+            severity: item.severity,
+            count: item.count,
+          }));
+
+          return {
+            totalIssues: data.reliability_summary.total_issues,
+            errorIssues: data.reliability_summary.error_issues,
+            warningIssues: data.reliability_summary.warning_issues,
+            infoIssues: data.reliability_summary.info_issues,
+            byCategory,
+          };
+        })();
+
     const return_metrics: AgentRunMetrics = {
       id: metrics.run_id,
       tokens_total: metrics.tokens_total,
@@ -126,6 +145,7 @@ export const agentRunService: AgentRunService = {
       duration_seconds:
         typeof metrics.duration_ms === 'number' ? metrics.duration_ms / 1000 : undefined,
       cost_usd_total: metrics.cost_usd_total,
+      reliabilitySummary,
     };
 
 

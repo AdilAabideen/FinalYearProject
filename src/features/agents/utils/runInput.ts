@@ -3,6 +3,35 @@ import { getPrimaryType, getStringFormat, isRecord } from './jsonSchema';
 
 const ESI1_TRIAGE_CASE =
   'A 63-year-old male with a history of aortic regurgitation, mechanical aortic valve placement, ascending aortic aneurysm repair, diabetes, hypertension, and hyperlipidemia presents to the ED via ambulance with a chief complaint of palpitations and dizziness. On arrival, vital signs were absent, indicating a potential cardiac emergency. The patient has a history of ventricular tachycardia and recent ICD placement. For the past two days, he experienced lightheadedness, resolving initially but recurring last night. He denies recent chest pain, fever, cough, leg pain, swelling, abdominal pain, nausea, or vomiting. He has no known allergies. Immediate resuscitation with ACLS measures is required.';
+const ESI2_TRIAGE_CASE =
+  'A 61-year-old male presented to the emergency department via ambulance with a chief complaint of severe right upper quadrant abdominal pain, rated 10/10, accompanied by nausea, vomiting, constipation, and reduced oral intake. He has a significant medical history, including coronary artery disease, hypertension, hyperlipidemia, left ventricular hypertrophy, cholelithiasis, diverticulosis, colon adenoma, and a previous lacunar infarction. Earlier in the day, he was discharged with a diagnosis of gallstones and advised to follow up for surgery but returned with exacerbated symptoms. On arrival, his vital signs showed hypertension (BP 184/0) and hypothermia (T 96.6 F).';
+const ESI345_TRIAGE_CASE =
+  'A 72-year-old female with a complex medical history including heart failure, aortic stenosis, history of strokes, COPD, and chronic urinary retention with a Foley catheter, presents to the emergency department with shortness of breath, chest pain, and bilateral pedal edema. The patient reports a one-week history of worsening shortness of breath and pedal edema, along with intermittent left-sided chest and arm pain. On the day of admission, she experienced worsening shortness of breath, requiring oxygen supplementation. The patient denies cough, fever, abdominal pain, or recent weight gain. She was transported by ambulance and has no known drug allergies.';
+
+const ESI2_DEFAULT_INPUTS: Record<string, unknown> = {
+  gender: 'M',
+  race: 'WHITE',
+  arrival_transport: 'AMBULANCE',
+  pain: '10',
+  chiefcomplaint: 'Epigastric pain',
+  'chief complaint': 'Epigastric pain',
+  age: 62.11705238,
+  tiragecase: ESI2_TRIAGE_CASE,
+};
+
+const ESI345_DEFAULT_INPUTS: Record<string, unknown> = {
+  gender: 'F',
+  race: 'WHITE - RUSSIAN',
+  arrivaltransport: 'AMBULANCE',
+  arrival_transport: 'AMBULANCE',
+  pain: '0',
+  chiefcomplaint: 'Dyspnea, Pedal edema',
+  age: 82.96188547,
+  tiragecase: ESI345_TRIAGE_CASE,
+  triagecase: ESI345_TRIAGE_CASE,
+  acuity: 3,
+  resources_used: 2,
+};
 
 const DEFAULT_INPUTS_BY_AGENT: Record<string, Record<string, unknown>> = {
   vitals_agent: {
@@ -82,6 +111,11 @@ const DEFAULT_INPUTS_BY_AGENT: Record<string, Record<string, unknown>> = {
     'Final Decision': 'RETAIN',
     final_decision: 'RETAIN',
   },
+  esi2_agent: ESI2_DEFAULT_INPUTS,
+  esi2agent: ESI2_DEFAULT_INPUTS,
+  esi345_agent: ESI345_DEFAULT_INPUTS,
+  esi345agent: ESI345_DEFAULT_INPUTS,
+  esi_345_agent: ESI345_DEFAULT_INPUTS,
 };
 
 export function getDefaultInputs(agent: AgentCatalogDetail): Record<string, unknown> {
