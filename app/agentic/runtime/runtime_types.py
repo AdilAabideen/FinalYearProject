@@ -8,6 +8,8 @@ except ImportError:  # Python < 3.10
 
 from langchain_core.messages import AIMessage, BaseMessage
 
+from app.agentic.protocols import NormalizedToolCall
+
 
 # JSON-like runtime payload aliases
 JSONScalar: TypeAlias = Union[str, int, float, bool, None]
@@ -21,6 +23,10 @@ StreamModesInput: TypeAlias = Union[Sequence[StreamMode], StreamMode, None]
 TelemetryContext: TypeAlias = Tuple[Optional[str], Optional[str]]
 NormalizedToolCallDict: TypeAlias = Dict[str, Any]
 ToolCallList: TypeAlias = List[NormalizedToolCallDict]
+TypedToolCallList: TypeAlias = List[NormalizedToolCall]
+# Safe migration alias: accept either legacy dict shape or typed dataclass.
+ToolCallItem: TypeAlias = Union[NormalizedToolCallDict, NormalizedToolCall]
+ToolCallItems: TypeAlias = List[ToolCallItem]
 
 
 class BoundModel(Protocol):
@@ -79,7 +85,7 @@ class BuildAIMessageWithToolCalls(Protocol):
     def __call__(
         self,
         source: AIMessage,
-        tool_calls: ToolCallList,
+        tool_calls: ToolCallItems,
         *,
         extra_additional_kwargs: Mapping[str, Any] | None = None,
     ) -> AIMessage: ...
@@ -88,7 +94,7 @@ class BuildAIMessageWithToolCalls(Protocol):
 class LimitToolCalls(Protocol):
     """Split retained vs dropped tool calls."""
 
-    def __call__(self, tool_calls: ToolCallList) -> tuple[ToolCallList, ToolCallList]: ...
+    def __call__(self, tool_calls: ToolCallItems) -> tuple[ToolCallItems, ToolCallItems]: ...
 
 
 class JSONFromText(Protocol):

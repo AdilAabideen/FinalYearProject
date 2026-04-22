@@ -8,11 +8,10 @@ from langchain_core.messages import AIMessage
 
 from .protocol_types import (
     AllowedToolNames,
-    NormalizedToolCall,
     ToolCallParseResult,
     ToolCallParseSource,
 )
-from .tool_protocol import normalize_tool_calls
+from .tool_protocol import normalize_tool_calls_typed
 
 
 def _extract_raw_calls(parsed: Any) -> list[Any]:
@@ -23,30 +22,6 @@ def _extract_raw_calls(parsed: Any) -> list[Any]:
     if isinstance(parsed, list):
         return parsed
     return []
-
-
-def _dict_calls_to_dataclasses(
-    calls: list[dict[str, Any]],
-    *,
-    source: ToolCallParseSource,
-) -> list[NormalizedToolCall]:
-    out: list[NormalizedToolCall] = []
-    for call in calls:
-        call_id = call.get("id")
-        name = call.get("name")
-        args = call.get("args", {})
-        if not isinstance(call_id, str) or not isinstance(name, str):
-            continue
-        out.append(
-            NormalizedToolCall(
-                id=call_id,
-                name=name,
-                args=args if isinstance(args, dict) else {},
-                source=source,
-                recovered=True,
-            )
-        )
-    return out
 
 
 def recover_from_raw_json_text(
@@ -64,8 +39,12 @@ def recover_from_raw_json_text(
         return ToolCallParseResult()
 
     raw_calls = _extract_raw_calls(parsed)
-    normalized = normalize_tool_calls(raw_calls, allowed_tool_names=allowed_tool_names)
-    calls = _dict_calls_to_dataclasses(normalized, source=ToolCallParseSource.TEXT_JSON)
+    calls = normalize_tool_calls_typed(
+        raw_calls,
+        allowed_tool_names=allowed_tool_names,
+        source=ToolCallParseSource.TEXT_JSON,
+        recovered=True,
+    )
     return ToolCallParseResult(
         calls=calls,
         succeeded=bool(calls),
@@ -93,8 +72,12 @@ def recover_from_fenced_json_text(
         return ToolCallParseResult()
 
     raw_calls = _extract_raw_calls(parsed)
-    normalized = normalize_tool_calls(raw_calls, allowed_tool_names=allowed_tool_names)
-    calls = _dict_calls_to_dataclasses(normalized, source=ToolCallParseSource.TEXT_FENCED_JSON)
+    calls = normalize_tool_calls_typed(
+        raw_calls,
+        allowed_tool_names=allowed_tool_names,
+        source=ToolCallParseSource.TEXT_FENCED_JSON,
+        recovered=True,
+    )
     return ToolCallParseResult(
         calls=calls,
         succeeded=bool(calls),
@@ -131,8 +114,12 @@ def recover_from_jsonl_text(
     if not saw_non_empty_line:
         return ToolCallParseResult()
 
-    normalized = normalize_tool_calls(raw_calls, allowed_tool_names=allowed_tool_names)
-    calls = _dict_calls_to_dataclasses(normalized, source=ToolCallParseSource.TEXT_JSONL)
+    calls = normalize_tool_calls_typed(
+        raw_calls,
+        allowed_tool_names=allowed_tool_names,
+        source=ToolCallParseSource.TEXT_JSONL,
+        recovered=True,
+    )
     return ToolCallParseResult(
         calls=calls,
         succeeded=bool(calls),
@@ -216,8 +203,12 @@ def recover_from_partial_json_text(
         return ToolCallParseResult()
 
     raw_calls = _extract_raw_calls(parsed)
-    normalized = normalize_tool_calls(raw_calls, allowed_tool_names=allowed_tool_names)
-    calls = _dict_calls_to_dataclasses(normalized, source=ToolCallParseSource.TEXT_PARTIAL_JSON)
+    calls = normalize_tool_calls_typed(
+        raw_calls,
+        allowed_tool_names=allowed_tool_names,
+        source=ToolCallParseSource.TEXT_PARTIAL_JSON,
+        recovered=True,
+    )
     return ToolCallParseResult(
         calls=calls,
         succeeded=bool(calls),
@@ -265,8 +256,12 @@ def recover_from_tool_calls_array_text(
         return ToolCallParseResult()
 
     raw_calls = _extract_raw_calls(parsed)
-    normalized = normalize_tool_calls(raw_calls, allowed_tool_names=allowed_tool_names)
-    calls = _dict_calls_to_dataclasses(normalized, source=ToolCallParseSource.TEXT_TOOL_CALLS_ARRAY)
+    calls = normalize_tool_calls_typed(
+        raw_calls,
+        allowed_tool_names=allowed_tool_names,
+        source=ToolCallParseSource.TEXT_TOOL_CALLS_ARRAY,
+        recovered=True,
+    )
     return ToolCallParseResult(
         calls=calls,
         succeeded=bool(calls),
@@ -353,13 +348,15 @@ def extract_tool_calls_with_priority(
     5) text recovery from JSONL
     """
 
-    native_calls = normalize_tool_calls(
+    native_calls = normalize_tool_calls_typed(
         list(getattr(message, "tool_calls", []) or []),
         allowed_tool_names=allowed_tool_names,
+        source=ToolCallParseSource.NATIVE_TOOL_CALLS,
+        recovered=False,
     )
     if native_calls:
         return ToolCallParseResult(
-            calls=_dict_calls_to_dataclasses(native_calls, source=ToolCallParseSource.NATIVE_TOOL_CALLS),
+            calls=native_calls,
             succeeded=True,
             source=ToolCallParseSource.NATIVE_TOOL_CALLS,
             recovered=False,
@@ -367,26 +364,30 @@ def extract_tool_calls_with_priority(
 
     additional = getattr(message, "additional_kwargs", {}) or {}
     additional_tool_calls = additional.get("tool_calls")
-    metadata_calls = normalize_tool_calls(
+    metadata_calls = normalize_tool_calls_typed(
         additional_tool_calls,
         allowed_tool_names=allowed_tool_names,
+        source=ToolCallParseSource.PROVIDER_METADATA,
+        recovered=False,
     )
     if metadata_calls:
         return ToolCallParseResult(
-            calls=_dict_calls_to_dataclasses(metadata_calls, source=ToolCallParseSource.PROVIDER_METADATA),
+            calls=metadata_calls,
             succeeded=True,
             source=ToolCallParseSource.PROVIDER_METADATA,
             recovered=False,
         )
 
     function_call = additional.get("function_call")
-    function_calls = normalize_tool_calls(
+    function_calls = normalize_tool_calls_typed(
         [{"function": function_call}] if isinstance(function_call, dict) else [],
         allowed_tool_names=allowed_tool_names,
+        source=ToolCallParseSource.FUNCTION_CALL,
+        recovered=False,
     )
     if function_calls:
         return ToolCallParseResult(
-            calls=_dict_calls_to_dataclasses(function_calls, source=ToolCallParseSource.FUNCTION_CALL),
+            calls=function_calls,
             succeeded=True,
             source=ToolCallParseSource.FUNCTION_CALL,
             recovered=False,

@@ -4,7 +4,7 @@ import json
 import uuid
 from typing import Any, Sequence
 
-from .protocol_types import AllowedToolNames
+from .protocol_types import AllowedToolNames, NormalizedToolCall, ToolCallParseSource
 
 
 def build_tool_instruction(
@@ -128,12 +128,38 @@ def normalize_tool_calls(
     *,
     allowed_tool_names: AllowedToolNames = None,
 ) -> list[dict[str, Any]]:
-    """Normalize provider/tool-call payloads into a stable list[dict] shape."""
-    # TODO(protocol-types): migrate return type to list[NormalizedToolCall].
+    """Legacy dict API for normalized tool calls.
+
+    Keep this wrapper for compatibility while internal call-sites migrate to
+    `normalize_tool_calls_typed`.
+    """
+    typed_calls = normalize_tool_calls_typed(
+        raw_tool_calls,
+        allowed_tool_names=allowed_tool_names,
+    )
+    return [
+        {
+            "id": call.id,
+            "name": call.name,
+            "args": call.args,
+            "type": "tool_call",
+        }
+        for call in typed_calls
+    ]
+
+
+def normalize_tool_calls_typed(
+    raw_tool_calls: Any,
+    *,
+    allowed_tool_names: AllowedToolNames = None,
+    source: ToolCallParseSource = ToolCallParseSource.UNKNOWN,
+    recovered: bool = False,
+) -> list[NormalizedToolCall]:
+    """Normalize provider/tool-call payloads into provider-agnostic dataclasses."""
     if not isinstance(raw_tool_calls, list):
         return []
 
-    normalized: list[dict[str, Any]] = []
+    normalized: list[NormalizedToolCall] = []
     seen_ids: set[str] = set()
     for raw_call in raw_tool_calls:
         if not isinstance(raw_call, dict):
@@ -174,12 +200,13 @@ def normalize_tool_calls(
         seen_ids.add(call_id)
 
         normalized.append(
-            {
-                "id": call_id,
-                "name": name,
-                "args": args,
-                "type": "tool_call",
-            }
+            NormalizedToolCall(
+                id=call_id,
+                name=name,
+                args=args,
+                source=source,
+                recovered=recovered,
+            )
         )
 
     return normalized

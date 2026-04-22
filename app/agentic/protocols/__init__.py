@@ -28,6 +28,7 @@ from .tool_protocol import (
     extract_allowed_tool_names,
     inject_tool_instruction,
     normalize_tool_calls,
+    normalize_tool_calls_typed,
 )
 
 __all__ = [
@@ -54,4 +55,5 @@ __all__ = [
     "extract_allowed_tool_names",
     "inject_tool_instruction",
     "normalize_tool_calls",
+    "normalize_tool_calls_typed",
 ]
