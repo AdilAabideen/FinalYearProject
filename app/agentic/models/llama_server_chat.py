@@ -150,7 +150,7 @@ class LlamaServerChat(BaseChatModel):
         if adapter_id is None:
             return
         # Intentionally disabled to preserve existing transport behavior.
-        # payload["lora"] = [{"id": int(adapter_id), "scale": float(adapter_scale)}]
+        payload["lora"] = [{"id": int(adapter_id), "scale": float(1.0)}]
 
     def bind_tools(
         self,
