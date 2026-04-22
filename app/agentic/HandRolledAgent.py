@@ -4,7 +4,6 @@ import asyncio
 import json
 import threading
 import time
-from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from queue import Queue
 from typing import Any, AsyncGenerator, Callable, Mapping, Sequence
@@ -19,148 +18,14 @@ from app.agentic.runtime.agent_runner import AgentRunner
 from app.agentic.runtime.finalization_policy import FinalizationPolicy
 from app.agentic.runtime.runtime_config import RuntimeConfig
 from app.agentic.runtime.tool_executor import ToolExecutionTrace, ToolExecutor
-from app.agentic.telemetry.token_estimator import TokenEstimator
+from app.agentic.telemetry import (
+    EventEmitter,
+    LLMCallMetric,
+    TelemetryEmitter,
+    TokenEstimator,
+    ToolExecutionMetric,
+)
 from app.agentic.telemetry.usage_extractor import extract_provider_usage
-
-
-@dataclass
-class LLMCallMetric:
-    run_id: str
-    agent_name: str
-    call_index: int
-    iteration: int
-    call_kind: str
-    model_name: str | None
-    started_at: datetime
-    ended_at: datetime
-    latency_ms: int
-    input_tokens: int
-    output_tokens: int
-    tokens_total: int
-    usage_source: str
-    had_tool_calls: bool
-    tool_call_count: int
-    tool_call_parse_source: str | None = None
-    text_recovered_tool_call_count: int = 0
-    native_tool_call_count: int = 0
-    tool_names: list[str] = field(default_factory=list)
-    error_text: str | None = None
-
-
-@dataclass
-class ToolExecutionMetric:
-    run_id: str
-    agent_name: str
-    iteration: int
-    tool_call_id: str
-    tool_name: str
-    started_at: datetime
-    ended_at: datetime
-    latency_ms: int
-    status: str
-    result_char_count: int
-    result_estimated_tokens: int
-    error_text: str | None = None
-
-
-class EventEmitter:
-    """Emit run events in the existing persistence shape with monotonic sequence IDs."""
-
-    def __init__(self) -> None:
-        self._handlers: list[Callable[[dict[str, Any]], None]] = []
-        self._run_id: str | None = None
-        self._agent_name: str | None = None
-        self._seq: int = 0
-
-    def set_context(self, *, run_id: str, agent_name: str, start_seq: int = 0) -> None:
-        self._run_id = str(run_id)
-        self._agent_name = str(agent_name)
-        self._seq = int(start_seq)
-
-    def set_handlers(self, handlers: Sequence[Callable[[dict[str, Any]], None]] | None) -> None:
-        self._handlers = list(handlers or [])
-
-    def add_handler(self, handler: Callable[[dict[str, Any]], None]) -> None:
-        self._handlers.append(handler)
-
-    def emit(
-        self,
-        *,
-        event_type: str,
-        node_name: str | None = None,
-        tool_name: str | None = None,
-        tool_call_id: str | None = None,
-        status: str | None = None,
-        payload_json: dict[str, Any] | None = None,
-        payload_text: str | None = None,
-    ) -> None:
-        if not self._handlers or self._run_id is None or self._agent_name is None:
-            return
-
-        self._seq += 1
-        payload = {
-            "run_id": self._run_id,
-            "agent_name": self._agent_name,
-            "seq": self._seq,
-            "event_type": event_type,
-            "node_name": node_name,
-            "tool_name": tool_name,
-            "tool_call_id": tool_call_id,
-            "status": status,
-            "payload_json": payload_json,
-            "payload_text": payload_text,
-        }
-        for handler in self._handlers:
-            handler(payload)
-
-
-class TelemetryEmitter:
-    """Emit structured LLM and tool metrics through adapter handlers."""
-
-    def __init__(self) -> None:
-        self._llm_handlers: list[Callable[[dict[str, Any]], None]] = []
-        self._tool_handlers: list[Callable[[dict[str, Any]], None]] = []
-        self._run_id: str | None = None
-        self._agent_name: str | None = None
-        self._call_index: int = 0
-
-    def set_context(self, *, run_id: str, agent_name: str) -> None:
-        self._run_id = str(run_id)
-        self._agent_name = str(agent_name)
-        self._call_index = 0
-
-    def set_llm_handlers(self, handlers: Sequence[Callable[[dict[str, Any]], None]] | None) -> None:
-        self._llm_handlers = list(handlers or [])
-
-    def add_llm_handler(self, handler: Callable[[dict[str, Any]], None]) -> None:
-        self._llm_handlers.append(handler)
-
-    def set_tool_handlers(self, handlers: Sequence[Callable[[dict[str, Any]], None]] | None) -> None:
-        self._tool_handlers = list(handlers or [])
-
-    def add_tool_handler(self, handler: Callable[[dict[str, Any]], None]) -> None:
-        self._tool_handlers.append(handler)
-
-    def next_call_index(self) -> int:
-        self._call_index += 1
-        return self._call_index
-
-    def current_context(self) -> tuple[str | None, str | None]:
-        return self._run_id, self._agent_name
-
-    def emit_llm(self, metric: LLMCallMetric) -> None:
-        if not self._llm_handlers:
-            return
-        payload = asdict(metric)
-        for handler in self._llm_handlers:
-            handler(payload)
-
-    def emit_tool(self, metric: ToolExecutionMetric) -> None:
-        if not self._tool_handlers:
-            return
-        payload = asdict(metric)
-        for handler in self._tool_handlers:
-            handler(payload)
 
 
 class SSEHandrolledAgent:

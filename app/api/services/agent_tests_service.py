@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import time
 import uuid
 from datetime import datetime
 from typing import Any, Optional
@@ -511,12 +512,14 @@ def stream_run(run_id: str, db: Session) -> StreamingResponse:
         agent_tests_repository.save_test_run(db, run)
 
         event_id = 1
+        total_cases = len(run.selected_case_ids_json)
+        case_backoff_s = max(0.0, float(settings.TEST_CASE_BACKOFF_S))
         yield _sse(
             "run_start",
             {
                 "run_id": run.id,
                 "agent_name": run.agent_name,
-                "total": len(run.selected_case_ids_json),
+                "total": total_cases,
             },
             event_id=event_id,
         )
@@ -669,7 +672,20 @@ def stream_run(run_id: str, db: Session) -> StreamingResponse:
                 event_id=event_id,
             )
 
-        total = len(run.selected_case_ids_json)
+            is_last_case = idx >= (total_cases - 1)
+            if not is_last_case and case_backoff_s > 0:
+                event_id += 1
+                yield _sse(
+                    "case_backoff",
+                    {
+                        "seconds": case_backoff_s,
+                        "next_index": idx + 1,
+                    },
+                    event_id=event_id,
+                )
+                time.sleep(case_backoff_s)
+
+        total = total_cases
         pass_rate = (passed_count / total) if total else 0.0
         warning_rate = (warning_count / total) if total else 0.0
         now = datetime.utcnow()
