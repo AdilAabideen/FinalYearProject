@@ -33,10 +33,16 @@ type ResultViewModel = {
   missingInformation: string[];
 };
 
+type Esi345ResultViewModel = {
+  esiLevelLabel: string;
+  numResourcesLabel: string;
+  predictedResources: string[];
+};
+
 type StatCardProps = {
   label: string;
   value: string;
-  tone?: 'default' | 'accent' | 'positive' | 'danger';
+  tone?: 'default' | 'accent' | 'positive' | 'danger' | 'warning';
 };
 
 type AgentDecisionConfig = {
@@ -53,6 +59,17 @@ const RESULT_ALIASES = {
   risks: ['key_risks', 'keyrisks', 'risks'],
   missing: ['missing_information', 'missinginformation', 'missing_info', 'gaps'],
   justification: ['justification', 'rationale', 'reasoning'],
+} as const;
+
+const ESI345_ALIASES = {
+  esiLevel: ['esi_level', 'esilevel', 'esi', 'acuity', 'level'],
+  numResources: ['num_resources', 'numresources', 'resource_count', 'resources_count'],
+  predictedResources: [
+    'predicted_resources',
+    'predictedresources',
+    'resources',
+    'recommended_resources',
+  ],
 } as const;
 
 const DEFAULT_DECISION_CONFIG: AgentDecisionConfig = {
@@ -187,6 +204,7 @@ function StatCard({ label, value, tone = 'default' }: StatCardProps) {
         'rounded-xl border p-3',
         tone === 'positive' && 'border-emerald-200 bg-emerald-50/70',
         tone === 'danger' && 'border-rose-200 bg-rose-50/70',
+        tone === 'warning' && 'border-amber-200 bg-amber-50/80',
         tone === 'accent' && 'border-sky-200 bg-sky-50/70',
         tone === 'default' && 'border-slate-200 bg-white',
       )}
@@ -213,6 +231,10 @@ export default function RunAgentTab({ agent }: RunAgentTabProps) {
   const [starting, setStarting] = useState(false);
   const { models, status: modelsStatus, selectedModelId, setSelectedModelId } = useModels();
   const decisionConfig = useMemo(() => getAgentDecisionConfig(agent.name), [agent.name]);
+  const isEsi345Agent = useMemo(() => {
+    const normalized = normalizeKey(agent.name);
+    return normalized.includes('esi345') || normalized.includes('es345');
+  }, [agent.name]);
 
   const resultView = useMemo<ResultViewModel | null>(() => {
     if (!runOutput) return null;
@@ -255,11 +277,47 @@ export default function RunAgentTab({ agent }: RunAgentTabProps) {
     };
   }, [runOutput, decisionConfig]);
 
+  const esi345ResultView = useMemo<Esi345ResultViewModel | null>(() => {
+    if (!isEsi345Agent || !runOutput) return null;
+
+    const esiLevelRaw = getValueByAliases(runOutput, ESI345_ALIASES.esiLevel);
+    const numResourcesRaw = getValueByAliases(runOutput, ESI345_ALIASES.numResources);
+    const predictedResourcesRaw = getValueByAliases(runOutput, ESI345_ALIASES.predictedResources);
+    const predictedResources = toStringArray(predictedResourcesRaw);
+    const numResources = asNumber(numResourcesRaw);
+    const esiLevel = asNumber(esiLevelRaw);
+
+    return {
+      esiLevelLabel:
+        esiLevel == null
+          ? typeof esiLevelRaw === 'string' && esiLevelRaw.trim().length > 0
+            ? esiLevelRaw
+            : '—'
+          : formatInteger(esiLevel),
+      numResourcesLabel:
+        numResources == null
+          ? predictedResources.length > 0
+            ? formatInteger(predictedResources.length)
+            : typeof numResourcesRaw === 'string' && numResourcesRaw.trim().length > 0
+              ? numResourcesRaw
+              : '—'
+          : formatInteger(numResources),
+      predictedResources,
+    };
+  }, [isEsi345Agent, runOutput]);
+
   const additionalResultEntries = useMemo(() => {
     if (!runOutput) return [];
+    const resultAliases = isEsi345Agent
+      ? [
+          ...ESI345_ALIASES.esiLevel,
+          ...ESI345_ALIASES.numResources,
+          ...ESI345_ALIASES.predictedResources,
+        ]
+      : decisionConfig.decisionAliases;
     const knownKeys = new Set(
       [
-        ...decisionConfig.decisionAliases,
+        ...resultAliases,
         ...RESULT_ALIASES.confidence,
         ...RESULT_ALIASES.summary,
         ...RESULT_ALIASES.risks,
@@ -268,14 +326,40 @@ export default function RunAgentTab({ agent }: RunAgentTabProps) {
       ].map(normalizeKey),
     );
     return Object.entries(runOutput).filter(([key]) => !knownKeys.has(normalizeKey(key)));
-  }, [runOutput, decisionConfig]);
+  }, [runOutput, decisionConfig, isEsi345Agent]);
 
   const reliabilitySummary = runMetrics?.reliabilitySummary ?? null;
-  const reliabilityByCode = reliabilitySummary?.byCode ?? [];
+  const reliabilityByCategory = reliabilitySummary?.byCategory ?? [];
   const reliabilityTotalIssues = reliabilitySummary?.totalIssues ?? null;
   const reliabilityErrorIssues = reliabilitySummary?.errorIssues ?? null;
-  const reliabilityHasIssues = (reliabilitySummary?.totalIssues ?? 0) > 0;
+  const reliabilityWarningIssues = reliabilitySummary?.warningIssues ?? null;
+  const reliabilityInfoIssues = reliabilitySummary?.infoIssues ?? null;
   const reliabilityHasErrors = (reliabilitySummary?.errorIssues ?? 0) > 0;
+  const reliabilityHasWarnings = (reliabilitySummary?.warningIssues ?? 0) > 0;
+  const reliabilityStatusLabel =
+    reliabilitySummary == null
+      ? 'Unavailable'
+      : reliabilityHasErrors
+        ? 'Critical Issues Detected'
+        : reliabilityHasWarnings
+          ? 'Minor Issues Detected'
+          : 'No Issues Detected';
+  const reliabilityStatusTone: StatCardProps['tone'] =
+    reliabilitySummary == null
+      ? 'default'
+      : reliabilityHasErrors
+        ? 'danger'
+        : reliabilityHasWarnings
+          ? 'warning'
+          : 'positive';
+  const reliabilityCategoryGridColumns =
+    reliabilityByCategory.length <= 1
+      ? 'grid-cols-1'
+      : reliabilityByCategory.length === 2
+        ? 'grid-cols-1 sm:grid-cols-2'
+        : reliabilityByCategory.length === 4
+          ? 'grid-cols-1 sm:grid-cols-2'
+          : 'grid-cols-1 sm:grid-cols-3';
 
   async function refreshRunResults(targetRunId: string) {
     let done = false;
@@ -453,101 +537,149 @@ export default function RunAgentTab({ agent }: RunAgentTabProps) {
                   <div className="mt-3 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
                     {runError}
                   </div>
-                ) : runOutput && resultView ? (
+                ) : runOutput && (isEsi345Agent ? esi345ResultView : resultView) ? (
                   <div className="mt-3 space-y-4">
-                    <section className="rounded-2xl border border-slate-200 bg-[linear-gradient(135deg,rgba(14,165,233,0.06)_0%,rgba(255,255,255,0.95)_42%,rgba(16,185,129,0.06)_100%)] p-4">
-                      <div className="flex flex-wrap items-center justify-between gap-3">
+                    {isEsi345Agent && esi345ResultView ? (
+                      <section className="rounded-2xl border border-slate-200 bg-[linear-gradient(135deg,rgba(14,165,233,0.06)_0%,rgba(255,255,255,0.95)_42%,rgba(16,185,129,0.06)_100%)] p-4">
+                        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                          <StatCard label="ESI Level" value={esi345ResultView.esiLevelLabel} tone="accent" />
+                          <StatCard label="Num Resources" value={esi345ResultView.numResourcesLabel} />
+                          <StatCard
+                            label="Total Tokens"
+                            value={formatInteger(runMetrics?.tokens_total ?? null)}
+                          />
+                          <StatCard
+                            label="Duration"
+                            value={formatDuration(runMetrics?.duration_seconds ?? null)}
+                          />
+                          <StatCard label="Cost" value={formatCurrency(runMetrics?.cost_usd_total ?? null)} />
+                          <StatCard
+                            label="Tool Errors"
+                            value={formatInteger(runMetrics?.tool_error_count ?? null)}
+                            tone={
+                              (runMetrics?.tool_error_count ?? 0) > 0
+                                ? 'danger'
+                                : runMetrics
+                                  ? 'positive'
+                                  : 'default'
+                            }
+                          />
+                        </div>
 
-
-                      </div>
-                      <div className=" grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-                        <StatCard
-                          label="Decision"
-                          value={resultView.decisionLabel}
-                          tone={statToneForDecision(resultView.decisionTone)}
-                        />
-                        <StatCard label="Confidence" value={resultView.confidenceLabel} tone="accent" />
-                        <StatCard
-                          label="Total Tokens"
-                          value={formatInteger(runMetrics?.tokens_total ?? null)}
-                        />
-                        <StatCard
-                          label="Duration"
-                          value={formatDuration(runMetrics?.duration_seconds ?? null)}
-                        />
-                        <StatCard label="Cost" value={formatCurrency(runMetrics?.cost_usd_total ?? null)} />
-                        <StatCard
-                          label="Tool Errors"
-                          value={formatInteger(runMetrics?.tool_error_count ?? null)}
-                          tone={
-                            (runMetrics?.tool_error_count ?? 0) > 0
-                              ? 'danger'
-                              : runMetrics
-                                ? 'positive'
-                                : 'default'
-                          }
-                        />
-                      </div>
-                    </section>
-
-                    <section className="grid gap-4 xl:grid-cols-2">
-                      <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                        <h5 className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                          Clinical Summary
-                        </h5>
-                        <p className="mt-2 text-sm leading-relaxed text-slate-800">
-                          {resultView.caseSummary}
-                        </p>
-                      </div>
-
-                      <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                        <h5 className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                          Justification
-                        </h5>
-                        <p className="mt-2 text-sm leading-relaxed text-slate-800">
-                          {resultView.justification}
-                        </p>
-                      </div>
-
-                      <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                        <h5 className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                          Key Risks
-                        </h5>
-                        {resultView.risks.length ? (
-                          <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-slate-800">
-                            {resultView.risks.map((risk, index) => (
-                              <li key={`risk-${index}`}>{risk}</li>
-                            ))}
-                          </ul>
-                        ) : (
-                          <p className="mt-2 text-sm text-slate-500">No key risks were returned.</p>
-                        )}
-                      </div>
-
-                      <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                        <h5 className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                          Missing Information
-                        </h5>
-                        {resultView.missingInformation.length ? (
-                          <div className="mt-2 flex flex-wrap gap-2">
-                            {resultView.missingInformation.map((item, index) => (
-                              <Badge
-                                key={`missing-${index}`}
-                                className="bg-amber-50 text-amber-700 ring-amber-200"
-                              >
-                                {item}
-                              </Badge>
-                            ))}
+                        <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                          <h5 className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                            Predicted Resources
+                          </h5>
+                          {esi345ResultView.predictedResources.length ? (
+                            <div className="mt-2 flex flex-wrap gap-2">
+                              {esi345ResultView.predictedResources.map((resource, index) => (
+                                <Badge
+                                  key={`predicted-resource-${index}`}
+                                  className="bg-sky-50 text-sky-700 ring-sky-200"
+                                >
+                                  {resource}
+                                </Badge>
+                              ))}
+                            </div>
+                          ) : (
+                            <p className="mt-2 text-sm text-slate-500">No predicted resources were returned.</p>
+                          )}
+                        </div>
+                      </section>
+                    ) : resultView ? (
+                      <>
+                        <section className="rounded-2xl border border-slate-200 bg-[linear-gradient(135deg,rgba(14,165,233,0.06)_0%,rgba(255,255,255,0.95)_42%,rgba(16,185,129,0.06)_100%)] p-4">
+                          <div className="flex flex-wrap items-center justify-between gap-3" />
+                          <div className=" grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                            <StatCard
+                              label="Decision"
+                              value={resultView.decisionLabel}
+                              tone={statToneForDecision(resultView.decisionTone)}
+                            />
+                            <StatCard label="Confidence" value={resultView.confidenceLabel} tone="accent" />
+                            <StatCard
+                              label="Total Tokens"
+                              value={formatInteger(runMetrics?.tokens_total ?? null)}
+                            />
+                            <StatCard
+                              label="Duration"
+                              value={formatDuration(runMetrics?.duration_seconds ?? null)}
+                            />
+                            <StatCard label="Cost" value={formatCurrency(runMetrics?.cost_usd_total ?? null)} />
+                            <StatCard
+                              label="Tool Errors"
+                              value={formatInteger(runMetrics?.tool_error_count ?? null)}
+                              tone={
+                                (runMetrics?.tool_error_count ?? 0) > 0
+                                  ? 'danger'
+                                  : runMetrics
+                                    ? 'positive'
+                                    : 'default'
+                              }
+                            />
                           </div>
-                        ) : (
-                          <div className="mt-2">
-                            <Badge className="bg-emerald-50 text-emerald-700 ring-emerald-200">
-                              None detected
-                            </Badge>
+                        </section>
+
+                        <section className="grid gap-4 xl:grid-cols-2">
+                          <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                            <h5 className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                              Clinical Summary
+                            </h5>
+                            <p className="mt-2 text-sm leading-relaxed text-slate-800">
+                              {resultView.caseSummary}
+                            </p>
                           </div>
-                        )}
-                      </div>
-                    </section>
+
+                          <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                            <h5 className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                              Justification
+                            </h5>
+                            <p className="mt-2 text-sm leading-relaxed text-slate-800">
+                              {resultView.justification}
+                            </p>
+                          </div>
+
+                          <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                            <h5 className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                              Key Risks
+                            </h5>
+                            {resultView.risks.length ? (
+                              <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-slate-800">
+                                {resultView.risks.map((risk, index) => (
+                                  <li key={`risk-${index}`}>{risk}</li>
+                                ))}
+                              </ul>
+                            ) : (
+                              <p className="mt-2 text-sm text-slate-500">No key risks were returned.</p>
+                            )}
+                          </div>
+
+                          <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                            <h5 className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                              Missing Information
+                            </h5>
+                            {resultView.missingInformation.length ? (
+                              <div className="mt-2 flex flex-wrap gap-2">
+                                {resultView.missingInformation.map((item, index) => (
+                                  <Badge
+                                    key={`missing-${index}`}
+                                    className="bg-amber-50 text-amber-700 ring-amber-200"
+                                  >
+                                    {item}
+                                  </Badge>
+                                ))}
+                              </div>
+                            ) : (
+                              <div className="mt-2">
+                                <Badge className="bg-emerald-50 text-emerald-700 ring-emerald-200">
+                                  None detected
+                                </Badge>
+                              </div>
+                            )}
+                          </div>
+                        </section>
+                      </>
+                    ) : null}
 
                     {additionalResultEntries.length ? (
                       <details className="rounded-2xl border border-slate-200 bg-white p-4">
@@ -633,17 +765,11 @@ export default function RunAgentTab({ agent }: RunAgentTabProps) {
                     <p className="text-xs font-semibold uppercase tracking-wide text-slate-600">
                       Reliability Summary
                     </p>
-                    <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                    <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
                       <StatCard
                         label="Total Issues"
                         value={formatInteger(reliabilityTotalIssues)}
-                        tone={
-                          reliabilitySummary == null
-                            ? 'default'
-                            : reliabilityHasIssues
-                              ? 'danger'
-                              : 'positive'
-                        }
+                        tone="accent"
                       />
                       <StatCard
                         label="Error Issues"
@@ -653,43 +779,74 @@ export default function RunAgentTab({ agent }: RunAgentTabProps) {
                             ? 'default'
                             : reliabilityHasErrors
                               ? 'danger'
-                              : 'positive'
+                              : 'default'
                         }
                       />
                       <StatCard
-                        label="Issue Codes"
-                        value={formatInteger(reliabilityByCode.length)}
-                        tone={reliabilityByCode.length ? 'accent' : 'default'}
-                      />
-                      <StatCard
-                        label="Reliability Status"
-                        value={
-                          reliabilitySummary == null
-                            ? 'Unavailable'
-                            : reliabilityHasIssues
-                              ? 'Issues Detected'
-                              : 'Healthy'
-                        }
+                        label="Warning Issues"
+                        value={formatInteger(reliabilityWarningIssues)}
                         tone={
                           reliabilitySummary == null
                             ? 'default'
-                            : reliabilityHasIssues
-                              ? 'danger'
+                            : reliabilityHasWarnings
+                              ? 'warning'
                               : 'positive'
                         }
                       />
+                      <StatCard
+                        label="Info Issues"
+                        value={formatInteger(reliabilityInfoIssues)}
+                        tone={reliabilitySummary == null ? 'default' : 'accent'}
+                      />
+                      <StatCard
+                        label="Reliability Status"
+                        value={reliabilityStatusLabel}
+                        tone={reliabilityStatusTone}
+                      />
                     </div>
 
-                    {reliabilityByCode.length ? (
-                      <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                        {reliabilityByCode.map((item) => (
-                          <StatCard
-                            key={item.issueCode}
-                            label={titleCaseKey(item.issueCode)}
-                            value={formatInteger(item.count)}
-                            tone={item.count > 0 ? 'danger' : 'default'}
-                          />
-                        ))}
+                    {reliabilityByCategory.length ? (
+                      <div className="mt-3">
+                        <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                          By Category
+                        </p>
+                        <div className={cn('mt-2 grid w-full gap-3', reliabilityCategoryGridColumns)}>
+                          {reliabilityByCategory.map((item) => (
+                            <div
+                              key={`${item.issueCode}-${item.severity}`}
+                              className={cn(
+                                'min-h-44 rounded-xl border p-3',
+                                item.severity === 'error' && 'border-rose-200 bg-rose-50/70 text-rose-900',
+                                item.severity === 'warning' &&
+                                  'border-amber-200 bg-amber-50/80 text-amber-900',
+                                item.severity === 'info' && 'border-sky-200 bg-sky-50/70 text-sky-900',
+                              )}
+                            >
+                              <div className="flex h-full flex-col justify-between">
+                                <div>
+                                  <p className="text-[11px] font-semibold uppercase tracking-wide opacity-80">
+                                    Issue Code
+                                  </p>
+                                  <p className="mt-1 text-sm font-semibold">{titleCaseKey(item.issueCode)}</p>
+                                </div>
+                                <div>
+                                  <p className="text-[11px] font-semibold uppercase tracking-wide opacity-80">
+                                    Severity
+                                  </p>
+                                  <p className="mt-1 text-xs font-semibold uppercase tracking-wide">
+                                    {item.severity}
+                                  </p>
+                                </div>
+                                <div>
+                                  <p className="text-[11px] font-semibold uppercase tracking-wide opacity-80">
+                                    Count
+                                  </p>
+                                  <p className="mt-1 text-lg font-semibold">{formatInteger(item.count)}</p>
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
                       </div>
                     ) : null}
                   </div>

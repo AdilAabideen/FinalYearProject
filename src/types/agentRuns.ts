@@ -1,14 +1,17 @@
 export type RunStatus = string;
 
-export type AgentRunReliabilityIssueCount = {
+export type AgentRunReliabilityCategoryCount = {
   issueCode: string;
+  severity: 'error' | 'warning' | 'info';
   count: number;
 };
 
 export type AgentRunReliabilitySummary = {
   totalIssues: number;
   errorIssues: number;
-  byCode: AgentRunReliabilityIssueCount[];
+  warningIssues: number;
+  infoIssues: number;
+  byCategory: AgentRunReliabilityCategoryCount[];
 };
 
 export type AgentRunMetrics = {
@@ -49,11 +52,14 @@ export type AgentRunMetricsDto = {
 export type AgentRunReliabilitySummaryDto = {
   error_issues: number;
   total_issues: number;
-  by_code: {
+  warning_issues: number;
+  info_issues: number;
+  by_category: {
     issue_code: string;
+    severity: 'error' | 'warning' | 'info';
     count: number;
   }[];
-}
+};
 
 export type AgentRunMetricsResponseDto = {
   run_id: string;

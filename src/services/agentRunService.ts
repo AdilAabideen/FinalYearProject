@@ -117,14 +117,21 @@ export const agentRunService: AgentRunService = {
     const reliabilitySummary =
       data.reliability_summary == null
         ? null
-        : {
-          totalIssues: data.reliability_summary.total_issues,
-          errorIssues: data.reliability_summary.error_issues,
-          byCode: data.reliability_summary.by_code.map((item) => ({
+        : (() => {
+          const byCategory = data.reliability_summary.by_category.map((item) => ({
             issueCode: item.issue_code,
+            severity: item.severity,
             count: item.count,
-          })),
-        };
+          }));
+
+          return {
+            totalIssues: data.reliability_summary.total_issues,
+            errorIssues: data.reliability_summary.error_issues,
+            warningIssues: data.reliability_summary.warning_issues,
+            infoIssues: data.reliability_summary.info_issues,
+            byCategory,
+          };
+        })();
 
     const return_metrics: AgentRunMetrics = {
       id: metrics.run_id,

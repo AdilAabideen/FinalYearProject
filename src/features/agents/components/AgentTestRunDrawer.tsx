@@ -81,7 +81,7 @@ type AggregatedRunMetricsState =
 type StatCardProps = {
   label: string;
   value: string;
-  tone?: 'default' | 'accent' | 'positive' | 'danger';
+  tone?: 'default' | 'accent' | 'positive' | 'danger' | 'warning';
   small?: boolean;
 };
 
@@ -355,6 +355,8 @@ function StatCard({ label, value, tone = 'default', small=false }: StatCardProps
       ? 'border-emerald-200 bg-emerald-50/70'
       : tone === 'danger'
         ? 'border-rose-200 bg-rose-50/70'
+        : tone === 'warning'
+          ? 'border-amber-200 bg-amber-50/80'
         : tone === 'accent'
           ? 'border-sky-200 bg-sky-50/70'
           : 'border-slate-200 bg-white';
@@ -500,14 +502,8 @@ function renderDecisionDiff(diff: Record<string, unknown>, config: AgentDecision
     agentAnswer,
     config,
   );
-  const { raw: expectedDecisionRaw, decision: expectedDecision } = resolveDecisionFromRecord(
-    expectedDecisionSource,
-    config,
-  );
-  const { raw: actualDecisionRaw, decision: actualDecision } = resolveDecisionFromRecord(
-    actualRootRecord,
-    config,
-  );
+  const { decision: expectedDecision } = resolveDecisionFromRecord(expectedDecisionSource, config);
+  const { decision: actualDecision } = resolveDecisionFromRecord(actualRootRecord, config);
   const confidence = asNumber(agentAnswer.confidence);
 
   const passed = typeof diff.passed === 'boolean' ? diff.passed : null;
@@ -555,7 +551,7 @@ function renderDecisionDiff(diff: Record<string, unknown>, config: AgentDecision
           />
         </div>
 
-        <div className="mt-3 grid gap-3 sm:grid-cols-2">
+        {/* <div className="mt-3 grid gap-3 sm:grid-cols-2">
           <StatCard
             label={`Expected ${config.trueLabel}`}
             value={formatDecisionDisplayValue(expectedDecision, expectedDecisionRaw)}
@@ -566,6 +562,111 @@ function renderDecisionDiff(diff: Record<string, unknown>, config: AgentDecision
             value={formatDecisionDisplayValue(actualDecision, actualDecisionRaw)}
             tone={isMatch == null ? 'default' : isMatch ? 'positive' : 'danger'}
           />
+        </div> */}
+      </section>
+
+      <details className="rounded-2xl border border-slate-200 bg-white p-4">
+        <summary className="cursor-pointer select-none text-sm font-semibold text-slate-800">
+          Raw Diff JSON
+        </summary>
+        <div className="mt-3 max-h-[min(24rem,50vh)] overflow-auto rounded-2xl border border-slate-200 bg-slate-50 p-3">
+          <JsonInspector value={diff} />
+        </div>
+      </details>
+    </div>
+  );
+}
+
+function renderESI345DecisionDiff(diff: Record<string, unknown>, config: AgentDecisionConfig) {
+  const expectedAnswer = isRecord(diff.expected_answer) ? diff.expected_answer : {};
+  const agentAnswer = isRecord(diff.agent_answer) ? diff.agent_answer : {};
+  const expectedAcuity = asNumber(diff.expected_acuity ?? expectedAnswer.acuity);
+  const expectedResourcesUsed = asNumber(diff.expected_resources_used ?? expectedAnswer.resources_used);
+  const actualAcuity = asNumber(diff.actual_acuity ?? agentAnswer.esi_level);
+  const actualResourcesUsed = asNumber(diff.actual_resources_used ?? agentAnswer.num_resources);
+  const confidence = asNumber(agentAnswer.confidence);
+  const predictedResources = toStringArray(agentAnswer.predicted_resources);
+  const caseSummary =
+    typeof agentAnswer.case_summary === 'string' && agentAnswer.case_summary.trim().length > 0
+      ? agentAnswer.case_summary
+      : 'No case summary was provided in the diff payload.';
+
+  const passedFromFlag = typeof diff.passed === 'boolean' ? diff.passed : null;
+  const verdictRaw = typeof diff.verdict === 'string' ? diff.verdict.trim().toLowerCase() : '';
+  const passedFromVerdict = verdictRaw === 'pass' ? true : verdictRaw === 'fail' ? false : null;
+  const passed = passedFromFlag ?? passedFromVerdict;
+  const warning = parseDecision(diff.warning);
+  const acuityMatch = parseDecision(diff.acuity_match);
+  const resourcesMatch = parseDecision(diff.resources_match);
+  const hasWarning = warning === true;
+  const isPass = passed === true;
+  const isFail = passed === false;
+  const isWarn = isPass && hasWarning;
+
+  const verdictLabel = isPass ? (isWarn ? 'Pass With Warning' : 'Pass') : isFail ? 'Fail' : 'Unknown';
+  const verdictBadgeClass = isWarn
+    ? 'bg-amber-50 text-amber-700 ring-amber-200'
+    : isPass
+      ? 'bg-emerald-50 text-emerald-700 ring-emerald-200'
+      : isFail
+        ? 'bg-rose-50 text-rose-700 ring-rose-200'
+        : 'bg-slate-100 text-slate-700 ring-slate-200';
+  const panelClass = isWarn
+    ? 'border-amber-200 bg-amber-50/40'
+    : isPass
+      ? 'border-emerald-200 bg-emerald-50/40'
+      : isFail
+        ? 'border-rose-200 bg-rose-50/40'
+        : 'border-slate-200 bg-white';
+  const tone: StatCardProps['tone'] = isWarn ? 'accent' : isPass ? 'positive' : isFail ? 'danger' : 'default';
+
+  return (
+    <div className="space-y-4 pb-2">
+      <section className={`rounded-2xl border p-4 ${panelClass}`}>
+        <div className="flex items-center justify-between gap-3">
+          <h4 className="text-sm font-semibold text-slate-900">Diff</h4>
+          <Badge className={verdictBadgeClass}>{verdictLabel}</Badge>
+        </div>
+
+        <div className="mt-3 grid gap-3 sm:grid-cols-3">
+          <StatCard label="Actual Acuity" value={formatInteger(actualAcuity)} tone={tone} />
+          <StatCard label="Actual Resources Used" value={formatInteger(actualResourcesUsed)} tone={tone} />
+          <StatCard label="Confidence" value={formatConfidence(confidence)} tone="accent" />
+        </div>
+
+        <div className="mt-3 grid gap-3 sm:grid-cols-4">
+          <StatCard label="Expected Acuity" value={formatInteger(expectedAcuity)} />
+          <StatCard label="Expected Resources" value={formatInteger(expectedResourcesUsed)} />
+          <StatCard
+            label={`Acuity Match (${config.trueLabel})`}
+            value={acuityMatch == null ? '—' : acuityMatch ? 'True' : 'False'}
+            tone={acuityMatch == null ? 'default' : acuityMatch ? 'positive' : 'danger'}
+          />
+          <StatCard
+            label="Resources Match"
+            value={resourcesMatch == null ? '—' : resourcesMatch ? 'True' : 'False'}
+            tone={resourcesMatch == null ? 'default' : resourcesMatch ? 'positive' : 'danger'}
+          />
+        </div>
+
+        <div className="mt-3 rounded-2xl border border-slate-200 bg-white p-3">
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Predicted Resources</p>
+          {predictedResources.length ? (
+            <div className="mt-2 flex flex-wrap gap-2">
+              {predictedResources.map((resource, index) => (
+                <Badge key={`predicted-resource-${index}`} className="bg-sky-50 text-sky-700 ring-sky-200">
+                  {resource}
+                </Badge>
+              ))}
+            </div>
+          ) : (
+            <p className="mt-2 text-sm text-slate-500">No predicted resources were returned.</p>
+          )}
+        </div>
+
+        <div className="mt-3 rounded-2xl border border-slate-200 bg-white p-3">
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Case Summary</p>
+          <p className="mt-2 text-sm leading-relaxed text-slate-800">{caseSummary}</p>
         </div>
       </section>
 
@@ -585,6 +686,9 @@ function resolveDiffRenderer(agentName: string) {
   const config = getAgentDecisionConfig(agentName);
   return (diff: Record<string, unknown>) => {
     const normalized = normalizeAgentName(agentName);
+    if (normalized === 'esi345agent' || normalized.includes('esi345') || normalized.includes('es345')) {
+      return renderESI345DecisionDiff(diff, config);
+    }
     if (normalized.includes('esi')) {
       return renderDecisionDiff(diff, config);
     }
@@ -927,25 +1031,11 @@ export default function AgentTestRunDrawer({
       : activeMetricsRecord && isRecord(activeMetricsRecord.reliability_summary)
         ? activeMetricsRecord.reliability_summary
         : null;
-  const activeReliabilityTotalIssues = asNumber(
-    activeReliabilitySummary
-      ? (activeReliabilitySummary.totalIssues ?? activeReliabilitySummary.total_issues)
-      : null,
-  );
-  const activeReliabilityErrorIssues = asNumber(
-    activeReliabilitySummary
-      ? (activeReliabilitySummary.errorIssues ?? activeReliabilitySummary.error_issues)
-      : null,
-  );
-  const activeReliabilityByCodeRaw = activeReliabilitySummary
-    ? (activeReliabilitySummary.byCode ?? activeReliabilitySummary.by_code)
+  const activeReliabilityByCategoryRaw = activeReliabilitySummary
+    ? (activeReliabilitySummary.byCategory ?? activeReliabilitySummary.by_category)
     : null;
-  const activeReliabilityByCode = Array.isArray(
-    activeReliabilitySummary
-      ? (activeReliabilitySummary.byCode ?? activeReliabilitySummary.by_code)
-      : null,
-  )
-    ? (activeReliabilityByCodeRaw as unknown[])
+  const activeReliabilityByCategory = Array.isArray(activeReliabilityByCategoryRaw)
+    ? (activeReliabilityByCategoryRaw as unknown[])
       .map((item) => {
         if (!isRecord(item)) return null;
         const issueCode =
@@ -954,12 +1044,81 @@ export default function AgentTestRunDrawer({
             : typeof item.issue_code === 'string'
               ? item.issue_code
               : '';
+        const severityRaw = typeof item.severity === 'string' ? item.severity.toLowerCase() : '';
+        const severity =
+          severityRaw === 'error' || severityRaw === 'warning' || severityRaw === 'info'
+            ? severityRaw
+            : 'info';
         const count = asNumber(item.count);
         if (!issueCode) return null;
-        return { issueCode, count: count ?? 0 };
+        return { issueCode, severity, count: count ?? 0 };
       })
-      .filter((item): item is { issueCode: string; count: number } => item != null)
+      .filter(
+        (
+          item,
+        ): item is { issueCode: string; severity: 'error' | 'warning' | 'info'; count: number } =>
+          item != null,
+      )
     : [];
+  const activeReliabilityTotalIssues =
+    asNumber(
+      activeReliabilitySummary
+        ? (activeReliabilitySummary.totalIssues ?? activeReliabilitySummary.total_issues)
+        : null,
+    ) ?? activeReliabilityByCategory.reduce((sum, item) => sum + item.count, 0);
+  const activeReliabilityErrorIssues =
+    asNumber(
+      activeReliabilitySummary
+        ? (activeReliabilitySummary.errorIssues ?? activeReliabilitySummary.error_issues)
+        : null,
+    ) ??
+    activeReliabilityByCategory
+      .filter((item) => item.severity === 'error')
+      .reduce((sum, item) => sum + item.count, 0);
+  const activeReliabilityWarningIssues =
+    asNumber(
+      activeReliabilitySummary
+        ? (activeReliabilitySummary.warningIssues ?? activeReliabilitySummary.warning_issues)
+        : null,
+    ) ??
+    activeReliabilityByCategory
+      .filter((item) => item.severity === 'warning')
+      .reduce((sum, item) => sum + item.count, 0);
+  const activeReliabilityInfoIssues =
+    asNumber(
+      activeReliabilitySummary
+        ? (activeReliabilitySummary.infoIssues ?? activeReliabilitySummary.info_issues)
+        : null,
+    ) ??
+    activeReliabilityByCategory
+      .filter((item) => item.severity === 'info')
+      .reduce((sum, item) => sum + item.count, 0);
+  const activeReliabilityHasErrors = activeReliabilityErrorIssues > 0;
+  const activeReliabilityHasWarnings = activeReliabilityWarningIssues > 0;
+  const activeReliabilityStatusLabel =
+    activeReliabilitySummary == null
+      ? 'Unavailable'
+      : activeReliabilityHasErrors
+        ? 'Critical Issues Detected'
+        : activeReliabilityHasWarnings
+          ? 'Minor Issues Detected'
+          : 'No Issues Detected';
+  const activeReliabilityStatusTone: StatCardProps['tone'] =
+    activeReliabilitySummary == null
+      ? 'default'
+      : activeReliabilityHasErrors
+        ? 'danger'
+        : activeReliabilityHasWarnings
+          ? 'warning'
+          : 'positive';
+  const activeReliabilityCategoryGridColumns =
+    activeReliabilityByCategory.length <= 1
+      ? 'grid-cols-1'
+      : activeReliabilityByCategory.length === 2
+        ? 'grid-cols-1 sm:grid-cols-2'
+        : activeReliabilityByCategory.length === 4
+          ? 'grid-cols-1 sm:grid-cols-2'
+          : 'grid-cols-1 sm:grid-cols-3';
   const activeDiffRecord =
     activeDiffState?.status === 'ready' && isRecord(activeDiffState.diff)
       ? activeDiffState.diff
@@ -1542,64 +1701,95 @@ export default function AgentTestRunDrawer({
                           <p className="text-xs font-semibold uppercase tracking-wide text-slate-600">
                             Reliability Summary
                           </p>
-                          <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                          <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
                             <StatCard
                               label="Total Issues"
                               value={formatInteger(activeReliabilityTotalIssues)}
-                              tone={
-                                activeReliabilityTotalIssues == null
-                                  ? 'default'
-                                  : activeReliabilityTotalIssues > 0
-                                    ? 'danger'
-                                    : 'positive'
-                              }
+                              tone="accent"
                             />
                             <StatCard
                               label="Error Issues"
                               value={formatInteger(activeReliabilityErrorIssues)}
                               tone={
-                                activeReliabilityErrorIssues == null
+                                activeReliabilitySummary == null
                                   ? 'default'
-                                  : activeReliabilityErrorIssues > 0
+                                  : activeReliabilityHasErrors
                                     ? 'danger'
+                                    : 'default'
+                              }
+                            />
+                            <StatCard
+                              label="Warning Issues"
+                              value={formatInteger(activeReliabilityWarningIssues)}
+                              tone={
+                                activeReliabilitySummary == null
+                                  ? 'default'
+                                  : activeReliabilityHasWarnings
+                                    ? 'warning'
                                     : 'positive'
                               }
                             />
                             <StatCard
-                              label="Issue Codes"
-                              value={formatInteger(activeReliabilityByCode.length)}
-                              tone={activeReliabilityByCode.length > 0 ? 'accent' : 'default'}
+                              label="Info Issues"
+                              value={formatInteger(activeReliabilityInfoIssues)}
+                              tone={activeReliabilitySummary == null ? 'default' : 'accent'}
                             />
                             <StatCard
                               label="Reliability Status"
-                              value={
-                                activeReliabilityTotalIssues == null
-                                  ? 'Unavailable'
-                                  : activeReliabilityTotalIssues > 0
-                                    ? 'Issues Detected'
-                                    : 'Healthy'
-                              }
-                              tone={
-                                activeReliabilityTotalIssues == null
-                                  ? 'default'
-                                  : activeReliabilityTotalIssues > 0
-                                    ? 'danger'
-                                    : 'positive'
-                              }
+                              value={activeReliabilityStatusLabel}
+                              tone={activeReliabilityStatusTone}
                               small={true}
                             />
                           </div>
 
-                          {activeReliabilityByCode.length ? (
-                            <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                              {activeReliabilityByCode.map((item) => (
-                                <StatCard
-                                  key={item.issueCode}
-                                  label={titleCaseKey(item.issueCode)}
-                                  value={formatInteger(item.count)}
-                                  tone={item.count > 0 ? 'danger' : 'default'}
-                                />
-                              ))}
+                          {activeReliabilityByCategory.length ? (
+                            <div className="mt-3">
+                              <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                                By Category
+                              </p>
+                              <div className={`mt-2 grid w-full gap-3 ${activeReliabilityCategoryGridColumns}`}>
+                                {activeReliabilityByCategory.map((item) => {
+                                  const toneClass =
+                                    item.severity === 'error'
+                                      ? 'border-rose-200 bg-rose-50/70 text-rose-900'
+                                      : item.severity === 'warning'
+                                        ? 'border-amber-200 bg-amber-50/80 text-amber-900'
+                                        : 'border-sky-200 bg-sky-50/70 text-sky-900';
+                                  return (
+                                    <div
+                                      key={`${item.issueCode}-${item.severity}`}
+                                      className={`min-h-44 rounded-xl border p-3 ${toneClass}`}
+                                    >
+                                      <div className="flex h-full flex-col justify-between">
+                                        <div>
+                                          <p className="text-[11px] font-semibold uppercase tracking-wide opacity-80">
+                                            Issue Code
+                                          </p>
+                                          <p className="mt-1 text-sm font-semibold">
+                                            {titleCaseKey(item.issueCode)}
+                                          </p>
+                                        </div>
+                                        <div>
+                                          <p className="text-[11px] font-semibold uppercase tracking-wide opacity-80">
+                                            Severity
+                                          </p>
+                                          <p className="mt-1 text-xs font-semibold uppercase tracking-wide">
+                                            {item.severity}
+                                          </p>
+                                        </div>
+                                        <div>
+                                          <p className="text-[11px] font-semibold uppercase tracking-wide opacity-80">
+                                            Count
+                                          </p>
+                                          <p className="mt-1 text-lg font-semibold">
+                                            {formatInteger(item.count)}
+                                          </p>
+                                        </div>
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
                             </div>
                           ) : null}
                         </div>

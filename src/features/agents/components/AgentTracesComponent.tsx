@@ -129,10 +129,33 @@ export function AgentTracesComponent({ runId, onDone }: AgentTracesComponentProp
       const entryId = `${idSuffix}-${entryIdRef.current}`;
 
       if (payload.event_type === 'thought' || isLogThoughtTool(payload.tool_name)) {
+        let step = '';
+        let thought = '';
 
-        const result = payload.payload_json as { result: { step: string, thought: string } };
-        if (!result) return;
-        setEntries((prev) => [...prev, { id: entryId, kind: 'thinking', output: { step: result.result.step, thought: result.result.thought } }]);
+        if (isRecord(payload.payload_json)) {
+          const resultRecord = isRecord(payload.payload_json.result)
+            ? payload.payload_json.result
+            : payload.payload_json;
+          step = typeof resultRecord.step === 'string' ? resultRecord.step : '';
+          thought = typeof resultRecord.thought === 'string' ? resultRecord.thought : '';
+        }
+
+        if (!thought && typeof payload.payload_text === 'string') {
+          thought = payload.payload_text.trim();
+        }
+        if (!step && !thought) return;
+
+        setEntries((prev) => [
+          ...prev,
+          {
+            id: entryId,
+            kind: 'thinking',
+            output: {
+              step: step || 'Thought',
+              thought: thought || 'No thought content.',
+            },
+          },
+        ]);
         return;
       }
 
@@ -235,41 +258,54 @@ export function AgentTracesComponent({ runId, onDone }: AgentTracesComponentProp
               }
 
               if (entry.kind === 'thinking') {
+                const thoughtStep = entry.output?.step ?? 'Thought';
+                const thoughtText = entry.output?.thought ?? 'No thought content.';
                 return (
                   <div key={entry.id} className="space-y-1">
                     <p className="text-xs font-semibold tracking-wide text-PrimaryBlue">THINKING</p>
-                    <p><span className="text-sm text-slate-900 font-bold">{truncateText(entry.output?.step, 2000)}</span>: <span className="text-sm text-slate-800">{truncateText(entry.output?.thought, 2000)}</span></p>
+                    <p><span className="text-sm text-slate-900 font-bold">{truncateText(thoughtStep, 2000)}</span>: <span className="text-sm text-slate-800">{truncateText(thoughtText, 2000)}</span></p>
                   </div>
                 );
               }
 
               if (entry.toolName === 'log_structured_event') {
-                const output = (entry.output as {
-                  result: { step: string; summary: string; event_type: string; tag: string };
-                }).result;
+                const payloadRecord = isRecord(entry.output) ? entry.output : null;
+                const outputRecord =
+                  payloadRecord && isRecord(payloadRecord.result)
+                    ? payloadRecord.result
+                    : payloadRecord;
+                const eventType =
+                  outputRecord && typeof outputRecord.event_type === 'string'
+                    ? outputRecord.event_type
+                    : 'structured_event';
+                const step =
+                  outputRecord && typeof outputRecord.step === 'string' ? outputRecord.step : '';
+                const summary =
+                  outputRecord && typeof outputRecord.summary === 'string' ? outputRecord.summary : '';
+                const tag = outputRecord && typeof outputRecord.tag === 'string' ? outputRecord.tag : '';
                 return (
                   <div key={entry.id} className="space-y-1">
                     <p className="text-xs font-semibold tracking-wide text-PrimaryBlue">STRUCTURED THINKING</p>
                     <p className="text-sm text-slate-900 font-semibold">
-                      {prettifyToolName(output.event_type)}
+                      {prettifyToolName(eventType)}
                     </p>
                     <div className="flex flex-wrap items-center flex-row">
                       <p className="text-sm text-slate-800 font-semibold">Step :&nbsp;</p>
                       <p className="text-sm text-slate-800">
-                        {truncateText(output.step, 2000)}
+                        {truncateText(step || '—', 2000)}
                       </p>
                     </div>
                     <div className="flex flex-wrap items-center flex-row">
                       <p className="text-sm text-slate-800 font-semibold">Summary :&nbsp;</p>
                       <p className="text-sm text-slate-800">
-                        {truncateText(output.summary, 2000)}
+                        {truncateText(summary || '—', 2000)}
                       </p>
                     </div>
                     <div className="flex flex-wrap items-center gap-2 mt-2 flex-row">
                       <p className="text-sm text-slate-800">Tag:</p>
                       <div className="flex flex-wrap items-center gap-2">
                         <Badge className="bg-PrimaryBlue/10 text-PrimaryBlue">
-                          {prettifyToolName(output.tag)}
+                          {tag ? prettifyToolName(tag) : '—'}
                         </Badge>
                         <ToolStatusBadge status={entry.status} />
                       </div>
