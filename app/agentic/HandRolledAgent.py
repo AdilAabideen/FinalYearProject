@@ -19,6 +19,7 @@ from app.agentic.runtime.agent_runner import AgentRunner
 from app.agentic.runtime.finalization_policy import FinalizationPolicy
 from app.agentic.runtime.runtime_config import RuntimeConfig
 from app.agentic.runtime.tool_executor import ToolExecutionTrace, ToolExecutor
+from app.agentic.telemetry.usage_extractor import extract_provider_usage
 
 try:
     import tiktoken
@@ -645,38 +646,6 @@ class SSEHandrolledAgent:
             return parsed
         return {"value": parsed}
 
-    @staticmethod
-    def _usage_from_obj(obj: Any) -> tuple[int | None, int | None, int | None, str | None]:
-        usage = getattr(obj, "usage_metadata", None)
-        if isinstance(usage, Mapping):
-            in_tok = usage.get("input_tokens")
-            out_tok = usage.get("output_tokens")
-            tot_tok = usage.get("total_tokens")
-            if in_tok is not None or out_tok is not None or tot_tok is not None:
-                return (
-                    int(in_tok or 0),
-                    int(out_tok or 0),
-                    int(tot_tok) if tot_tok is not None else int((in_tok or 0) + (out_tok or 0)),
-                    "provider",
-                )
-
-        response_meta = getattr(obj, "response_metadata", None)
-        if isinstance(response_meta, Mapping):
-            token_usage = response_meta.get("token_usage")
-            if isinstance(token_usage, Mapping):
-                in_tok = token_usage.get("prompt_tokens", token_usage.get("input_tokens"))
-                out_tok = token_usage.get("completion_tokens", token_usage.get("output_tokens"))
-                tot_tok = token_usage.get("total_tokens")
-                if in_tok is not None or out_tok is not None or tot_tok is not None:
-                    return (
-                        int(in_tok or 0),
-                        int(out_tok or 0),
-                        int(tot_tok) if tot_tok is not None else int((in_tok or 0) + (out_tok or 0)),
-                        "provider",
-                    )
-
-        return None, None, None, None
-
     async def _ainvoke_with_telemetry(
         self,
         *,
@@ -700,7 +669,11 @@ class SSEHandrolledAgent:
             ended_at = datetime.utcnow()
             latency_ms = int((time.perf_counter() - t0) * 1000)
 
-            in_tok, out_tok, tot_tok, usage_source = self._usage_from_obj(response)
+            usage = extract_provider_usage(response)
+            in_tok = usage.input_tokens
+            out_tok = usage.output_tokens
+            tot_tok = usage.total_tokens
+            usage_source = usage.usage_source
             if in_tok is None or out_tok is None or tot_tok is None:
                 in_tok = self._token_estimator.estimate_messages_tokens(messages)
                 if isinstance(response, AIMessage):
