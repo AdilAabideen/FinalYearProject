@@ -8,6 +8,40 @@ import { SegmentedTabs } from '../../../shared/ui/SegmentedTabs';
 import { JsonInspector } from '../../../shared/ui/JsonInspector';
 import { Badge } from '../../../shared/ui/Badge';
 import { useModels } from '../hooks/useModels';
+import {
+  asNumber,
+  asString,
+  buildResultViewModel,
+  getAdditionalOutputEntries,
+  getAgentDecisionConfig,
+  isRecord,
+} from '../utils/runResult';
+import {
+  formatCurrency,
+  formatDuration,
+  formatInteger,
+  formatLatencyMs,
+  formatPercent,
+  titleCaseKey,
+} from '../utils/format';
+import { getReliabilitySummaryView } from '../utils/reliability';
+import {
+  extractAgentRunId,
+  extractCaseId,
+  extractDiff,
+  extractMetrics,
+  extractPassed,
+} from '../utils/testRunStream';
+import { resolveDiffRenderer } from '../utils/testRunDiff';
+import { AgentStatCard as StatCard, type AgentStatCardTone } from './shared/AgentStatCard';
+import { AgentModelSelect } from './shared/AgentModelSelect';
+import {
+  AgentDecisionSummaryCards,
+  AgentNarrativeSections,
+} from './shared/AgentDecisionSummaryCards';
+import { AgentAdditionalOutputFields } from './shared/AgentAdditionalOutputFields';
+import { AgentRawJsonDetails } from './shared/AgentRawJsonDetails';
+import { AgentReliabilitySummaryPanel } from './shared/AgentReliabilitySummaryPanel';
 
 type HarnessTabKey = 'cases' | 'results' | 'run_metrics';
 type ViewerTabKey = 'case_details' | 'test_traces' | 'outputs' | 'diff' | 'metrics';
@@ -62,36 +96,11 @@ type CaseDiffState = {
   error?: string;
 }
 
-type CaseResultViewModel = {
-  decisionLabel: string;
-  decisionTone: 'positive' | 'danger' | 'neutral';
-  confidenceLabel: string;
-  caseSummary: string;
-  justification: string;
-  risks: string[];
-  missingInformation: string[];
-};
-
 type AggregatedRunMetricsState =
   | { status: 'idle' }
   | { status: 'loading' }
   | { status: 'error'; error: string }
   | { status: 'ready'; data: AgentTestRunBatchMetricsRead };
-
-type StatCardProps = {
-  label: string;
-  value: string;
-  tone?: 'default' | 'accent' | 'positive' | 'danger' | 'warning';
-  small?: boolean;
-};
-
-type AgentDecisionConfig = {
-  decisionAliases: string[];
-  trueLabel: string;
-  falseLabel: string;
-  trueKeywords: string[];
-  falseKeywords: string[];
-};
 
 const harnessTabs: Array<{ key: HarnessTabKey; label: string }> = [
   { key: 'cases', label: 'Test Cases' },
@@ -121,37 +130,6 @@ const friendlyLabels: Record<string, string> = {
   subject_id: 'Subject ID',
 };
 
-const RESULT_ALIASES = {
-  confidence: ['confidence', 'score', 'probability'],
-  summary: ['case_summary', 'casesummary', 'summary'],
-  risks: ['key_risks', 'keyrisks', 'risks'],
-  missing: ['missing_information', 'missinginformation', 'missing_info', 'gaps'],
-  justification: ['justification', 'rationale', 'reasoning'],
-} as const;
-
-const DEFAULT_DECISION_CONFIG: AgentDecisionConfig = {
-  decisionAliases: ['decision', 'ok', 'final_decision', 'finaldecision'],
-  trueLabel: 'Positive',
-  falseLabel: 'Negative',
-  trueKeywords: [],
-  falseKeywords: [],
-};
-
-const ESI1_DECISION_CONFIG: AgentDecisionConfig = {
-  decisionAliases: ['is_esi1', 'isesi1', 'ok', 'decision', 'final_decision', 'finaldecision'],
-  trueLabel: 'ESI-1',
-  falseLabel: 'Not ESI-1',
-  trueKeywords: ['esi1', 'esi-1'],
-  falseKeywords: ['esi2', 'esi-2', 'esi3', 'esi-3', 'esi4', 'esi-4', 'esi5', 'esi-5'],
-};
-
-const ESI2_DECISION_CONFIG: AgentDecisionConfig = {
-  decisionAliases: ['is_esi2', 'isesi2', 'ok', 'decision', 'final_decision', 'finaldecision'],
-  trueLabel: 'ESI-2',
-  falseLabel: 'Not ESI-2',
-  trueKeywords: ['esi2', 'esi-2'],
-  falseKeywords: ['esi1', 'esi-1', 'esi3', 'esi-3', 'esi4', 'esi-4', 'esi5', 'esi-5'],
-};
 
 type AgentTestRunDrawerProps = {
   agentName: string;
@@ -187,188 +165,6 @@ function titleCase(value: string) {
   return value.replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
-function asString(value: unknown): string | undefined {
-  return typeof value === 'string' && value.length > 0 ? value : undefined;
-}
-
-function extractCaseId(payload: Record<string, unknown>) {
-  return (
-    asString(payload.test_case_id) ??
-    asString(payload.case_id) ??
-    (isRecord(payload.result)
-      ? asString(payload.result.test_case_id) ?? asString(payload.result.case_id)
-      : undefined) ??
-    (isRecord(payload.payload_json)
-      ? asString(payload.payload_json.test_case_id) ?? asString(payload.payload_json.case_id)
-      : undefined)
-  );
-}
-
-function extractAgentRunId(payload: Record<string, unknown>) {
-  return (
-    asString(payload.agent_run_id) ??
-    asString(payload.run_id) ??
-    (isRecord(payload.result)
-      ? asString(payload.result.agent_run_id) ?? asString(payload.result.run_id)
-      : undefined) ??
-    (isRecord(payload.payload_json)
-      ? asString(payload.payload_json.agent_run_id) ?? asString(payload.payload_json.run_id)
-      : undefined)
-  );
-}
-
-function extractPassed(payload: Record<string, unknown>) {
-  if (typeof payload.passed === 'boolean') return payload.passed;
-  const status =
-    asString(payload.status) ??
-    (isRecord(payload.result) ? asString(payload.result.status) : undefined) ??
-    (isRecord(payload.payload_json) ? asString(payload.payload_json.status) : undefined) ??
-    '';
-  return status.toLowerCase().includes('pass');
-}
-
-function extractMetrics(payload: Record<string, unknown>) {
-  if (isRecord(payload.metrics)) return payload.metrics as RunMetrics;
-  if (isRecord(payload.metrics_json)) return payload.metrics_json as RunMetrics;
-  if (isRecord(payload.result) && isRecord(payload.result.metrics)) return payload.result.metrics as RunMetrics;
-  return null;
-}
-
-function extractDiff(payload: Record<string, unknown>) {
-
-  if (isRecord(payload.diff_json)) return payload.diff_json;
-  if (isRecord(payload.result) && isRecord(payload.result.diff_json)) return payload.result.diff_json;
-  if (isRecord(payload.payload_json) && isRecord(payload.payload_json.diff_json)) return payload.payload_json.diff_json;
-
-  return null;
-}
-
-function normalizeKey(key: string) {
-  return key.toLowerCase().replace(/[^a-z0-9]/g, '');
-}
-
-function getValueByAliases(record: Record<string, unknown>, aliases: readonly string[]) {
-  const aliasSet = new Set(aliases.map(normalizeKey));
-  for (const [key, value] of Object.entries(record)) {
-    if (aliasSet.has(normalizeKey(key))) return value;
-  }
-  return undefined;
-}
-
-function toStringArray(value: unknown) {
-  if (Array.isArray(value)) {
-    return value.map((item) => String(item)).filter((item) => item.trim().length > 0);
-  }
-  if (typeof value === 'string' && value.trim().length > 0) return [value];
-  return [];
-}
-
-function asNumber(value: unknown) {
-  if (typeof value === 'number' && Number.isFinite(value)) return value;
-  if (typeof value === 'string') {
-    const parsed = Number(value);
-    if (Number.isFinite(parsed)) return parsed;
-  }
-  return null;
-}
-
-function parseDecision(value: unknown) {
-  if (typeof value === 'boolean') return value;
-  if (typeof value === 'number') return value > 0;
-  if (typeof value === 'string') {
-    const normalized = value.trim().toLowerCase();
-    if (['true', 'yes', '1', 'retain', 'critical'].includes(normalized)) {
-      return true;
-    }
-    if (['false', 'no', '0', 'defer'].includes(normalized)) {
-      return false;
-    }
-  }
-  return null;
-}
-
-function parseDecisionWithConfig(value: unknown, config: AgentDecisionConfig) {
-  if (typeof value === 'string') {
-    const normalized = value.trim().toLowerCase();
-    if (config.trueKeywords.includes(normalized)) return true;
-    if (config.falseKeywords.includes(normalized)) return false;
-  }
-  return parseDecision(value);
-}
-
-function formatConfidence(value: number | null) {
-  if (value == null) return '—';
-  const ratio = value > 1 ? value / 100 : value;
-  return `${Math.round(Math.max(0, Math.min(1, ratio)) * 100)}%`;
-}
-
-function titleCaseKey(key: string) {
-  return key
-    .replace(/[_-]+/g, ' ')
-    .split(' ')
-    .filter(Boolean)
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-    .join(' ');
-}
-
-function formatInteger(value: number | null) {
-  if (value == null) return '—';
-  return new Intl.NumberFormat(undefined, { maximumFractionDigits: 0 }).format(value);
-}
-
-function formatDuration(seconds: number | null) {
-  if (seconds == null) return '—';
-  if (seconds < 1) return `${Math.round(seconds * 1000)} ms`;
-  return `${seconds.toFixed(seconds < 10 ? 2 : 1)} s`;
-}
-
-function formatLatencyMs(value: number | null) {
-  if (value == null) return '—';
-  if (value < 10) return `${value.toFixed(2)} ms`;
-  if (value < 100) return `${value.toFixed(1)} ms`;
-  return `${Math.round(value)} ms`;
-}
-
-function formatCurrency(value: number | null) {
-  if (value == null) return '—';
-  return new Intl.NumberFormat(undefined, {
-    style: 'currency',
-    currency: 'USD',
-    maximumFractionDigits: 4,
-  }).format(value);
-}
-
-function formatPercent(value: number | null, digits = 1) {
-  if (value == null || !Number.isFinite(value)) return '—';
-  const ratio = value > 1 ? value / 100 : value;
-  const clamped = Math.max(0, Math.min(1, ratio));
-  return `${(clamped * 100).toFixed(digits)}%`;
-}
-
-function StatCard({ label, value, tone = 'default', small=false }: StatCardProps) {
-  const toneClass =
-    tone === 'positive'
-      ? 'border-emerald-200 bg-emerald-50/70'
-      : tone === 'danger'
-        ? 'border-rose-200 bg-rose-50/70'
-        : tone === 'warning'
-          ? 'border-amber-200 bg-amber-50/80'
-        : tone === 'accent'
-          ? 'border-sky-200 bg-sky-50/70'
-          : 'border-slate-200 bg-white';
-
-  return (
-    <div className={`rounded-xl border p-3 ${toneClass}`}>
-      <p className={`text-[9px] font-semibold uppercase tracking-wide text-slate-500 ${small ? 'text-[9px]' : 'text-[11px]'}`} >{label}</p>
-      <p className={`mt-1 text-base font-semibold text-slate-900 ${small ? 'text-[11px]' : ''}`}>{value}</p>
-    </div>
-  );
-}
-
 function ConfusionCell({
   label,
   value,
@@ -401,299 +197,6 @@ function ConfusionCell({
       <p className="mt-1 text-xl font-semibold">{formatInteger(value)}</p>
     </div>
   );
-}
-
-function normalizeAgentName(name: string) {
-  return name.trim().toLowerCase().replace(/[\s_-]+/g, '');
-}
-
-function isEsi1Config(config: AgentDecisionConfig) {
-  return config.decisionAliases.map(normalizeKey).includes('isesi1');
-}
-
-function isEsi2Config(config: AgentDecisionConfig) {
-  return config.decisionAliases.map(normalizeKey).includes('isesi2');
-}
-
-function prefixedRecord(record: Record<string, unknown>, prefix: string) {
-  const out: Record<string, unknown> = {};
-  for (const [key, value] of Object.entries(record)) {
-    if (!key.startsWith(prefix)) continue;
-    out[key.slice(prefix.length)] = value;
-  }
-  return out;
-}
-
-function resolveDecisionFromRecord(record: Record<string, unknown>, config: AgentDecisionConfig) {
-  const primaryRaw = getValueByAliases(record, config.decisionAliases);
-  const primaryDecision = parseDecisionWithConfig(primaryRaw, config);
-  if (primaryDecision != null || primaryRaw !== undefined) {
-    return { raw: primaryRaw, decision: primaryDecision };
-  }
-
-  const inverseAliases = isEsi2Config(config)
-    ? ['is_esi1', 'isesi1']
-    : isEsi1Config(config)
-      ? ['is_esi2', 'isesi2']
-      : [];
-  if (!inverseAliases.length) {
-    return { raw: primaryRaw, decision: primaryDecision };
-  }
-
-  const inverseRaw = getValueByAliases(record, inverseAliases);
-  const inverseDecision = parseDecision(inverseRaw);
-  if (inverseDecision == null) {
-    return { raw: inverseRaw, decision: null };
-  }
-  return { raw: inverseRaw, decision: !inverseDecision };
-}
-
-function decisionKnownAliases(config: AgentDecisionConfig) {
-  if (isEsi2Config(config)) {
-    return [...config.decisionAliases, 'is_esi1', 'isesi1'];
-  }
-  if (isEsi1Config(config)) {
-    return [...config.decisionAliases, 'is_esi2', 'isesi2'];
-  }
-  return config.decisionAliases;
-}
-
-function formatDecisionDisplayValue(decision: boolean | null, raw: unknown) {
-  if (decision != null) return decision ? 'True' : 'False';
-  if (typeof raw === 'string') return raw;
-  if (typeof raw === 'number') return String(raw);
-  if (typeof raw === 'boolean') return raw ? 'True' : 'False';
-  return '—';
-}
-
-function getAgentDecisionConfig(agentName: string): AgentDecisionConfig {
-  const normalized = normalizeAgentName(agentName);
-  if (normalized.includes('esi2')) return ESI2_DECISION_CONFIG;
-  if (normalized.includes('esi1')) return ESI1_DECISION_CONFIG;
-  return DEFAULT_DECISION_CONFIG;
-}
-
-function renderGenericDiff(diff: Record<string, unknown>) {
-  return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-4">
-      <p className="text-sm font-semibold text-slate-900">Diff</p>
-      <p className="mt-1 text-xs text-slate-600">No agent-specific renderer configured for this agent.</p>
-      <details className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-3">
-        <summary className="cursor-pointer select-none text-xs font-semibold uppercase tracking-wide text-slate-600">
-          Raw Diff JSON
-        </summary>
-        <div className="mt-3 max-h-[min(24rem,50vh)] overflow-auto rounded-2xl border border-slate-200 bg-white p-3">
-          <JsonInspector value={diff} />
-        </div>
-      </details>
-    </div>
-  );
-}
-
-function renderDecisionDiff(diff: Record<string, unknown>, config: AgentDecisionConfig) {
-  const expectedAnswer = isRecord(diff.expected_answer) ? diff.expected_answer : {};
-  const agentAnswer = isRecord(diff.agent_answer) ? diff.agent_answer : {};
-  const expectedRootRecord = prefixedRecord(diff, 'expected_');
-  const actualRootRecord = prefixedRecord(diff, 'actual_');
-  const expectedDecisionSource = { ...expectedRootRecord, ...expectedAnswer };
-
-  const expectedAcuity = asNumber(expectedAnswer.acuity);
-  const { raw: agentDecisionRaw, decision: agentDecision } = resolveDecisionFromRecord(
-    agentAnswer,
-    config,
-  );
-  const { decision: expectedDecision } = resolveDecisionFromRecord(expectedDecisionSource, config);
-  const { decision: actualDecision } = resolveDecisionFromRecord(actualRootRecord, config);
-  const confidence = asNumber(agentAnswer.confidence);
-
-  const passed = typeof diff.passed === 'boolean' ? diff.passed : null;
-  const inferredMatch =
-    expectedDecision != null && actualDecision != null
-      ? expectedDecision === actualDecision
-      : expectedDecision != null && agentDecision != null
-        ? expectedDecision === agentDecision
-        : null;
-  const isMatch = passed ?? inferredMatch;
-
-  const verdictLabel = isMatch == null ? 'Not enough data' : isMatch ? 'Success' : 'Mismatch';
-  const verdictBadgeClass =
-    isMatch == null
-      ? 'bg-slate-100 text-slate-700 ring-slate-200'
-      : isMatch
-        ? 'bg-emerald-50 text-emerald-700 ring-emerald-200'
-        : 'bg-rose-50 text-rose-700 ring-rose-200';
-  const panelClass =
-    isMatch == null
-      ? 'border-slate-200 bg-white'
-      : isMatch
-        ? 'border-emerald-200 bg-emerald-50/40'
-        : 'border-rose-200 bg-rose-50/40';
-
-  return (
-    <div className="space-y-4 pb-2">
-      <section className={`rounded-2xl border p-4 ${panelClass}`}>
-        <div className="flex items-center justify-between gap-3">
-          <h4 className="text-sm font-semibold text-slate-900">Diff</h4>
-          <Badge className={verdictBadgeClass}>{verdictLabel}</Badge>
-        </div>
-
-        <div className="mt-3 grid gap-3 sm:grid-cols-3">
-          <StatCard
-            label={`Agent Response (${config.trueLabel})`}
-            value={formatDecisionDisplayValue(agentDecision, agentDecisionRaw)}
-            tone={isMatch == null ? 'default' : isMatch ? 'positive' : 'danger'}
-          />
-          <StatCard label="Confidence" value={formatConfidence(confidence)} tone="accent" />
-          <StatCard
-            label="Expected Acuity"
-            value={expectedAcuity == null ? '—' : formatInteger(expectedAcuity)}
-            tone={isMatch == null ? 'default' : isMatch ? 'positive' : 'danger'}
-          />
-        </div>
-
-        {/* <div className="mt-3 grid gap-3 sm:grid-cols-2">
-          <StatCard
-            label={`Expected ${config.trueLabel}`}
-            value={formatDecisionDisplayValue(expectedDecision, expectedDecisionRaw)}
-            tone={isMatch == null ? 'default' : isMatch ? 'positive' : 'danger'}
-          />
-          <StatCard
-            label={`Actual ${config.trueLabel}`}
-            value={formatDecisionDisplayValue(actualDecision, actualDecisionRaw)}
-            tone={isMatch == null ? 'default' : isMatch ? 'positive' : 'danger'}
-          />
-        </div> */}
-      </section>
-
-      <details className="rounded-2xl border border-slate-200 bg-white p-4">
-        <summary className="cursor-pointer select-none text-sm font-semibold text-slate-800">
-          Raw Diff JSON
-        </summary>
-        <div className="mt-3 max-h-[min(24rem,50vh)] overflow-auto rounded-2xl border border-slate-200 bg-slate-50 p-3">
-          <JsonInspector value={diff} />
-        </div>
-      </details>
-    </div>
-  );
-}
-
-function renderESI345DecisionDiff(diff: Record<string, unknown>, config: AgentDecisionConfig) {
-  const expectedAnswer = isRecord(diff.expected_answer) ? diff.expected_answer : {};
-  const agentAnswer = isRecord(diff.agent_answer) ? diff.agent_answer : {};
-  const expectedAcuity = asNumber(diff.expected_acuity ?? expectedAnswer.acuity);
-  const expectedResourcesUsed = asNumber(diff.expected_resources_used ?? expectedAnswer.resources_used);
-  const actualAcuity = asNumber(diff.actual_acuity ?? agentAnswer.esi_level);
-  const actualResourcesUsed = asNumber(diff.actual_resources_used ?? agentAnswer.num_resources);
-  const confidence = asNumber(agentAnswer.confidence);
-  const predictedResources = toStringArray(agentAnswer.predicted_resources);
-  const caseSummary =
-    typeof agentAnswer.case_summary === 'string' && agentAnswer.case_summary.trim().length > 0
-      ? agentAnswer.case_summary
-      : 'No case summary was provided in the diff payload.';
-
-  const passedFromFlag = typeof diff.passed === 'boolean' ? diff.passed : null;
-  const verdictRaw = typeof diff.verdict === 'string' ? diff.verdict.trim().toLowerCase() : '';
-  const passedFromVerdict = verdictRaw === 'pass' ? true : verdictRaw === 'fail' ? false : null;
-  const passed = passedFromFlag ?? passedFromVerdict;
-  const warning = parseDecision(diff.warning);
-  const acuityMatch = parseDecision(diff.acuity_match);
-  const resourcesMatch = parseDecision(diff.resources_match);
-  const hasWarning = warning === true;
-  const isPass = passed === true;
-  const isFail = passed === false;
-  const isWarn = isPass && hasWarning;
-
-  const verdictLabel = isPass ? (isWarn ? 'Pass With Warning' : 'Pass') : isFail ? 'Fail' : 'Unknown';
-  const verdictBadgeClass = isWarn
-    ? 'bg-amber-50 text-amber-700 ring-amber-200'
-    : isPass
-      ? 'bg-emerald-50 text-emerald-700 ring-emerald-200'
-      : isFail
-        ? 'bg-rose-50 text-rose-700 ring-rose-200'
-        : 'bg-slate-100 text-slate-700 ring-slate-200';
-  const panelClass = isWarn
-    ? 'border-amber-200 bg-amber-50/40'
-    : isPass
-      ? 'border-emerald-200 bg-emerald-50/40'
-      : isFail
-        ? 'border-rose-200 bg-rose-50/40'
-        : 'border-slate-200 bg-white';
-  const tone: StatCardProps['tone'] = isWarn ? 'accent' : isPass ? 'positive' : isFail ? 'danger' : 'default';
-
-  return (
-    <div className="space-y-4 pb-2">
-      <section className={`rounded-2xl border p-4 ${panelClass}`}>
-        <div className="flex items-center justify-between gap-3">
-          <h4 className="text-sm font-semibold text-slate-900">Diff</h4>
-          <Badge className={verdictBadgeClass}>{verdictLabel}</Badge>
-        </div>
-
-        <div className="mt-3 grid gap-3 sm:grid-cols-3">
-          <StatCard label="Actual Acuity" value={formatInteger(actualAcuity)} tone={tone} />
-          <StatCard label="Actual Resources Used" value={formatInteger(actualResourcesUsed)} tone={tone} />
-          <StatCard label="Confidence" value={formatConfidence(confidence)} tone="accent" />
-        </div>
-
-        <div className="mt-3 grid gap-3 sm:grid-cols-4">
-          <StatCard label="Expected Acuity" value={formatInteger(expectedAcuity)} />
-          <StatCard label="Expected Resources" value={formatInteger(expectedResourcesUsed)} />
-          <StatCard
-            label={`Acuity Match (${config.trueLabel})`}
-            value={acuityMatch == null ? '—' : acuityMatch ? 'True' : 'False'}
-            tone={acuityMatch == null ? 'default' : acuityMatch ? 'positive' : 'danger'}
-          />
-          <StatCard
-            label="Resources Match"
-            value={resourcesMatch == null ? '—' : resourcesMatch ? 'True' : 'False'}
-            tone={resourcesMatch == null ? 'default' : resourcesMatch ? 'positive' : 'danger'}
-          />
-        </div>
-
-        <div className="mt-3 rounded-2xl border border-slate-200 bg-white p-3">
-          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Predicted Resources</p>
-          {predictedResources.length ? (
-            <div className="mt-2 flex flex-wrap gap-2">
-              {predictedResources.map((resource, index) => (
-                <Badge key={`predicted-resource-${index}`} className="bg-sky-50 text-sky-700 ring-sky-200">
-                  {resource}
-                </Badge>
-              ))}
-            </div>
-          ) : (
-            <p className="mt-2 text-sm text-slate-500">No predicted resources were returned.</p>
-          )}
-        </div>
-
-        <div className="mt-3 rounded-2xl border border-slate-200 bg-white p-3">
-          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Case Summary</p>
-          <p className="mt-2 text-sm leading-relaxed text-slate-800">{caseSummary}</p>
-        </div>
-      </section>
-
-      <details className="rounded-2xl border border-slate-200 bg-white p-4">
-        <summary className="cursor-pointer select-none text-sm font-semibold text-slate-800">
-          Raw Diff JSON
-        </summary>
-        <div className="mt-3 max-h-[min(24rem,50vh)] overflow-auto rounded-2xl border border-slate-200 bg-slate-50 p-3">
-          <JsonInspector value={diff} />
-        </div>
-      </details>
-    </div>
-  );
-}
-
-function resolveDiffRenderer(agentName: string) {
-  const config = getAgentDecisionConfig(agentName);
-  return (diff: Record<string, unknown>) => {
-    const normalized = normalizeAgentName(agentName);
-    if (normalized === 'esi345agent' || normalized.includes('esi345') || normalized.includes('es345')) {
-      return renderESI345DecisionDiff(diff, config);
-    }
-    if (normalized.includes('esi')) {
-      return renderDecisionDiff(diff, config);
-    }
-    return renderGenericDiff(diff);
-  };
 }
 
 export default function AgentTestRunDrawer({
@@ -1001,9 +504,8 @@ export default function AgentTestRunDrawer({
       source.close();
     });
 
-    // Keep native EventSource retry behavior; mark state for visibility.
     source.onerror = () => {
-      setRunPhase((prev) => (prev === 'running' ? 'running' : prev));
+      source.close();
     };
 
     return () => {
@@ -1025,100 +527,10 @@ export default function AgentTestRunDrawer({
     activeMetricsState?.status === 'ready' && isRecord(activeMetricsState.metrics)
       ? activeMetricsState.metrics
       : null;
-  const activeReliabilitySummary =
-    activeMetricsRecord && isRecord(activeMetricsRecord.reliabilitySummary)
-      ? activeMetricsRecord.reliabilitySummary
-      : activeMetricsRecord && isRecord(activeMetricsRecord.reliability_summary)
-        ? activeMetricsRecord.reliability_summary
-        : null;
-  const activeReliabilityByCategoryRaw = activeReliabilitySummary
-    ? (activeReliabilitySummary.byCategory ?? activeReliabilitySummary.by_category)
-    : null;
-  const activeReliabilityByCategory = Array.isArray(activeReliabilityByCategoryRaw)
-    ? (activeReliabilityByCategoryRaw as unknown[])
-      .map((item) => {
-        if (!isRecord(item)) return null;
-        const issueCode =
-          typeof item.issueCode === 'string'
-            ? item.issueCode
-            : typeof item.issue_code === 'string'
-              ? item.issue_code
-              : '';
-        const severityRaw = typeof item.severity === 'string' ? item.severity.toLowerCase() : '';
-        const severity =
-          severityRaw === 'error' || severityRaw === 'warning' || severityRaw === 'info'
-            ? severityRaw
-            : 'info';
-        const count = asNumber(item.count);
-        if (!issueCode) return null;
-        return { issueCode, severity, count: count ?? 0 };
-      })
-      .filter(
-        (
-          item,
-        ): item is { issueCode: string; severity: 'error' | 'warning' | 'info'; count: number } =>
-          item != null,
-      )
-    : [];
-  const activeReliabilityTotalIssues =
-    asNumber(
-      activeReliabilitySummary
-        ? (activeReliabilitySummary.totalIssues ?? activeReliabilitySummary.total_issues)
-        : null,
-    ) ?? activeReliabilityByCategory.reduce((sum, item) => sum + item.count, 0);
-  const activeReliabilityErrorIssues =
-    asNumber(
-      activeReliabilitySummary
-        ? (activeReliabilitySummary.errorIssues ?? activeReliabilitySummary.error_issues)
-        : null,
-    ) ??
-    activeReliabilityByCategory
-      .filter((item) => item.severity === 'error')
-      .reduce((sum, item) => sum + item.count, 0);
-  const activeReliabilityWarningIssues =
-    asNumber(
-      activeReliabilitySummary
-        ? (activeReliabilitySummary.warningIssues ?? activeReliabilitySummary.warning_issues)
-        : null,
-    ) ??
-    activeReliabilityByCategory
-      .filter((item) => item.severity === 'warning')
-      .reduce((sum, item) => sum + item.count, 0);
-  const activeReliabilityInfoIssues =
-    asNumber(
-      activeReliabilitySummary
-        ? (activeReliabilitySummary.infoIssues ?? activeReliabilitySummary.info_issues)
-        : null,
-    ) ??
-    activeReliabilityByCategory
-      .filter((item) => item.severity === 'info')
-      .reduce((sum, item) => sum + item.count, 0);
-  const activeReliabilityHasErrors = activeReliabilityErrorIssues > 0;
-  const activeReliabilityHasWarnings = activeReliabilityWarningIssues > 0;
-  const activeReliabilityStatusLabel =
-    activeReliabilitySummary == null
-      ? 'Unavailable'
-      : activeReliabilityHasErrors
-        ? 'Critical Issues Detected'
-        : activeReliabilityHasWarnings
-          ? 'Minor Issues Detected'
-          : 'No Issues Detected';
-  const activeReliabilityStatusTone: StatCardProps['tone'] =
-    activeReliabilitySummary == null
-      ? 'default'
-      : activeReliabilityHasErrors
-        ? 'danger'
-        : activeReliabilityHasWarnings
-          ? 'warning'
-          : 'positive';
-  const activeReliabilityCategoryGridColumns =
-    activeReliabilityByCategory.length <= 1
-      ? 'grid-cols-1'
-      : activeReliabilityByCategory.length === 2
-        ? 'grid-cols-1 sm:grid-cols-2'
-        : activeReliabilityByCategory.length === 4
-          ? 'grid-cols-1 sm:grid-cols-2'
-          : 'grid-cols-1 sm:grid-cols-3';
+  const activeReliabilitySummaryView = useMemo(
+    () => getReliabilitySummaryView(activeMetricsRecord, { fallbackCountsToZero: true }),
+    [activeMetricsRecord],
+  );
   const activeDiffRecord =
     activeDiffState?.status === 'ready' && isRecord(activeDiffState.diff)
       ? activeDiffState.diff
@@ -1130,60 +542,17 @@ export default function AgentTestRunDrawer({
   const decisionConfig = useMemo(() => getAgentDecisionConfig(agentName), [agentName]);
   const diffRenderer = useMemo(() => resolveDiffRenderer(agentName), [agentName]);
 
-  const activeResultView = useMemo<CaseResultViewModel | null>(() => {
+  const activeResultView = useMemo(() => {
     if (!activeOutputRecord) return null;
-
-    const { raw: decisionRaw, decision: decisionBool } = resolveDecisionFromRecord(
-      activeOutputRecord,
-      decisionConfig,
-    );
-    const confidenceRaw = getValueByAliases(activeOutputRecord, RESULT_ALIASES.confidence);
-    const summaryRaw = getValueByAliases(activeOutputRecord, RESULT_ALIASES.summary);
-    const risksRaw = getValueByAliases(activeOutputRecord, RESULT_ALIASES.risks);
-    const missingRaw = getValueByAliases(activeOutputRecord, RESULT_ALIASES.missing);
-    const justificationRaw = getValueByAliases(activeOutputRecord, RESULT_ALIASES.justification);
-
-    const decisionLabel =
-      decisionBool == null
-        ? typeof decisionRaw === 'string'
-          ? decisionRaw
-          : 'Unknown'
-        : decisionBool
-          ? decisionConfig.trueLabel
-          : decisionConfig.falseLabel;
-    const decisionTone: CaseResultViewModel['decisionTone'] =
-      decisionBool == null ? 'neutral' : decisionBool ? 'positive' : 'danger';
-
-    return {
-      decisionLabel,
-      decisionTone,
-      confidenceLabel: formatConfidence(asNumber(confidenceRaw)),
-      caseSummary:
-        typeof summaryRaw === 'string' && summaryRaw.trim().length > 0
-          ? summaryRaw
-          : 'No summary was provided by this case output.',
-      justification:
-        typeof justificationRaw === 'string' && justificationRaw.trim().length > 0
-          ? justificationRaw
-          : 'No justification was provided by this case output.',
-      risks: toStringArray(risksRaw),
-      missingInformation: toStringArray(missingRaw),
-    };
+    return buildResultViewModel(activeOutputRecord, decisionConfig, {
+      summaryFallback: 'No summary was provided by this case output.',
+      justificationFallback: 'No justification was provided by this case output.',
+    });
   }, [activeOutputRecord, decisionConfig]);
 
   const activeAdditionalOutputEntries = useMemo(() => {
     if (!activeOutputRecord) return [];
-    const known = new Set(
-      [
-        ...decisionKnownAliases(decisionConfig),
-        ...RESULT_ALIASES.confidence,
-        ...RESULT_ALIASES.summary,
-        ...RESULT_ALIASES.risks,
-        ...RESULT_ALIASES.missing,
-        ...RESULT_ALIASES.justification,
-      ].map(normalizeKey),
-    );
-    return Object.entries(activeOutputRecord).filter(([key]) => !known.has(normalizeKey(key)));
+    return getAdditionalOutputEntries(activeOutputRecord, { decisionConfig });
   }, [activeOutputRecord, decisionConfig]);
 
   function harnessTabId(key: HarnessTabKey) {
@@ -1221,7 +590,7 @@ export default function AgentTestRunDrawer({
   const summaryInvalidPred = runMetrics?.invalid_pred ?? 0;
   const summaryPassRate = runMetrics?.pass_rate ?? (summaryTotal > 0 ? summaryPassed / summaryTotal : null);
   const summaryPassRateLabel = formatPercent(summaryPassRate);
-  const summaryPassRateTone: StatCardProps['tone'] =
+  const summaryPassRateTone: AgentStatCardTone =
     summaryPassRate == null ? 'default' : summaryPassRate >= 0.8 ? 'positive' : summaryPassRate >= 0.6 ? 'accent' : 'danger';
 
   const classification = runMetrics?.classification ?? null;
@@ -1305,26 +674,15 @@ export default function AgentTestRunDrawer({
                 </p>
 
                 <div className="mt-3 flex items-center gap-2">
-                  <label htmlFor={modelSelectId} className="text-xs font-semibold text-slate-700">
-                    Model
-                  </label>
-                  <select
+                  <AgentModelSelect
                     id={modelSelectId}
-                    value={selectedModelId}
-                    onChange={(e) => setSelectedModelId(e.target.value)}
-                    disabled={modelsStatus !== 'success' || runPhase === 'running' || models.length === 0}
-                    className="min-w-52 rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 shadow-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-PrimaryBlue focus-visible:ring-offset-2 focus-visible:ring-offset-white disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-400"
-                  >
-                    {modelsStatus === 'loading' ? <option value="">Loading…</option> : null}
-                    {modelsStatus === 'error' ? <option value="">Unavailable</option> : null}
-                    {modelsStatus === 'success'
-                      ? models.map((model) => (
-                        <option key={model.id} value={model.id}>
-                          {model.id} ({model.provider})
-                        </option>
-                      ))
-                      : null}
-                  </select>
+                    models={models}
+                    modelsStatus={modelsStatus}
+                    selectedModelId={selectedModelId}
+                    setSelectedModelId={setSelectedModelId}
+                    disabled={runPhase === 'running'}
+                    selectClassName="min-w-52 rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 shadow-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-PrimaryBlue focus-visible:ring-offset-2 focus-visible:ring-offset-white disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-400"
+                  />
                 </div>
               </div>
 
@@ -1455,127 +813,22 @@ export default function AgentTestRunDrawer({
                       activeOutputRecord && activeResultView ? (
                         <div className="space-y-4 pb-2">
                           <section className="rounded-2xl border border-slate-200 bg-[linear-gradient(135deg,rgba(14,165,233,0.06)_0%,rgba(255,255,255,0.95)_42%,rgba(16,185,129,0.06)_100%)] p-4">
-                            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-2">
-                              {[
-                                {
-                                  label: 'Decision',
-                                  value: activeResultView.decisionLabel,
-                                  tone:
-                                    activeResultView.decisionTone === 'positive'
-                                      ? 'border-emerald-200 bg-emerald-50/70'
-                                      : activeResultView.decisionTone === 'danger'
-                                        ? 'border-rose-200 bg-rose-50/70'
-                                        : 'border-slate-200 bg-white',
-                                },
-                                {
-                                  label: 'Confidence',
-                                  value: activeResultView.confidenceLabel,
-                                  tone: 'border-sky-200 bg-sky-50/70',
-                                }
-                              ].map((card) => (
-                                <div key={card.label} className={`rounded-xl border p-3 ${card.tone}`}>
-                                  <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-                                    {card.label}
-                                  </p>
-                                  <p className="mt-1 text-base font-semibold text-slate-900 break-all">
-                                    {card.value}
-                                  </p>
-                                </div>
-                              ))}
-                            </div>
+                            <AgentDecisionSummaryCards
+                              decisionLabel={activeResultView.decisionLabel}
+                              decisionTone={activeResultView.decisionTone}
+                              confidenceLabel={activeResultView.confidenceLabel}
+                            />
                           </section>
 
-                          <section className="grid gap-4 xl:grid-cols-2">
-                            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                              <h5 className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                                Clinical Summary
-                              </h5>
-                              <p className="mt-2 text-sm leading-relaxed text-slate-800">
-                                {activeResultView.caseSummary}
-                              </p>
-                            </div>
+                          <AgentNarrativeSections
+                            caseSummary={activeResultView.caseSummary}
+                            justification={activeResultView.justification}
+                            risks={activeResultView.risks}
+                            missingInformation={activeResultView.missingInformation}
+                          />
 
-                            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                              <h5 className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                                Justification
-                              </h5>
-                              <p className="mt-2 text-sm leading-relaxed text-slate-800">
-                                {activeResultView.justification}
-                              </p>
-                            </div>
-
-                            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                              <h5 className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                                Key Risks
-                              </h5>
-                              {activeResultView.risks.length ? (
-                                <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-slate-800">
-                                  {activeResultView.risks.map((risk, index) => (
-                                    <li key={`risk-${index}`}>{risk}</li>
-                                  ))}
-                                </ul>
-                              ) : (
-                                <p className="mt-2 text-sm text-slate-500">No key risks were returned.</p>
-                              )}
-                            </div>
-
-                            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                              <h5 className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                                Missing Information
-                              </h5>
-                              {activeResultView.missingInformation.length ? (
-                                <div className="mt-2 flex flex-wrap gap-2">
-                                  {activeResultView.missingInformation.map((item, index) => (
-                                    <Badge
-                                      key={`missing-${index}`}
-                                      className="bg-amber-50 text-amber-700 ring-amber-200"
-                                    >
-                                      {item}
-                                    </Badge>
-                                  ))}
-                                </div>
-                              ) : (
-                                <div className="mt-2">
-                                  <Badge className="bg-emerald-50 text-emerald-700 ring-emerald-200">
-                                    None detected
-                                  </Badge>
-                                </div>
-                              )}
-                            </div>
-                          </section>
-
-                          {activeAdditionalOutputEntries.length ? (
-                            <details className="rounded-2xl border border-slate-200 bg-white p-4">
-                              <summary className="cursor-pointer select-none text-sm font-semibold text-slate-800">
-                                Additional Output Fields
-                              </summary>
-                              <div className="mt-3 grid gap-3 md:grid-cols-2">
-                                {activeAdditionalOutputEntries.map(([key, item]) => (
-                                  <div key={key} className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-                                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                                      {titleCaseKey(key)}
-                                    </p>
-                                    <div className="mt-2 max-h-40 overflow-auto text-sm text-slate-800">
-                                      {item != null && typeof item === 'object' ? (
-                                        <JsonInspector value={item} />
-                                      ) : (
-                                        <p>{String(item ?? '—')}</p>
-                                      )}
-                                    </div>
-                                  </div>
-                                ))}
-                              </div>
-                            </details>
-                          ) : null}
-
-                          <details className="rounded-2xl border border-slate-200 bg-white p-4">
-                            <summary className="cursor-pointer select-none text-sm font-semibold text-slate-800">
-                              Raw Output JSON
-                            </summary>
-                            <div className="mt-3 max-h-[min(24rem,50vh)] overflow-auto rounded-2xl border border-slate-200 bg-slate-50 p-3">
-                              <JsonInspector value={activeOutputRecord} />
-                            </div>
-                          </details>
+                          <AgentAdditionalOutputFields entries={activeAdditionalOutputEntries} />
+                          <AgentRawJsonDetails summary="Raw Output JSON" value={activeOutputRecord} />
                         </div>
                       ) : (
                         <p className="text-xs text-slate-600">No output returned for this case.</p>
@@ -1697,111 +950,17 @@ export default function AgentTestRunDrawer({
                           />
                         </div>
 
-                        <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-3">
-                          <p className="text-xs font-semibold uppercase tracking-wide text-slate-600">
-                            Reliability Summary
-                          </p>
-                          <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
-                            <StatCard
-                              label="Total Issues"
-                              value={formatInteger(activeReliabilityTotalIssues)}
-                              tone="accent"
-                            />
-                            <StatCard
-                              label="Error Issues"
-                              value={formatInteger(activeReliabilityErrorIssues)}
-                              tone={
-                                activeReliabilitySummary == null
-                                  ? 'default'
-                                  : activeReliabilityHasErrors
-                                    ? 'danger'
-                                    : 'default'
-                              }
-                            />
-                            <StatCard
-                              label="Warning Issues"
-                              value={formatInteger(activeReliabilityWarningIssues)}
-                              tone={
-                                activeReliabilitySummary == null
-                                  ? 'default'
-                                  : activeReliabilityHasWarnings
-                                    ? 'warning'
-                                    : 'positive'
-                              }
-                            />
-                            <StatCard
-                              label="Info Issues"
-                              value={formatInteger(activeReliabilityInfoIssues)}
-                              tone={activeReliabilitySummary == null ? 'default' : 'accent'}
-                            />
-                            <StatCard
-                              label="Reliability Status"
-                              value={activeReliabilityStatusLabel}
-                              tone={activeReliabilityStatusTone}
-                              small={true}
-                            />
-                          </div>
+                        <AgentReliabilitySummaryPanel
+                          summaryView={activeReliabilitySummaryView}
+                          statusSmall={true}
+                        />
 
-                          {activeReliabilityByCategory.length ? (
-                            <div className="mt-3">
-                              <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-                                By Category
-                              </p>
-                              <div className={`mt-2 grid w-full gap-3 ${activeReliabilityCategoryGridColumns}`}>
-                                {activeReliabilityByCategory.map((item) => {
-                                  const toneClass =
-                                    item.severity === 'error'
-                                      ? 'border-rose-200 bg-rose-50/70 text-rose-900'
-                                      : item.severity === 'warning'
-                                        ? 'border-amber-200 bg-amber-50/80 text-amber-900'
-                                        : 'border-sky-200 bg-sky-50/70 text-sky-900';
-                                  return (
-                                    <div
-                                      key={`${item.issueCode}-${item.severity}`}
-                                      className={`min-h-44 rounded-xl border p-3 ${toneClass}`}
-                                    >
-                                      <div className="flex h-full flex-col justify-between">
-                                        <div>
-                                          <p className="text-[11px] font-semibold uppercase tracking-wide opacity-80">
-                                            Issue Code
-                                          </p>
-                                          <p className="mt-1 text-sm font-semibold">
-                                            {titleCaseKey(item.issueCode)}
-                                          </p>
-                                        </div>
-                                        <div>
-                                          <p className="text-[11px] font-semibold uppercase tracking-wide opacity-80">
-                                            Severity
-                                          </p>
-                                          <p className="mt-1 text-xs font-semibold uppercase tracking-wide">
-                                            {item.severity}
-                                          </p>
-                                        </div>
-                                        <div>
-                                          <p className="text-[11px] font-semibold uppercase tracking-wide opacity-80">
-                                            Count
-                                          </p>
-                                          <p className="mt-1 text-lg font-semibold">
-                                            {formatInteger(item.count)}
-                                          </p>
-                                        </div>
-                                      </div>
-                                    </div>
-                                  );
-                                })}
-                              </div>
-                            </div>
-                          ) : null}
-                        </div>
-
-                        <details className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-3">
-                          <summary className="cursor-pointer select-none text-xs font-semibold uppercase tracking-wide text-slate-600">
-                            Raw Metrics JSON
-                          </summary>
-                          <div className="mt-3 max-h-[min(24rem,50vh)] overflow-auto rounded-2xl border border-slate-200 bg-white p-3">
-                            <JsonInspector value={activeMetricsState.metrics} />
-                          </div>
-                        </details>
+                        <AgentRawJsonDetails
+                          summary="Raw Metrics JSON"
+                          value={activeMetricsState.metrics}
+                          className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-3"
+                          contentClassName="mt-3 max-h-[min(24rem,50vh)] overflow-auto rounded-2xl border border-slate-200 bg-white p-3"
+                        />
                       </div>
                     </div>
                   ) : null}

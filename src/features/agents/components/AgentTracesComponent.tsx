@@ -91,8 +91,7 @@ export function AgentTracesComponent({ runId, onDone }: AgentTracesComponentProp
   }, []);
 
   const handleError = useCallback(() => {
-    setStreamState('error');
-    setErrorText('Stream error (check server logs / CORS).');
+    setStreamState((prev) => (prev === 'done' ? 'done' : 'connecting'));
   }, []);
 
   const handleMessage = useCallback((event: MessageEvent<string>) => {
