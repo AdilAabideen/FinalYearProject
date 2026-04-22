@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from typing import Sequence
+from typing import Any, Sequence
 
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage, ToolMessage
 
@@ -44,6 +44,39 @@ def normalize_chat_messages(messages: list[dict[str, str]]) -> list[dict[str, st
     return normalized
 
 
+def render_tool_message_as_user_content(msg: ToolMessage) -> str:
+    """Render a ToolMessage into the normalized user-facing replay format."""
+    tool_name = getattr(msg, "name", None) or "tool"
+    tool_status = getattr(msg, "status", None) or "success"
+    tool_id = getattr(msg, "tool_call_id", None) or "unknown"
+    raw_content = (getattr(msg, "content", None) or "").strip()
+    return f"Tool result ({tool_name}, id={tool_id}, status={tool_status}):\n{raw_content}"
+
+
+def render_ai_tool_calls_json(tool_calls: Sequence[Any]) -> str:
+    """Render assistant tool calls as canonical JSON replay text."""
+    rendered_calls = [
+        {
+            "id": tc.get("id"),
+            "name": tc.get("name"),
+            "arguments": tc.get("args", {}),
+        }
+        for tc in tool_calls
+    ]
+    return json.dumps({"tool_calls": rendered_calls}, ensure_ascii=False)
+
+
+def render_ai_message_for_provider(msg: AIMessage) -> str:
+    """Render assistant content plus any tool calls into one replayable text block."""
+    content = (getattr(msg, "content", None) or "").strip()
+    tool_calls = getattr(msg, "tool_calls", None) or []
+    if not tool_calls:
+        return content
+
+    rendered_calls = render_ai_tool_calls_json(tool_calls)
+    return f"{content}\n\n{rendered_calls}" if content else rendered_calls
+
+
 def to_provider_messages(
     messages: Sequence[BaseMessage],
     *,
@@ -68,23 +101,10 @@ def to_provider_messages(
             raise ValueError(f"Unsupported message type for {unsupported_type_label}: {type(msg).__name__}")
 
         if isinstance(msg, ToolMessage):
-            tool_name = getattr(msg, "name", None) or "tool"
-            tool_status = getattr(msg, "status", None) or "success"
-            tool_id = getattr(msg, "tool_call_id", None) or "unknown"
-            raw_content = (getattr(msg, "content", None) or "").strip()
-            content = f"Tool result ({tool_name}, id={tool_id}, status={tool_status}):\n{raw_content}"
+            content = render_tool_message_as_user_content(msg)
+        elif isinstance(msg, AIMessage):
+            content = render_ai_message_for_provider(msg)
         else:
             content = (getattr(msg, "content", None) or "").strip()
-            if isinstance(msg, AIMessage) and getattr(msg, "tool_calls", None):
-                tool_calls = [
-                    {
-                        "id": tc.get("id"),
-                        "name": tc.get("name"),
-                        "arguments": tc.get("args", {}),
-                    }
-                    for tc in msg.tool_calls
-                ]
-                rendered_calls = json.dumps({"tool_calls": tool_calls}, ensure_ascii=False)
-                content = f"{content}\n\n{rendered_calls}" if content else rendered_calls
         out.append({"role": role, "content": content})
     return out

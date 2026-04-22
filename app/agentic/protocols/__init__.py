@@ -4,7 +4,12 @@ from .protocol_types import (
     ToolCallParseResult,
     ToolCallParseSource,
 )
-from .message_normalizer import normalize_chat_messages
+from .message_normalizer import (
+    normalize_chat_messages,
+    render_ai_message_for_provider,
+    render_ai_tool_calls_json,
+    render_tool_message_as_user_content,
+)
 from .tool_call_recovery import (
     extract_tool_calls_with_priority,
     recover_from_fenced_json_text,
@@ -28,6 +33,9 @@ __all__ = [
     "ToolCallParseResult",
     "ToolCallParseSource",
     "normalize_chat_messages",
+    "render_ai_message_for_provider",
+    "render_ai_tool_calls_json",
+    "render_tool_message_as_user_content",
     "to_provider_messages",
     "extract_tool_calls_with_priority",
     "recover_from_fenced_json_text",
