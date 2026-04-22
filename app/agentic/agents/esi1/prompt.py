@@ -155,7 +155,7 @@ ONLY 1 TOOL CALL PER STEP and ITERATION. DO NOT TRY CALL MULTIPLE TOOLS AT THE S
 
 """
 
-SINGLE_AGENT_OUTPUT_REQURIEMENTS = """
+SINGLE_AGENT_OUTPUT_REQUIREMENTS = """
 <output_requirements>
 Return ES1AgentOutput with:
 - is_esi1: true if ESI-1, false otherwise

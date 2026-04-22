@@ -208,6 +208,16 @@ Use event_type="resource_needed" every time you conclude that a specific ESI-cou
 9. Return final output strictly in the ES345AgentOutput schema.
 </workflow_information>
 
+FINAL REMINDER
+Be strict.
+This agent is for ESI-3, ESI-4, and ESI-5 only.
+Predict the minimum likely number of ESI-counted resources and map that to 3, 4, or 5.
+Do not use vital-sign uptriage reasoning in this agent.
+Do not finalize the case unless S1 and S2 have both been assessed in the reasoning trace.
+ONLY 1 TOOL CALL PER STEP and ITERATION. DO NOT TRY CALL MULTIPLE TOOLS AT THE SAME TIME.
+"""
+
+SINGLE_AGENT_OUTPUT_REQUIREMENTS = """
 <output_requirements>
 Return ES345AgentOutput with:
 - esi_level: 3, 4, or 5
@@ -219,12 +229,22 @@ Return ES345AgentOutput with:
 - missing_information: only genuinely decision-relevant missing information
 - justification: concise and specific
 </output_requirements>
+"""
 
-FINAL REMINDER
-Be strict.
-This agent is for ESI-3, ESI-4, and ESI-5 only.
-Predict the minimum likely number of ESI-counted resources and map that to 3, 4, or 5.
-Do not use vital-sign uptriage reasoning in this agent.
-Do not finalize the case unless S1 and S2 have both been assessed in the reasoning trace.
-ONLY 1 TOOL CALL PER STEP and ITERATION. DO NOT TRY CALL MULTIPLE TOOLS AT THE SAME TIME.
+HANDOFF_REQUIREMENTS = """
+<handoff_requirements>
+YOU MUST CALL THE HANDOFF TOOL. THIS TRANSFERS CONTROL TO THE DOCTOR AGENT.
+
+HANDOFF TO DOCTOR AGENT IF THIS ESI-3/4/5 CASE NEEDS ESCALATION OR REVIEW (HANDOFF USING ESI345ToDoctorPayload):
+- decision: short result showing that doctor review or escalation is needed
+- urgency: short urgency label such as "urgent", "high", or "reassess_now"
+- reason: brief explanation of why this case should be escalated from the ESI-345 stage
+- esi_level: the current ESI level, either 3, 4, or 5
+- num_resources: predicted number of ESI-counted resources required
+- predicted_resources: specific likely resources, if any
+- critical_concerns: key red flags, abnormal findings, or up-triage concerns the doctor should review
+- request: short escalation request telling the doctor agent what to review or decide next
+
+YOU MUST CALL THE HANDOFF TOOL.
+</handoff_requirements>
 """

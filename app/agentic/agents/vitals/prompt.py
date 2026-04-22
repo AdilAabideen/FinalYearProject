@@ -83,17 +83,6 @@ OBSERVABILITY (MANDATORY)
 - WHEN YOU HAVE MADE THE FINAL DECISION AND THE REASONING BEHIND IT CALL THE final_answer tool
 </observability>
 
-<output>
-OUTPUT (STRICT)
-CALL THE final_answer tool with the following keys:
-
-Field requirements:
-- `ok`: true if you can produce a usable recommendation from the available information; otherwise false.
-- `recommendation.consider_uptriage`: true if the findings suggest escalation should be considered; otherwise false.
-- `recommendation.reasoning_consider_uptriage`: a short, clinically grounded explanation of the recommendation. Make this Detailed and Include as much info as you can please
-- `recommendation.confidence`: low, medium, or high depending on the strength and completeness of the evidence.
-</output>
-
 <flagging_logic>
 FLAGGING LOGIC
 - "hard" flags: any ESI danger zone high-risk, shock_index band == "hard", adult_bp_temp hard_flags present.
@@ -109,4 +98,37 @@ STYLE
 - Be concise and auditable.
 - Never output prose outside the JSON.
 </style>
+"""
+
+
+SINGLE_AGENT_OUTPUT_REQUIREMENTS = """
+<output_requirements>
+OUTPUT (STRICT)
+CALL THE final_answer tool with the following keys:
+
+Field requirements:
+- `ok`: true if you can produce a usable recommendation from the available information; otherwise false.
+- `recommendation.consider_uptriage`: true if the findings suggest escalation should be considered; otherwise false.
+- `recommendation.reasoning_consider_uptriage`: a short, clinically grounded explanation of the recommendation. Make this Detailed and Include as much info as you can please
+- `recommendation.confidence`: low, medium, or high depending on the strength and completeness of the evidence.
+</output_requirements>
+"""
+
+HANDOFF_REQUIREMENTS = """
+<handoff_requirements>
+YOU MUST CALL THE HANDOFF TOOL WHEN THE VITALS ASSESSMENT SUGGESTS DOCTOR REVIEW OR POSSIBLE UP-TRIAGE.
+
+HANDOFF TO DOCTOR AGENT USING VitalsToDoctorPayload:
+- consider_uptriage: true if the vitals pattern suggests the case may need up-triage, otherwise false
+- urgency: short urgency level such as "low", "moderate", or "high"
+- reason: brief explanation of why the vitals pattern is concerning
+- abnormal_vitals: specific abnormal vital signs or physiological concerns identified
+- confidence: confidence in the recommendation, using "low", "medium", or "high"
+- request: short instruction telling the doctor agent what to review or decide next
+
+ONLY INCLUDE GENUINELY RELEVANT VITAL ABNORMALITIES OR PHYSIOLOGICAL CONCERNS.
+KEEP THE HANDOFF BRIEF, CLINICAL, AND ACTION-ORIENTED.
+
+YOU MUST CALL THE HANDOFF TOOL.
+</handoff_requirements>
 """
