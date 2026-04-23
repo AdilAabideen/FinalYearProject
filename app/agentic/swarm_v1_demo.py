@@ -7,8 +7,8 @@ from typing import Any, Dict, List
 from langgraph.graph import END, START, StateGraph
 from langgraph.types import Command
 
+from app.agentic.payload_builder import build_pending_agent_payload
 from app.agentic.swarm_contract import (
-    AgentExecutionPayload,
     AgentExecutionResult,
     AgentName,
     HandoffEnvelope,
@@ -42,15 +42,7 @@ def doctor_gate_ready(state: SwarmState) -> bool:
     return has_acuity and has_vitals
 
 
-def build_agent_payload(agent_name: AgentName, state: SwarmState) -> AgentExecutionPayload:
-    active_handoff = None
-    pending_handoff = state.get("pending_handoff")
-    if isinstance(pending_handoff, dict):
-        try:
-            active_handoff = HandoffEnvelope.model_validate(pending_handoff)
-        except Exception:
-            active_handoff = None
-
+def _validated_handoff_history(state: SwarmState) -> List[HandoffEnvelope]:
     history: List[HandoffEnvelope] = []
     for item in state.get("handoff_history", []):
         if not isinstance(item, dict):
@@ -59,13 +51,15 @@ def build_agent_payload(agent_name: AgentName, state: SwarmState) -> AgentExecut
             history.append(HandoffEnvelope.model_validate(item))
         except Exception:
             continue
+    return history
 
-    return AgentExecutionPayload(
-        agent_name=agent_name,
-        case_info=dict(state.get("case_info") or {}),
-        active_handoff=active_handoff,
-        handoff_history=history,
-    )
+
+def _llm_payload_case_info(payload: Dict[str, Any]) -> Dict[str, Any]:
+    llm_payload = payload.get("llm_payload")
+    if not isinstance(llm_payload, dict):
+        return {}
+    case_info = llm_payload.get("case_info")
+    return dict(case_info) if isinstance(case_info, dict) else {}
 
 
 def _handoff(
@@ -85,9 +79,13 @@ def _handoff(
     )
 
 
-def execute_stub_agent(payload: AgentExecutionPayload) -> AgentExecutionResult:
-    case_info = payload.case_info
-    agent_name = payload.agent_name
+def execute_stub_agent(
+    *,
+    agent_name: AgentName,
+    pending_agent_payload: Dict[str, Any],
+    state: SwarmState,
+) -> AgentExecutionResult:
+    case_info = _llm_payload_case_info(pending_agent_payload)
 
     if agent_name == "esi1_agent":
         if bool(case_info.get("needs_immediate_lifesaving_intervention")):
@@ -221,7 +219,8 @@ def execute_stub_agent(payload: AgentExecutionPayload) -> AgentExecutionResult:
     if agent_name == "doctor_agent":
         acuity_handoff = None
         vitals_handoff = None
-        for item in payload.handoff_history:
+        handoff_history = _validated_handoff_history(state)
+        for item in handoff_history:
             if item.target_agent != "doctor_agent":
                 continue
             if item.from_agent in ACUITY_AGENTS:
@@ -251,7 +250,7 @@ def execute_stub_agent(payload: AgentExecutionPayload) -> AgentExecutionResult:
                 "final_esi": int(final_esi),
                 "acuity_from": acuity_handoff.from_agent,
                 "vitals_consider_uptriage": bool(vitals_handoff.payload.get("consider_uptriage")),
-                "handoff_count": len(payload.handoff_history),
+                "handoff_count": len(handoff_history),
             },
         )
 
@@ -264,11 +263,16 @@ def execute_stub_agent(payload: AgentExecutionPayload) -> AgentExecutionResult:
 
 def _agent_node(agent_name: AgentName):
     def node(state: SwarmState) -> Command:
-        payload = build_agent_payload(agent_name, state)
-        result = execute_stub_agent(payload)
+        pending_agent_payload = build_pending_agent_payload(agent_name, state)
+        result = execute_stub_agent(
+            agent_name=agent_name,
+            pending_agent_payload=pending_agent_payload,
+            state=state,
+        )
 
         updates: Dict[str, Any] = {
             "active_agent": agent_name,
+            "pending_agent_payload": pending_agent_payload,
             "completed_agents": [agent_name],
             "execution_trace": [
                 {
@@ -276,6 +280,7 @@ def _agent_node(agent_name: AgentName):
                     "agent": agent_name,
                     "status": result.status,
                     "output": result.output,
+                    "payload_metadata": pending_agent_payload.get("metadata", {}),
                 }
             ],
         }
@@ -466,6 +471,9 @@ def print_run_result(result: SwarmState) -> None:
     print("\nCompleted agents:")
     for agent in result.get("completed_agents", []):
         print(f"- {agent}")
+
+    print("\nLast pending agent payload:")
+    print(_json(result.get("pending_agent_payload")))
 
     print("\nFinal output:")
     print(_json(result.get("final_output")))
