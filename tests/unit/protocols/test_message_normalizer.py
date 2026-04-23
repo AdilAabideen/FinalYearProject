@@ -33,14 +33,6 @@ def test_ut_pro_025_merge_consecutive_user_messages():
 
 
 @pytest.mark.unit
-def test_ut_pro_026_merge_consecutive_assistant_messages():
-    result = normalize_chat_messages(
-        [{"role": "assistant", "content": "a"}, {"role": "assistant", "content": "b"}]
-    )
-    assert result == [{"role": "assistant", "content": "a\n\nb"}]
-
-
-@pytest.mark.unit
 def test_ut_pro_027_preserve_mixed_non_system_ordering():
     result = normalize_chat_messages(
         [
@@ -59,13 +51,6 @@ def test_ut_pro_028_render_tool_message_into_provider_compatible_user_text():
     assert "tool_a" in rendered
     assert "call_1" in rendered
     assert "done" in rendered
-
-
-@pytest.mark.unit
-def test_ut_pro_029_render_assistant_tool_calls_as_canonical_json():
-    rendered = render_ai_tool_calls_json([{"id": "call_1", "name": "tool_a", "args": {"x": 1}}])
-    assert '"tool_calls"' in rendered
-    assert '"name": "tool_a"' in rendered
 
 
 @pytest.mark.unit

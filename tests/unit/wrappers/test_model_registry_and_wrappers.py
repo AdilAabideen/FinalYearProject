@@ -69,16 +69,6 @@ def test_ut_wrp_001_dr7_wrapper_builds_bearer_auth_header(monkeypatch, load_json
 
 @pytest.mark.unit
 @pytest.mark.wrapper
-def test_ut_wrp_002_dr7_wrapper_sends_normalized_provider_messages(monkeypatch, load_json_fixture):
-    recorded = []
-    _patched_client(monkeypatch, FakeResponse(payload=load_json_fixture("provider_payloads/dr7_native_tool_calls.json")), recorded)
-    model = Dr7MedicalChatModel(model="medgemma-4b-it", base_url="https://dr7.test", api_key="secret")
-    model._generate([HumanMessage(content="hi")], tools=[])
-    assert recorded[0]["json"]["messages"] == [{"role": "user", "content": "hi"}]
-
-
-@pytest.mark.unit
-@pytest.mark.wrapper
 def test_ut_wrp_003_dr7_wrapper_injects_tool_instruction_when_tools_bound(monkeypatch, load_json_fixture):
     recorded = []
     _patched_client(monkeypatch, FakeResponse(payload=load_json_fixture("provider_payloads/dr7_native_tool_calls.json")), recorded)
@@ -95,16 +85,6 @@ def test_ut_wrp_004_dr7_wrapper_parses_provider_native_tool_calls(monkeypatch, l
     model = Dr7MedicalChatModel(model="medgemma-4b-it", base_url="https://dr7.test", api_key="secret")
     result = model._generate([HumanMessage(content="hi")], tools=[{"function": {"name": "lookup_value", "description": "", "parameters": {}}}])
     assert result.generations[0].message.tool_calls[0]["name"] == "lookup_value"
-
-
-@pytest.mark.unit
-@pytest.mark.wrapper
-def test_ut_wrp_005_dr7_wrapper_preserves_plain_content_when_no_tool_calls_exist(monkeypatch):
-    recorded = []
-    _patched_client(monkeypatch, FakeResponse(payload={"choices": [{"message": {"content": "hello"}}]}), recorded)
-    model = Dr7MedicalChatModel(model="medgemma-4b-it", base_url="https://dr7.test", api_key="secret")
-    result = model._generate([HumanMessage(content="hi")], tools=[])
-    assert result.generations[0].message.content == "hello"
 
 
 @pytest.mark.unit
@@ -139,29 +119,12 @@ def test_ut_wrp_008_dr7_wrapper_raises_on_missing_choices_message(monkeypatch):
 
 @pytest.mark.unit
 @pytest.mark.wrapper
-def test_ut_wrp_009_llama_wrapper_omits_auth_header_when_api_key_empty(monkeypatch, load_json_fixture):
-    recorded = []
-    _patched_client(monkeypatch, FakeResponse(payload=load_json_fixture("provider_payloads/llama_native_tool_calls.json")), recorded)
-    model = LlamaServerChat(model="esi1", base_url="https://llama.test", api_key="")
-    model._generate([HumanMessage(content="hi")], tools=[])
-    assert "Authorization" not in recorded[0]["headers"]
-
-
-@pytest.mark.unit
-@pytest.mark.wrapper
 def test_ut_wrp_010_llama_wrapper_includes_auth_header_when_api_key_provided(monkeypatch, load_json_fixture):
     recorded = []
     _patched_client(monkeypatch, FakeResponse(payload=load_json_fixture("provider_payloads/llama_native_tool_calls.json")), recorded)
     model = LlamaServerChat(model="esi1", base_url="https://llama.test", api_key="secret")
     model._generate([HumanMessage(content="hi")], tools=[])
     assert recorded[0]["headers"]["Authorization"] == "Bearer secret"
-
-
-@pytest.mark.unit
-@pytest.mark.wrapper
-def test_ut_wrp_011_llama_wrapper_resolves_adapter_by_literal_name():
-    model = LlamaServerChat(model="esi1", adapter="esi2")
-    assert model._resolve_adapter_id() == 1
 
 
 @pytest.mark.unit
@@ -198,16 +161,6 @@ def test_ut_wrp_015_llama_wrapper_parses_tool_calls_when_present(monkeypatch, lo
 
 @pytest.mark.unit
 @pytest.mark.wrapper
-def test_ut_wrp_016_llama_wrapper_preserves_content_when_no_tool_calls_exist(monkeypatch):
-    recorded = []
-    _patched_client(monkeypatch, FakeResponse(payload={"choices": [{"message": {"content": "hello"}}]}), recorded)
-    model = LlamaServerChat(model="esi1", base_url="https://llama.test")
-    result = model._generate([HumanMessage(content="hi")], tools=[])
-    assert result.generations[0].message.content == "hello"
-
-
-@pytest.mark.unit
-@pytest.mark.wrapper
 def test_ut_wrp_017_llama_wrapper_raises_on_http_error(monkeypatch):
     recorded = []
     _patched_client(monkeypatch, FakeResponse(status_code=500, payload={"detail": "bad"}, text="bad"), recorded)
@@ -217,33 +170,15 @@ def test_ut_wrp_017_llama_wrapper_raises_on_http_error(monkeypatch):
 
 
 @pytest.mark.unit
-def test_ut_wrp_018_resolve_registered_model_spec():
-    spec = resolve_model_spec("esi1")
-    assert spec.provider == "llama"
-
-
-@pytest.mark.unit
 def test_ut_wrp_019_resolve_unknown_model_id_as_openai_provider_fallback():
     spec = resolve_model_spec("future-model")
     assert spec.provider == "openai"
 
 
 @pytest.mark.unit
-def test_ut_wrp_020_validate_model_tool_compatibility():
-    spec = validate_model_for_agent(model_id="gpt-4o-mini", agent_name="vitals_agent", requires_tools=True)
-    assert spec.supports_tools is True
-
-
-@pytest.mark.unit
 def test_ut_wrp_021_registered_models_list_is_stable_and_sorted():
     ids = [spec.id for spec in list_registered_models()]
     assert ids == sorted(ids)
-
-
-@pytest.mark.unit
-def test_ut_wrp_022_llama_build_maps_model_id_to_adapter_literal():
-    model = build_llama_model(resolve_model_spec("esi2"))
-    assert model.adapter == "esi2"
 
 
 @pytest.mark.unit

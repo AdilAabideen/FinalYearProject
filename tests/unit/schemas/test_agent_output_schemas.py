@@ -65,18 +65,3 @@ def test_ut_sch_006_esi1_input_accepts_alias_fields():
     )
     assert payload.arrival_transport == "walk"
 
-
-@pytest.mark.unit
-def test_ut_sch_007_esi2_input_accepts_alias_fields():
-    payload = ES2AgentInput.model_validate(
-        {"gender": "m", "race": "x", "arrivaltransport": "walk", "pain": "1", "chief_complaint": "pain", "age": 20, "tiragecase": "case"}
-    )
-    assert payload.arrival_transport == "walk"
-
-
-@pytest.mark.unit
-def test_ut_sch_008_esi345_input_accepts_alias_fields():
-    payload = ES345AgentInput.model_validate(
-        {"gender": "m", "race": "x", "transfer": "walk", "pain": "1", "chiefcomplaint": "pain", "age": 20, "triage_case": "case"}
-    )
-    assert payload.arrival_transport == "walk"

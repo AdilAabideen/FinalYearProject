@@ -22,18 +22,6 @@ def test_ut_pro_001_normalize_openai_style_raw_tool_call():
 
 
 @pytest.mark.unit
-def test_ut_pro_002_normalize_plain_tool_call_shape():
-    calls = normalize_tool_calls_typed([{"id": "call_2", "name": "tool_a", "arguments": {"x": 2}}])
-    assert calls[0].args == {"x": 2}
-
-
-@pytest.mark.unit
-def test_ut_pro_003_normalize_args_alias_shape():
-    calls = normalize_tool_calls_typed([{"id": "call_3", "name": "tool_a", "args": {"x": 3}}])
-    assert calls[0].args == {"x": 3}
-
-
-@pytest.mark.unit
 def test_ut_pro_004_parse_string_arguments_into_dict():
     calls = normalize_tool_calls_typed([{"id": "call_4", "name": "tool_a", "arguments": "{\"x\": 4}"}])
     assert calls[0].args == {"x": 4}

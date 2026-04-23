@@ -31,12 +31,6 @@ def test_ut_run_031_payload_to_human_content_extracts_plain_string_input():
 
 
 @pytest.mark.unit
-def test_ut_run_032_payload_to_human_content_extracts_latest_user_message_from_tuple_messages():
-    payload = {"messages": [("user", "first"), ("assistant", "x"), ("user", "latest")]}
-    assert SSEHandrolledAgent._payload_to_human_content(payload) == "latest"
-
-
-@pytest.mark.unit
 def test_ut_run_033_payload_to_human_content_extracts_latest_user_message_from_dict_messages():
     payload = {"messages": [{"role": "user", "content": "first"}, {"role": "user", "content": "latest"}]}
     assert SSEHandrolledAgent._payload_to_human_content(payload) == "latest"

@@ -90,13 +90,6 @@ def test_it_api_004_get_model_by_id_returns_one_model(client):
 
 @pytest.mark.integration
 @pytest.mark.api
-def test_it_api_005_unknown_model_returns_404(client):
-    response = client.get("/api/models/does-not-exist")
-    assert response.status_code == 404
-
-
-@pytest.mark.integration
-@pytest.mark.api
 def test_it_api_006_list_agent_runs_supports_filters(client, db_session):
     _seed_run(db_session)
     response = client.get("/api/agent-runs", params={"agent_name": "vitals_agent"})

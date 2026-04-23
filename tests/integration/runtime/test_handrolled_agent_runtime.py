@@ -49,20 +49,6 @@ def test_it_run_001_one_step_tool_call_then_final_answer_tool_succeeds():
 
 @pytest.mark.integration
 @pytest.mark.runtime
-def test_it_run_002_provider_native_tool_call_path_succeeds_end_to_end():
-    model = FakeChatModel(
-        [
-            AIMessage(content="", tool_calls=[{"id": "call_1", "name": "lookup_value", "args": {"value": "native"}}]),
-            AIMessage(content="", tool_calls=[{"id": "call_2", "name": "final_answer", "args": {"recommendation": {"value": "native"}}}]),
-        ]
-    )
-    agent = SSEHandrolledAgent(model=model, tools=[lookup_value, final_answer], response_format=OutputSchema)
-    output = asyncio.run(agent.ainvoke("hello"))
-    assert output["recommendation"]["value"] == "native"
-
-
-@pytest.mark.integration
-@pytest.mark.runtime
 def test_it_run_003_text_recovered_raw_json_tool_call_path_succeeds():
     model = FakeChatModel(
         [

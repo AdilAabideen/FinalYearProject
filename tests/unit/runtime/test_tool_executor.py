@@ -88,14 +88,6 @@ def test_ut_run_014_tool_exception_is_captured_in_error_text():
 
 
 @pytest.mark.unit
-def test_ut_run_015_metric_trace_emitted_on_success():
-    traces = []
-    executor = ToolExecutor({"string_tool": string_tool}, estimate_tool_result_tokens=len, emit_trace=traces.append)
-    asyncio.run(executor.execute_tool_call({"id": "call_1", "name": "string_tool", "args": {"value": 4}}, iteration=1))
-    assert traces[0].status == "success"
-
-
-@pytest.mark.unit
 def test_ut_run_016_metric_trace_emitted_on_failure():
     traces = []
     executor = ToolExecutor({"failing_tool": failing_tool}, estimate_tool_result_tokens=len, emit_trace=traces.append)

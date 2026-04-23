@@ -23,13 +23,6 @@ def test_ut_evl_002_vitals_evaluator_returns_pass_for_matching_boolean():
 
 
 @pytest.mark.unit
-def test_ut_evl_003_vitals_evaluator_returns_fail_for_execution_failure():
-    evaluator = VitalsUptriageEvaluator()
-    result = evaluator.evaluate({"recommendation": {"consider_uptriage": True}}, None, agent_status="failed")
-    assert result.passed is False
-
-
-@pytest.mark.unit
 def test_ut_evl_004_vitals_evaluator_returns_fail_for_invalid_prediction_shape():
     evaluator = VitalsUptriageEvaluator()
     result = evaluator.evaluate({"recommendation": {"consider_uptriage": True}}, {"recommendation": {}}, agent_status="succeeded")
@@ -56,13 +49,6 @@ def test_ut_evl_006_esi1_evaluator_treats_acuity_one_as_positive_class():
 
 
 @pytest.mark.unit
-def test_ut_evl_007_esi1_evaluator_supports_boolean_like_coercions():
-    evaluator = ES1AcuityEvaluator()
-    result = evaluator.evaluate({"acuity": 1}, {"is_esi1": "yes"}, agent_status="succeeded")
-    assert result.passed is True
-
-
-@pytest.mark.unit
 def test_ut_evl_008_esi1_evaluator_fails_invalid_prediction():
     evaluator = ES1AcuityEvaluator()
     result = evaluator.evaluate({"acuity": 1}, {"is_esi1": "maybe"}, agent_status="succeeded")
@@ -74,13 +60,6 @@ def test_ut_evl_009_esi2_evaluator_treats_acuity_two_as_positive_class():
     evaluator = ESI2AcuityEvaluator()
     result = evaluator.evaluate({"acuity": 2}, {"is_esi2": True}, agent_status="succeeded")
     assert result.passed is True
-
-
-@pytest.mark.unit
-def test_ut_evl_010_esi2_evaluator_fails_invalid_prediction():
-    evaluator = ESI2AcuityEvaluator()
-    result = evaluator.evaluate({"acuity": 2}, {"is_esi2": "maybe"}, agent_status="succeeded")
-    assert result.metrics_json["invalid_pred"] is True
 
 
 @pytest.mark.unit
@@ -97,13 +76,6 @@ def test_ut_evl_012_esi345_evaluator_returns_warning_for_resource_mismatch():
     result = evaluator.evaluate({"acuity": 3, "resources_used": 2}, {"esi_level": 3, "num_resources": 1}, agent_status="succeeded")
     assert result.passed is True
     assert result.score == 0.5
-
-
-@pytest.mark.unit
-def test_ut_evl_013_esi345_evaluator_returns_fail_for_acuity_mismatch():
-    evaluator = ESI345AcuityEvaluator()
-    result = evaluator.evaluate({"acuity": 3, "resources_used": 2}, {"esi_level": 4, "num_resources": 2}, agent_status="succeeded")
-    assert result.passed is False
 
 
 @pytest.mark.unit

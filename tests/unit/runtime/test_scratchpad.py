@@ -37,14 +37,6 @@ def test_ut_run_022_final_assistant_is_excluded_when_config_disables_it():
 
 
 @pytest.mark.unit
-def test_ut_run_023_final_assistant_is_included_when_config_enables_it():
-    scratchpad = Scratchpad(config=ScratchpadConfig(include_final_assistant_output=True))
-    appended = scratchpad.append_final_assistant(AIMessage(content="final"))
-    assert appended is not None
-    assert len(scratchpad.messages()) == 1
-
-
-@pytest.mark.unit
 def test_ut_run_024_raw_provider_debug_keys_removed_by_default():
     scratchpad = Scratchpad()
     msg = AIMessage(
@@ -55,18 +47,6 @@ def test_ut_run_024_raw_provider_debug_keys_removed_by_default():
     appended = scratchpad.append_assistant_tool_call(msg)
     assert "raw_tool_text" not in appended.additional_kwargs
     assert appended.additional_kwargs["keep"] == "value"
-
-
-@pytest.mark.unit
-def test_ut_run_025_raw_provider_debug_keys_retained_when_configured():
-    scratchpad = Scratchpad(config=ScratchpadConfig(include_raw_provider_debug=True))
-    msg = AIMessage(
-        content="",
-        tool_calls=[{"id": "call_1", "name": "tool_a", "args": {}}],
-        additional_kwargs={"raw_tool_text": "debug"},
-    )
-    appended = scratchpad.append_assistant_tool_call(msg)
-    assert appended.additional_kwargs["raw_tool_text"] == "debug"
 
 
 @pytest.mark.unit

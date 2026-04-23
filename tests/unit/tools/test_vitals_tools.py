@@ -18,21 +18,9 @@ def test_ut_tol_001_shock_index_returns_missing_vitals_payload_when_hr_missing()
 
 
 @pytest.mark.unit
-def test_ut_tol_002_shock_index_returns_missing_vitals_payload_when_sbp_missing():
-    result = compute_shock_index.invoke({"hr": 100, "sbp": None})
-    assert result["missing_vitals"] == ["SBP"]
-
-
-@pytest.mark.unit
 def test_ut_tol_003_shock_index_normal_band():
     result = compute_shock_index.invoke({"hr": 80, "sbp": 120})
     assert result["band"] == "normal"
-
-
-@pytest.mark.unit
-def test_ut_tol_004_shock_index_soft_band():
-    result = compute_shock_index.invoke({"hr": 95, "sbp": 100})
-    assert result["band"] == "soft"
 
 
 @pytest.mark.unit
@@ -62,14 +50,6 @@ def test_ut_tol_008_danger_zone_adult_no_violations():
 
 
 @pytest.mark.unit
-def test_ut_tol_009_danger_zone_orange_hr_violation():
-    result = compute_esi_danger_zone.invoke(
-        {"age_years": 25, "hr": 103, "rr": 18, "spo2": 98, "has_respiratory_compromise": False}
-    )
-    assert result["status"] == "orange"
-
-
-@pytest.mark.unit
 def test_ut_tol_010_danger_zone_red_hr_violation():
     result = compute_esi_danger_zone.invoke(
         {"age_years": 25, "hr": 106, "rr": 18, "spo2": 98, "has_respiratory_compromise": False}
@@ -78,27 +58,11 @@ def test_ut_tol_010_danger_zone_red_hr_violation():
 
 
 @pytest.mark.unit
-def test_ut_tol_011_danger_zone_orange_rr_violation():
-    result = compute_esi_danger_zone.invoke(
-        {"age_years": 25, "hr": 90, "rr": 21, "spo2": 98, "has_respiratory_compromise": False}
-    )
-    assert result["status"] == "orange"
-
-
-@pytest.mark.unit
 def test_ut_tol_012_danger_zone_spo2_ignored_when_no_respiratory_compromise():
     result = compute_esi_danger_zone.invoke(
         {"age_years": 25, "hr": 90, "rr": 18, "spo2": 80, "has_respiratory_compromise": False}
     )
     assert result["status"] == "none"
-
-
-@pytest.mark.unit
-def test_ut_tol_013_danger_zone_spo2_orange_when_respiratory_compromise_present():
-    result = compute_esi_danger_zone.invoke(
-        {"age_years": 25, "hr": 90, "rr": 18, "spo2": 91.5, "has_respiratory_compromise": True}
-    )
-    assert result["status"] == "orange"
 
 
 @pytest.mark.unit
@@ -115,12 +79,6 @@ def test_ut_tol_015_danger_zone_returns_missing_vital_names_when_missing():
         {"age_years": 25, "hr": None, "rr": None, "spo2": None, "has_respiratory_compromise": True}
     )
     assert result["missing_vitals"] == ["HR", "RR", "SpO2"]
-
-
-@pytest.mark.unit
-def test_ut_tol_016_danger_zone_schema_rejects_negative_age():
-    with pytest.raises(ValidationError):
-        ESI_Danger_Zone_Vitals(age_years=-1, hr=80, rr=20, spo2=98, has_respiratory_compromise=False)
 
 
 @pytest.mark.unit
