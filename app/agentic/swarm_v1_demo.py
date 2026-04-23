@@ -1,13 +1,17 @@
 from __future__ import annotations
 
 import argparse
+import asyncio
 import json
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from langgraph.graph import END, START, StateGraph
 from langgraph.types import Command
 
+from app.agentic.model_registry import get_chat_model, resolve_model_spec
 from app.agentic.payload_builder import build_pending_agent_payload
+from app.agentic.runtime import AgentRuntime, RuntimeConfig
+from app.agentic.swarm_agent_registry import SwarmAgentRegistry
 from app.agentic.swarm_contract import (
     AgentExecutionResult,
     AgentName,
@@ -20,6 +24,8 @@ from app.agentic.swarm_contract import (
     make_initial_swarm_state,
     parallel_start_agents,
 )
+from app.agentic.swarm_result_normalizer import normalize_agent_result
+from app.config import settings
 
 
 ACUITY_AGENTS = {"esi1_agent", "esi2_agent", "esi345_agent"}
@@ -261,7 +267,91 @@ def execute_stub_agent(
     )
 
 
-def _agent_node(agent_name: AgentName):
+async def execute_real_agent(
+    *,
+    agent_name: AgentName,
+    pending_agent_payload: Dict[str, Any],
+    registry: SwarmAgentRegistry,
+    state: SwarmState,
+) -> AgentExecutionResult:
+    agent = registry.get(agent_name)
+    run_id = str((state.get("case_info") or {}).get("case_id") or "swarm-v1-real")
+    agent.set_event_context(run_id=run_id, agent_name=agent_name)
+    raw_result = await agent.ainvoke(pending_agent_payload)
+    return normalize_agent_result(agent_name, raw_result)
+
+
+def _route_after_result(result: AgentExecutionResult, updates: Dict[str, Any]) -> Command:
+    if result.status == "final":
+        updates["final_output"] = result.final_output or {}
+        updates["execution_trace"].append(
+            {
+                "event": "final_output_created",
+                "agent": result.agent_name,
+                "final_output": result.final_output,
+            }
+        )
+        return Command(goto=END, update=updates)
+
+    if result.status == "error":
+        updates["execution_trace"].append(
+            {
+                "event": "agent_error",
+                "agent": result.agent_name,
+                "output": result.output,
+            }
+        )
+        return Command(goto=END, update=updates)
+
+    if result.handoff is None:
+        updates["execution_trace"].append(
+            {
+                "event": "missing_handoff",
+                "agent": result.agent_name,
+            }
+        )
+        return Command(goto=END, update=updates)
+
+    handoff_dict = result.handoff.model_dump()
+    updates["pending_handoff"] = handoff_dict
+    updates["handoff_history"] = [handoff_dict]
+    updates["execution_trace"].append(
+        {
+            "event": "handoff_created",
+            "from_agent": result.handoff.from_agent,
+            "target_agent": result.handoff.target_agent,
+            "handoff_name": result.handoff.handoff_name,
+        }
+    )
+
+    if result.handoff.target_agent == "doctor_agent":
+        return Command(goto="doctor_gate", update=updates)
+    return Command(goto=result.handoff.target_agent, update=updates)
+
+
+def _agent_updates(
+    *,
+    agent_name: AgentName,
+    pending_agent_payload: Dict[str, Any],
+    result: AgentExecutionResult,
+) -> Dict[str, Any]:
+    return {
+        "active_agent": agent_name,
+        "pending_agent_payload": pending_agent_payload,
+        "completed_agents": [agent_name],
+        "execution_trace": [
+            {
+                "event": "agent_executed",
+                "agent": agent_name,
+                "status": result.status,
+                "output": result.output,
+                "payload_metadata": pending_agent_payload.get("metadata", {}),
+            }
+        ],
+    }
+
+
+def _stub_agent_node(agent_name: AgentName):
     def node(state: SwarmState) -> Command:
         pending_agent_payload = build_pending_agent_payload(agent_name, state)
         result = execute_stub_agent(
@@ -270,66 +360,31 @@ def _agent_node(agent_name: AgentName):
             state=state,
         )
 
-        updates: Dict[str, Any] = {
-            "active_agent": agent_name,
-            "pending_agent_payload": pending_agent_payload,
-            "completed_agents": [agent_name],
-            "execution_trace": [
-                {
-                    "event": "agent_executed",
-                    "agent": agent_name,
-                    "status": result.status,
-                    "output": result.output,
-                    "payload_metadata": pending_agent_payload.get("metadata", {}),
-                }
-            ],
-        }
-
-        if result.status == "final":
-            updates["final_output"] = result.final_output or {}
-            updates["execution_trace"].append(
-                {
-                    "event": "final_output_created",
-                    "agent": agent_name,
-                    "final_output": result.final_output,
-                }
-            )
-            return Command(goto=END, update=updates)
-
-        if result.status == "error":
-            updates["execution_trace"].append(
-                {
-                    "event": "agent_error",
-                    "agent": agent_name,
-                    "output": result.output,
-                }
-            )
-            return Command(goto=END, update=updates)
-
-        if result.handoff is None:
-            updates["execution_trace"].append(
-                {
-                    "event": "missing_handoff",
-                    "agent": agent_name,
-                }
-            )
-            return Command(goto=END, update=updates)
-
-        handoff_dict = result.handoff.model_dump()
-        updates["pending_handoff"] = handoff_dict
-        updates["handoff_history"] = [handoff_dict]
-        updates["execution_trace"].append(
-            {
-                "event": "handoff_created",
-                "from_agent": result.handoff.from_agent,
-                "target_agent": result.handoff.target_agent,
-                "handoff_name": result.handoff.handoff_name,
-            }
+        updates = _agent_updates(
+            agent_name=agent_name,
+            pending_agent_payload=pending_agent_payload,
+            result=result,
         )
+        return _route_after_result(result, updates)
 
-        if result.handoff.target_agent == "doctor_agent":
-            return Command(goto="doctor_gate", update=updates)
-        return Command(goto=result.handoff.target_agent, update=updates)
+    return node
+
+
+def _real_agent_node(agent_name: AgentName, registry: SwarmAgentRegistry):
+    async def node(state: SwarmState) -> Command:
+        pending_agent_payload = build_pending_agent_payload(agent_name, state)
+        result = await execute_real_agent(
+            agent_name=agent_name,
+            pending_agent_payload=pending_agent_payload,
+            registry=registry,
+            state=state,
+        )
+        updates = _agent_updates(
+            agent_name=agent_name,
+            pending_agent_payload=pending_agent_payload,
+            result=result,
+        )
+        return _route_after_result(result, updates)
 
     return node
 
@@ -374,15 +429,22 @@ def route_doctor_gate(state: SwarmState) -> str:
     return END
 
 
-def build_graph():
+def build_graph(*, registry: Optional[SwarmAgentRegistry] = None):
     graph = StateGraph(SwarmState)
     graph.add_node("bootstrap", bootstrap)
     graph.add_node("doctor_gate", doctor_gate)
-    graph.add_node("esi1_agent", _agent_node("esi1_agent"))
-    graph.add_node("esi2_agent", _agent_node("esi2_agent"))
-    graph.add_node("esi345_agent", _agent_node("esi345_agent"))
-    graph.add_node("vitals_agent", _agent_node("vitals_agent"))
-    graph.add_node("doctor_agent", _agent_node("doctor_agent"))
+    if registry is None:
+        graph.add_node("esi1_agent", _stub_agent_node("esi1_agent"))
+        graph.add_node("esi2_agent", _stub_agent_node("esi2_agent"))
+        graph.add_node("esi345_agent", _stub_agent_node("esi345_agent"))
+        graph.add_node("vitals_agent", _stub_agent_node("vitals_agent"))
+        graph.add_node("doctor_agent", _stub_agent_node("doctor_agent"))
+    else:
+        graph.add_node("esi1_agent", _real_agent_node("esi1_agent", registry))
+        graph.add_node("esi2_agent", _real_agent_node("esi2_agent", registry))
+        graph.add_node("esi345_agent", _real_agent_node("esi345_agent", registry))
+        graph.add_node("vitals_agent", _real_agent_node("vitals_agent", registry))
+        graph.add_node("doctor_agent", _real_agent_node("doctor_agent", registry))
 
     graph.add_edge(START, "bootstrap")
     graph.add_conditional_edges("bootstrap", route_bootstrap)
@@ -485,6 +547,31 @@ def run_demo() -> None:
     print_run_result(result)
 
 
+def build_real_registry() -> SwarmAgentRegistry:
+    model_id = settings.OPENAI_MODEL
+    model_spec = resolve_model_spec(model_id)
+    runtime = AgentRuntime(
+        model_id=model_id,
+        model_spec=model_spec,
+        model=get_chat_model(model_id),
+    )
+    return SwarmAgentRegistry(
+        runtime=runtime,
+        runtime_config=RuntimeConfig(
+            multi_agent=True,
+            print_events=True,
+            persist_events=False,
+        ),
+    )
+
+
+async def run_real_demo() -> None:
+    registry = build_real_registry()
+    graph = build_graph(registry=registry)
+    result = await graph.ainvoke(make_initial_swarm_state(demo_case()))
+    print_run_result(result)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Terminal-only Swarm V1 graph demo.")
     parser.add_argument(
@@ -497,17 +584,30 @@ def main() -> None:
         action="store_true",
         help="Run the stubbed multi-agent swarm demo.",
     )
+    parser.add_argument(
+        "--run-stub",
+        action="store_true",
+        help="Run the stubbed multi-agent swarm demo.",
+    )
+    parser.add_argument(
+        "--run-real",
+        action="store_true",
+        help="Run the real multi-agent swarm demo with terminal telemetry and no persistence.",
+    )
     args = parser.parse_args()
 
     if args.inspect:
         inspect_graph()
         return
-    if args.run:
+    if args.run or args.run_stub:
         run_demo()
+        return
+    if args.run_real:
+        asyncio.run(run_real_demo())
         return
 
     inspect_graph()
-    print("\nTip: run with --run to execute the stubbed swarm demo.")
+    print("\nTip: run with --run to execute the stubbed swarm demo or --run-real for real agents.")
 
 
 if __name__ == "__main__":
