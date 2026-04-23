@@ -228,6 +228,9 @@ class SSEHandrolledAgent:
         if isinstance(payload, str):
             return payload
 
+        if isinstance(payload, Mapping) and isinstance(payload.get("llm_payload"), Mapping):
+            return json.dumps(payload["llm_payload"], indent=2, default=str, ensure_ascii=False)
+
         if isinstance(payload, Mapping) and isinstance(payload.get("input"), str):
             return str(payload["input"])
 
@@ -240,7 +243,7 @@ class SSEHandrolledAgent:
                 if isinstance(item, HumanMessage):
                     return str(item.content or "")
 
-        return json.dumps(payload, default=str, ensure_ascii=False)
+        return json.dumps(payload, indent=2, default=str, ensure_ascii=False)
 
     @staticmethod
     def _json_from_text(text: str) -> tuple[Any | None, str]:

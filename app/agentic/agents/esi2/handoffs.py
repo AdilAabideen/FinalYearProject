@@ -4,7 +4,7 @@ from typing import List
 
 
 class ESI2ToESI3Payload(BaseModel):
-    esi1_result: str = Field(
+    esi2_result: str = Field(
         ...,
         description="Outcome of the ESI-2 assessment. Usually 'not_esi2' when handing off to the ESI-3 agent."
     )
@@ -16,7 +16,7 @@ class ESI2ToESI3Payload(BaseModel):
         ...,
         description="Key concerns or unresolved issues that the ESI-3 agent should keep in mind during high-risk assessment."
     )
-    focus_for_esi2: str = Field(
+    focus_for_esi3: str = Field(
         ...,
         description="Short instruction describing what the ESI-3 agent should evaluate next, such as high-risk features, likely deterioration, or ESI-3 consistency."
     )
