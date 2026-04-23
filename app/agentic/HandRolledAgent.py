@@ -284,6 +284,20 @@ class SSEHandrolledAgent:
         return tool_calls[: self.max_tool_calls], tool_calls[self.max_tool_calls :]
 
     def _emit_tool_execution_trace(self, trace: ToolExecutionTrace) -> None:
+        if self.runtime_config.print_events:
+            status = trace.status or "unknown"
+            print(
+                "[agent-tool] name={name} status={status} latency_ms={latency_ms}".format(
+                    name=trace.tool_name,
+                    status=status,
+                    latency_ms=trace.latency_ms,
+                ),
+                flush=True,
+            )
+
+        if not self.runtime_config.persist_events:
+            return
+
         if not trace.run_id or not trace.agent_name:
             return
 
@@ -439,30 +453,29 @@ class SSEHandrolledAgent:
 
             if run_id and agent_name:
                 call_index = self._telemetry.next_call_index()
-                self._telemetry.emit_llm(
-                    LLMCallMetric(
-                        run_id=run_id,
-                        agent_name=agent_name,
-                        call_index=call_index,
-                        iteration=iteration,
-                        call_kind=call_kind,
-                        model_name=str(model_name) if model_name else None,
-                        started_at=started_at,
-                        ended_at=ended_at,
-                        latency_ms=latency_ms,
-                        input_tokens=int(in_tok),
-                        output_tokens=int(out_tok),
-                        tokens_total=int(tot_tok),
-                        usage_source=str(usage_source or "estimated"),
-                        had_tool_calls=bool(tool_calls),
-                        tool_call_count=len(tool_calls),
-                        tool_call_parse_source=parse_source,
-                        text_recovered_tool_call_count=text_recovered_tool_call_count,
-                        native_tool_call_count=native_tool_call_count,
-                        tool_names=tool_names,
-                        error_text=None,
-                    )
+                metric = LLMCallMetric(
+                    run_id=run_id,
+                    agent_name=agent_name,
+                    call_index=call_index,
+                    iteration=iteration,
+                    call_kind=call_kind,
+                    model_name=str(model_name) if model_name else None,
+                    started_at=started_at,
+                    ended_at=ended_at,
+                    latency_ms=latency_ms,
+                    input_tokens=int(in_tok),
+                    output_tokens=int(out_tok),
+                    tokens_total=int(tot_tok),
+                    usage_source=str(usage_source or "estimated"),
+                    had_tool_calls=bool(tool_calls),
+                    tool_call_count=len(tool_calls),
+                    tool_call_parse_source=parse_source,
+                    text_recovered_tool_call_count=text_recovered_tool_call_count,
+                    native_tool_call_count=native_tool_call_count,
+                    tool_names=tool_names,
+                    error_text=None,
                 )
+                self._emit_llm_metric(metric)
 
             return response
         except Exception as exc:
@@ -478,32 +491,53 @@ class SSEHandrolledAgent:
 
             if run_id and agent_name:
                 call_index = self._telemetry.next_call_index()
-                self._telemetry.emit_llm(
-                    LLMCallMetric(
-                        run_id=run_id,
-                        agent_name=agent_name,
-                        call_index=call_index,
-                        iteration=iteration,
-                        call_kind=call_kind,
-                        model_name=str(model_name) if model_name else None,
-                        started_at=started_at,
-                        ended_at=ended_at,
-                        latency_ms=latency_ms,
-                        input_tokens=int(in_tok),
-                        output_tokens=0,
-                        tokens_total=int(in_tok),
-                        usage_source="estimated",
-                        had_tool_calls=False,
-                        tool_call_count=0,
-                        tool_call_parse_source=None,
-                        text_recovered_tool_call_count=0,
-                        native_tool_call_count=0,
-                        tool_names=[],
-                        error_text=str(normalized_exc),
-                    )
+                metric = LLMCallMetric(
+                    run_id=run_id,
+                    agent_name=agent_name,
+                    call_index=call_index,
+                    iteration=iteration,
+                    call_kind=call_kind,
+                    model_name=str(model_name) if model_name else None,
+                    started_at=started_at,
+                    ended_at=ended_at,
+                    latency_ms=latency_ms,
+                    input_tokens=int(in_tok),
+                    output_tokens=0,
+                    tokens_total=int(in_tok),
+                    usage_source="estimated",
+                    had_tool_calls=False,
+                    tool_call_count=0,
+                    tool_call_parse_source=None,
+                    text_recovered_tool_call_count=0,
+                    native_tool_call_count=0,
+                    tool_names=[],
+                    error_text=str(normalized_exc),
                 )
+                self._emit_llm_metric(metric)
 
             raise normalized_exc
+
+    def _emit_llm_metric(self, metric: LLMCallMetric) -> None:
+        if self.runtime_config.print_events:
+            status = "error" if metric.error_text else "ok"
+            tool_names = ",".join(metric.tool_names) if metric.tool_names else "none"
+            print(
+                "[agent-llm] agent={agent} call={call_index} kind={kind} status={status} tokens={tokens} tools={tools} latency_ms={latency_ms}".format(
+                    agent=metric.agent_name,
+                    call_index=metric.call_index,
+                    kind=metric.call_kind,
+                    status=status,
+                    tokens=metric.tokens_total,
+                    tools=tool_names,
+                    latency_ms=metric.latency_ms,
+                ),
+                flush=True,
+            )
+
+        if not self.runtime_config.persist_events:
+            return
+
+        self._telemetry.emit_llm(metric)
 
     def _emit_event(
         self,
@@ -516,6 +550,20 @@ class SSEHandrolledAgent:
         payload_json: dict[str, Any] | None = None,
         payload_text: str | None = None,
     ) -> None:
+        if self.runtime_config.print_events:
+            details = []
+            if node_name:
+                details.append("node={node}".format(node=node_name))
+            if tool_name:
+                details.append("tool={tool}".format(tool=tool_name))
+            if status:
+                details.append("status={status}".format(status=status))
+            suffix = " " + " ".join(details) if details else ""
+            print("[agent-event] type={event_type}{suffix}".format(event_type=event_type, suffix=suffix), flush=True)
+
+        if not self.runtime_config.persist_events:
+            return
+
         self._events.emit(
             event_type=event_type,
             node_name=node_name,
