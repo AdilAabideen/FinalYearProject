@@ -1,6 +1,8 @@
 from pydantic import BaseModel, Field
 from typing import List, Literal
 
+from app.agentic.handoff import define_handoff
+
 
 class VitalsToDoctorPayload(BaseModel):
     consider_uptriage: bool = Field(

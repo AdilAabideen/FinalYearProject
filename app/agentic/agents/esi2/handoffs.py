@@ -3,10 +3,10 @@ from app.agentic.handoff import define_handoff
 from typing import List
 
 
-class ESI2ToESI3Payload(BaseModel):
+class ESI2ToESI345Payload(BaseModel):
     esi2_result: str = Field(
         ...,
-        description="Outcome of the ESI-2 assessment. Usually 'not_esi2' when handing off to the ESI-3 agent."
+        description="Outcome of the ESI-2 assessment. Usually 'not_esi2' when handing off to the ESI-3/4/5 agent."
     )
     brief_reason: str = Field(
         ...,
@@ -14,11 +14,11 @@ class ESI2ToESI3Payload(BaseModel):
     )
     carry_forward_concerns: List[str] = Field(
         ...,
-        description="Key concerns or unresolved issues that the ESI-3 agent should keep in mind during high-risk assessment."
+        description="Key concerns or unresolved issues that the ESI-3/4/5 agent should keep in mind during resource prediction."
     )
-    focus_for_esi3: str = Field(
+    focus_for_esi345: str = Field(
         ...,
-        description="Short instruction describing what the ESI-3 agent should evaluate next, such as high-risk features, likely deterioration, or ESI-3 consistency."
+        description="Short instruction describing what the ESI-3/4/5 agent should evaluate next, such as expected resource use and ESI-3/4/5 consistency."
     )
 
 class ESI2ToDoctorPayload(BaseModel):
@@ -46,9 +46,9 @@ class ESI2ToDoctorPayload(BaseModel):
 HANDOFFS = [
     define_handoff(
         source_agent="esi2_agent",
-        target_agent="esi3_agent",
-        payload_model=ESI2ToESI3Payload,
-        description="Transfer to ESI-3 when ESI-2 criteria are not met.",
+        target_agent="esi345_agent",
+        payload_model=ESI2ToESI345Payload,
+        description="Transfer to ESI-3/4/5 when ESI-2 criteria are not met.",
     ),
     define_handoff(
         source_agent="esi2_agent",

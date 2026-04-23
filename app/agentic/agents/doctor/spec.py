@@ -4,13 +4,14 @@ import json
 import os
 import sys
 import uuid
+from typing import Optional
 
 from langchain_core.messages import AIMessage, ToolMessage
 
 from app.agentic.HandRolledAgent import SSEHandrolledAgent
 from app.agentic.agents.base.spec import AgentSpec
 from app.agentic.model_registry import get_chat_model, resolve_model_spec
-from app.agentic.runtime import AgentRuntime
+from app.agentic.runtime import AgentRuntime, RuntimeConfig
 from app.config import settings
 
 from .evaluator import DoctorAlwaysPassEvaluator
@@ -19,7 +20,7 @@ from .schema import DoctorAgentInput, DoctorAgentOutput
 from .tools import TOOLS
 
 
-def build_doctor_agent(runtime: AgentRuntime):
+def build_doctor_agent(runtime: AgentRuntime, runtime_config: Optional[RuntimeConfig] = None):
     """Build the doctor/supervisor agent."""
     try:
         return SSEHandrolledAgent(
@@ -27,6 +28,7 @@ def build_doctor_agent(runtime: AgentRuntime):
             tools=TOOLS,
             system_prompt=SYSTEM_PROMPT,
             response_format=DoctorAgentOutput,
+            runtime_config=runtime_config,
         )
     except Exception as e:
         raise Exception(f"Error building doctor agent: {e}")

@@ -4,32 +4,41 @@ import json
 import os
 import sys
 import uuid
+from typing import Optional
 
 from langchain_core.messages import AIMessage, ToolMessage
 from langgraph.prebuilt import create_react_agent
 
 from app.agentic.agents.base.spec import AgentSpec
+from app.agentic.handoff import create_handoff_tools
 from app.agentic.model_registry import get_chat_model, resolve_model_spec
-from app.agentic.runtime import AgentRuntime
+from app.agentic.runtime import AgentRuntime, RuntimeConfig
 from app.config import settings
 
 from .prompt import HANDOFF_REQUIREMENTS, SINGLE_AGENT_OUTPUT_REQUIREMENTS, SYSTEM_PROMPT
 from .tools import TOOLS
 from .evaluator import ES1AcuityEvaluator
+from .handoffs import HANDOFFS
 
 from app.agentic.HandRolledAgent import SSEHandrolledAgent
 from .schema import ES1AgentInput, ES1AgentOutput
 
-def build_es1_agent(runtime: AgentRuntime):
+
+def build_es1_agent(runtime: AgentRuntime, runtime_config: Optional[RuntimeConfig] = None):
     """Build the ES1 agent."""
     try:
+        handoff_tools = create_handoff_tools("esi1_agent", HANDOFFS)
+        handoff_tool_names = [tool.name for tool in handoff_tools]
+        tools = [*TOOLS, *handoff_tools] if runtime_config and runtime_config.multi_agent else TOOLS
         return SSEHandrolledAgent(
             model=runtime.model,
-            tools=TOOLS,
+            tools=tools,
             system_prompt=SYSTEM_PROMPT,
             single_agent_prompt_addon=SINGLE_AGENT_OUTPUT_REQUIREMENTS,
             multi_agent_prompt_addon=HANDOFF_REQUIREMENTS,
             response_format=ES1AgentOutput,
+            handoff_tool_names=handoff_tool_names,
+            runtime_config=runtime_config,
         )
     except Exception as e:
         raise Exception(f"Error building vitals agent: {e}")
