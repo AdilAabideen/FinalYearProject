@@ -13,7 +13,7 @@ from app.agentic.model_registry import get_chat_model, resolve_model_spec
 from app.agentic.runtime import AgentRuntime
 from app.config import settings
 
-from .prompt import SYSTEM_PROMPT
+from .prompt import HANDOFF_REQUIREMENTS, SINGLE_AGENT_OUTPUT_REQUIREMENTS, SYSTEM_PROMPT
 from .tools import TOOLS
 from .evaluator import ESI2AcuityEvaluator
 
@@ -27,6 +27,8 @@ def build_esi2_agent(runtime: AgentRuntime):
             model=runtime.model,
             tools=TOOLS,
             system_prompt=SYSTEM_PROMPT,
+            single_agent_prompt_addon=SINGLE_AGENT_OUTPUT_REQUIREMENTS,
+            multi_agent_prompt_addon=HANDOFF_REQUIREMENTS,
             response_format=ES2AgentOutput,
         )
     except Exception as e:

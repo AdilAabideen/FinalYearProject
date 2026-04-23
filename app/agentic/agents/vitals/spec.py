@@ -15,7 +15,7 @@ from app.config import settings
 from app.agentic.agents.vitals.schema import VitalsAgentInput, VitalsAgentOutput
 
 from .evaluator import VitalsUptriageEvaluator
-from .prompt import SYSTEM_PROMPT
+from .prompt import HANDOFF_REQUIREMENTS, SINGLE_AGENT_OUTPUT_REQUIREMENTS, SYSTEM_PROMPT
 from .tools import TOOLS
 
 from app.agentic.HandRolledAgent import SSEHandrolledAgent
@@ -27,6 +27,8 @@ def build_vitals_agent(runtime: AgentRuntime):
             model=runtime.model,
             tools=TOOLS,
             system_prompt=SYSTEM_PROMPT,
+            single_agent_prompt_addon=SINGLE_AGENT_OUTPUT_REQUIREMENTS,
+            multi_agent_prompt_addon=HANDOFF_REQUIREMENTS,
             response_format=VitalsAgentOutput,
         )
     except Exception as e:
