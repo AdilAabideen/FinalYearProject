@@ -134,4 +134,5 @@ class ValuesStateBuilder(Protocol):
         iteration: int,
         done: bool,
         output_json: Any,
+        handoff_json: Any = None,
     ) -> dict[str, Any]: ...

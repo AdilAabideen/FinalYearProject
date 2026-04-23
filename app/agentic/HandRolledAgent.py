@@ -20,6 +20,7 @@ from app.agentic.protocols import (
 )
 from app.agentic.runtime.agent_runner import AgentRunner
 from app.agentic.runtime.finalization_policy import FinalizationPolicy
+from app.agentic.runtime.handoff_policy import HandoffPolicy
 from app.agentic.runtime.runtime_config import RuntimeConfig
 from app.agentic.runtime.tool_executor import ToolExecutionTrace, ToolExecutor
 from app.agentic.telemetry import (
@@ -58,6 +59,7 @@ class SSEHandrolledAgent:
         event_handlers: Sequence[Callable[[dict[str, Any]], None]] | None = None,
         llm_call_handlers: Sequence[Callable[[dict[str, Any]], None]] | None = None,
         tool_call_handlers: Sequence[Callable[[dict[str, Any]], None]] | None = None,
+        handoff_tool_names: Sequence[str] | None = None,
         max_tool_calls: int = 2,
         runtime_config: RuntimeConfig | None = None,
     ) -> None:
@@ -116,6 +118,7 @@ class SSEHandrolledAgent:
             final_answer_tool_name=self.final_answer_tool_name,
             validate_output=self._schema_validation_error_for_output,
         )
+        self._handoff_policy = HandoffPolicy(handoff_tool_names=handoff_tool_names)
         self._tool_executor = ToolExecutor(
             tools_by_name=self.tools_by_name,
             estimate_tool_result_tokens=self._token_estimator.estimate_tool_result_tokens,
@@ -137,6 +140,7 @@ class SSEHandrolledAgent:
             agent_node_name=self.agent_node_name,
             tools_node_name=self.tools_node_name,
             finalization_policy=self._finalization_policy,
+            handoff_policy=self._handoff_policy,
             tool_executor=self._tool_executor,
             current_telemetry_context=self._telemetry.current_context,
             render_system_prompt=self._render_system_prompt,
@@ -303,12 +307,14 @@ class SSEHandrolledAgent:
         iteration: int,
         done: bool,
         output_json: Any,
+        handoff_json: Any = None,
     ) -> dict[str, Any]:
         return {
             "messages": list(messages),
             "iteration": iteration,
             "done": done,
             "output": output_json,
+            "handoff": handoff_json,
         }
 
     def set_event_context(self, *, run_id: str, agent_name: str, start_seq: int = 0) -> None:
@@ -527,9 +533,13 @@ class SSEHandrolledAgent:
 
     async def ainvoke(self, payload: Any) -> Any:
         final_output: Any = None
+        final_handoff: Any = None
         async for mode, data in self.astream(payload, stream_mode=("values",)):
             if mode == "values" and isinstance(data, Mapping):
                 final_output = data.get("output")
+                final_handoff = data.get("handoff")
+        if final_handoff is not None:
+            return {"handoff": final_handoff, "output": final_output}
         return final_output
 
     def invoke(self, payload: Any) -> Any:
