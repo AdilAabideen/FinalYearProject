@@ -20,6 +20,8 @@ type AgentInputFormProps = {
   value: Record<string, unknown>;
   onChange: (next: Record<string, unknown>) => void;
   submitButtonLabel?: string;
+  onSubmit?: () => void;
+  className?: string;
 };
 
 function humanizeKey(key: string) {
@@ -54,7 +56,10 @@ function FieldWrapper({
 
   return (
     <div className={cn('space-y-1', fullWidth && 'sm:col-span-2')}>
-      <label className="flex items-baseline justify-between gap-3 text-xs font-semibold text-slate-700" htmlFor={htmlFor}>
+      <label
+        className="flex items-baseline justify-between gap-3 text-xs font-semibold text-slate-700"
+        htmlFor={htmlFor}
+      >
         <span className="truncate">
           {label}
           {required ? <span className="ml-1 text-rose-600">*</span> : null}
@@ -75,9 +80,13 @@ export function AgentInputForm({
   value,
   onChange,
   submitButtonLabel,
+  onSubmit,
+  className,
 }: AgentInputFormProps) {
   const baseId = useId();
   const objectSchema = getObjectSchema(schema, schema);
+
+  console.log(submitButtonLabel)
 
   if (!objectSchema) {
     return (
@@ -88,11 +97,8 @@ export function AgentInputForm({
   }
 
   return (
-    <div className="flex h-full min-h-0 flex-col overflow-hidden bg-white">
-
-     
-
-      <div className="min-h-0 flex-1 overflow-auto my-4 mb-24">
+    <div className={cn('flex min-h-0 flex-col overflow-hidden ', className)}>
+      <div className="min-h-0 flex-1 overflow-auto mt-4">
         <div className="grid gap-4 p-4 pt-0 sm:grid-cols-2">
           {Object.entries(objectSchema.properties).map(([fieldKey, fieldSchema]) => {
             const resolved = resolveSchema(schema, fieldSchema);
@@ -118,7 +124,9 @@ export function AgentInputForm({
                         {title}
                         {required ? <span className="ml-1 text-rose-600">*</span> : null}
                       </p>
-                      {description ? <p className="mt-1 text-sm text-slate-600">{description}</p> : null}
+                      {description ? (
+                        <p className="mt-1 text-sm text-slate-600">{description}</p>
+                      ) : null}
                     </div>
                     <input
                       id={fieldId}
@@ -135,7 +143,8 @@ export function AgentInputForm({
 
             if (enumValues) {
               const current = value[fieldKey];
-              const stringValue = typeof current === 'string' ? current : current == null ? '' : String(current);
+              const stringValue =
+                typeof current === 'string' ? current : current == null ? '' : String(current);
 
               return (
                 <FieldWrapper
@@ -171,7 +180,8 @@ export function AgentInputForm({
 
             if (primaryType === 'integer' || primaryType === 'number') {
               const current = value[fieldKey];
-              const stringValue = typeof current === 'string' ? current : current == null ? '' : String(current);
+              const stringValue =
+                typeof current === 'string' ? current : current == null ? '' : String(current);
               const minimum = getNumberConstraint(schema, resolved, 'minimum');
               const maximum = getNumberConstraint(schema, resolved, 'maximum');
 
@@ -191,7 +201,7 @@ export function AgentInputForm({
                     min={minimum}
                     max={maximum}
                     required={required}
-                    className="w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700  placeholder:text-slate-400 focus:outline-none focus-visible:ring-2 focus-visible:ring-PrimaryBlue focus-visible:ring-offset-2 focus-visible:ring-offset-white"
+                    className="w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 placeholder:text-slate-400 focus:outline-none focus-visible:ring-2 focus-visible:ring-PrimaryBlue focus-visible:ring-offset-2 focus-visible:ring-offset-white"
                     value={stringValue}
                     onChange={(e) => onChange({ ...value, [fieldKey]: e.target.value })}
                   />
@@ -201,7 +211,8 @@ export function AgentInputForm({
 
             if (primaryType === 'string') {
               const current = value[fieldKey];
-              const stringValue = typeof current === 'string' ? current : current == null ? '' : String(current);
+              const stringValue =
+                typeof current === 'string' ? current : current == null ? '' : String(current);
               const minLength = getStringConstraint(schema, resolved, 'minLength');
               const maxLength = getStringConstraint(schema, resolved, 'maxLength');
               const pattern = getPattern(schema, resolved);
@@ -232,7 +243,7 @@ export function AgentInputForm({
                       required={required}
                       minLength={minLength}
                       maxLength={maxLength}
-                      className="min-h-24 w-full resize-y rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700  placeholder:text-slate-400 focus:outline-none focus-visible:ring-2 focus-visible:ring-PrimaryBlue focus-visible:ring-offset-2 focus-visible:ring-offset-white"
+                      className="min-h-24 w-full resize-y rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 placeholder:text-slate-400 focus:outline-none focus-visible:ring-2 focus-visible:ring-PrimaryBlue focus-visible:ring-offset-2 focus-visible:ring-offset-white"
                       value={stringValue}
                       onChange={(e) => onChange({ ...value, [fieldKey]: e.target.value })}
                     />
@@ -245,7 +256,7 @@ export function AgentInputForm({
                       minLength={minLength}
                       maxLength={maxLength}
                       pattern={pattern}
-                      className="w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700  placeholder:text-slate-400 focus:outline-none focus-visible:ring-2 focus-visible:ring-PrimaryBlue focus-visible:ring-offset-2 focus-visible:ring-offset-white"
+                      className="w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 placeholder:text-slate-400 focus:outline-none focus-visible:ring-2 focus-visible:ring-PrimaryBlue focus-visible:ring-offset-2 focus-visible:ring-offset-white"
                       value={stringValue}
                       onChange={(e) => onChange({ ...value, [fieldKey]: e.target.value })}
                     />
@@ -282,23 +293,22 @@ export function AgentInputForm({
               </FieldWrapper>
             );
           })}
-
         </div>
+      </div>
+
       {submitButtonLabel ? (
-        <div className="shrink-0  border-slate-200 bg-white p-3">
+        <div className="shrink-0 border-t border-slate-200 bg-white p-3">
           <div className="flex justify-end">
             <button
               type="button"
-                className="rounded-xl bg-PrimaryBlue px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-PrimaryBlue/90 focus:outline-none focus-visible:ring-2 focus-visible:ring-PrimaryBlue focus-visible:ring-offset-2 focus-visible:ring-offset-white"
-              >
-                {submitButtonLabel}
-              </button>
-            </div>
+              onClick={onSubmit}
+              className="rounded-xl bg-PrimaryBlue px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-PrimaryBlue/90 focus:outline-none focus-visible:ring-2 focus-visible:ring-PrimaryBlue focus-visible:ring-offset-2 focus-visible:ring-offset-white"
+            >
+              {submitButtonLabel}
+            </button>
           </div>
-        ) : null}
-      </div>
-
-
+        </div>
+      ) : null}
     </div>
   );
 }

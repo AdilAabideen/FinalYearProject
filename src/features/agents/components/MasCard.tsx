@@ -50,9 +50,6 @@ export function MasCard({
       <div className="flex items-start justify-between gap-4">
         <div className="min-w-0">
           <h2 className="truncate text-xl font-semibold text-slate-900">{name}</h2>
-          <p className="mt-1 text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
-            {workflowId}
-          </p>
         </div>
         <Badge>v{version}</Badge>
       </div>
