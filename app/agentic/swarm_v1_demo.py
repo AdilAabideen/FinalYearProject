@@ -30,6 +30,7 @@ from app.agentic.swarm import (
     AgentNodeExecutor,
     CallableExecutionStrategy,
     ExecutionRequest,
+    GateEvaluator,
     SyncCallableExecutionStrategy,
 )
 from app.agentic.workflows.registry import get_workflow_definition
@@ -37,17 +38,11 @@ from app.config import settings
 
 WORKFLOW = get_workflow_definition("esi_swarm_v1")
 DOCTOR_GATE_ID = WORKFLOW.workflow_metadata.get("doctor_gate_id", "doctor_gate")
+GATE_EVALUATOR = GateEvaluator(workflow=WORKFLOW)
 
 
 def _json(data: Any) -> str:
     return json.dumps(data, indent=2, sort_keys=True, default=str)
-
-
-def doctor_gate_ready(state: SwarmState) -> bool:
-    return WORKFLOW.is_gate_ready(
-        DOCTOR_GATE_ID,
-        list(state.get("handoff_history", [])),
-    )
 
 
 def _validated_handoff_history(state: SwarmState) -> List[HandoffEnvelope]:
@@ -347,30 +342,19 @@ def route_bootstrap(state: SwarmState) -> List[Send]:
 
 
 def doctor_gate(state: SwarmState) -> Dict[str, Any]:
-    ready = doctor_gate_ready(state)
-    satisfied_sources = list(
-        WORKFLOW.gate_satisfied_sources(
-            DOCTOR_GATE_ID,
-            list(state.get("handoff_history", [])),
-        )
-    )
-    missing_sources = list(
-        WORKFLOW.gate_missing_sources(
-            DOCTOR_GATE_ID,
-            list(state.get("handoff_history", [])),
-        )
-    )
+    outcome = GATE_EVALUATOR.evaluate(gate_id=DOCTOR_GATE_ID, state=state)
+    gate_target = WORKFLOW.gates[DOCTOR_GATE_ID].target_node
     return {
         "execution_trace": [
             {
                 "event": "doctor_gate",
-                "ready": ready,
-                "satisfied_sources": satisfied_sources,
-                "missing_sources": missing_sources,
+                "ready": outcome.ready,
+                "satisfied_sources": outcome.satisfied_sources,
+                "missing_sources": outcome.missing_sources,
                 "handoffs_to_doctor": [
                     item
-                    for item in state.get("handoff_history", [])
-                    if item.get("target_agent") == "doctor_agent"
+                    for item in list(state.get("handoff_history", []))
+                    if isinstance(item, dict) and item.get("target_agent") == gate_target
                 ],
             }
         ]
@@ -380,8 +364,9 @@ def doctor_gate(state: SwarmState) -> Dict[str, Any]:
 def route_doctor_gate(state: SwarmState) -> str:
     if state.get("final_output") is not None:
         return END
-    if doctor_gate_ready(state):
-        return "doctor_agent"
+    outcome = GATE_EVALUATOR.evaluate(gate_id=DOCTOR_GATE_ID, state=state)
+    if outcome.ready and outcome.next_target is not None:
+        return outcome.next_target
     return END
 
 
