@@ -16,7 +16,7 @@ def test_ut_run_028_runtime_config_rejects_max_tool_calls_per_turn_below_one():
 @pytest.mark.unit
 def test_ut_run_029_runtime_config_rejects_negative_malformed_retry_count():
     with pytest.raises(ValueError):
-        RuntimeConfig(max_malformed_tool_retries=-1)
+        RuntimeConfig(max_malformed_tool_retries_per_tool=-1)
 
 
 @pytest.mark.unit

@@ -98,6 +98,46 @@ def test_it_run_005_malformed_tool_call_triggers_retry_feedback_and_then_succeed
 
 @pytest.mark.integration
 @pytest.mark.runtime
+def test_it_run_005b_malformed_tool_call_retry_is_tracked_per_tool_name():
+    model = FakeChatModel(
+        [
+            AIMessage(content='{"tool_calls":[{"name":"lookup_value","arguments":'),
+            AIMessage(content='{"tool_calls":[{"id":"call_1","name":"lookup_value","arguments":{"value":"per-tool"}}]}'),
+            AIMessage(content='{"tool_calls":[{"name":"final_answer","arguments":'),
+            AIMessage(content='{"tool_calls":[{"id":"call_2","name":"final_answer","arguments":{"recommendation":{"value":"per-tool"}}}]}'),
+        ]
+    )
+    agent = SSEHandrolledAgent(
+        model=model,
+        tools=[lookup_value, final_answer],
+        response_format=OutputSchema,
+    )
+    output = asyncio.run(agent.ainvoke("hello"))
+
+    assert output["recommendation"]["value"] == "per-tool"
+
+
+@pytest.mark.integration
+@pytest.mark.runtime
+def test_it_run_005c_same_tool_only_gets_one_malformed_retry():
+    model = FakeChatModel(
+        [
+            AIMessage(content='{"tool_calls":[{"name":"lookup_value","arguments":'),
+            AIMessage(content='{"tool_calls":[{"name":"lookup_value","arguments":'),
+        ]
+    )
+    agent = SSEHandrolledAgent(
+        model=model,
+        tools=[lookup_value, final_answer],
+        response_format=OutputSchema,
+    )
+    output = asyncio.run(agent.ainvoke("hello"))
+    assert output["error"] == "final_output_invalid"
+    assert output["reason"] == "schema_validation_error"
+
+
+@pytest.mark.integration
+@pytest.mark.runtime
 def test_it_run_006_no_tool_calls_and_plain_final_json_finalizes_when_policy_allows():
     model = FakeChatModel([AIMessage(content='{"recommendation":{"value":"plain"}}')])
     agent = SSEHandrolledAgent(

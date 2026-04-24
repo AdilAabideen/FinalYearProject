@@ -6,6 +6,8 @@ from typing import Annotated, Any, Dict, FrozenSet, List, Literal, Optional, Tup
 
 from pydantic import BaseModel, Field, model_validator
 
+from app.agentic.workflows.registry import get_workflow_definition
+
 
 AgentName = Literal[
     "esi1_agent",
@@ -16,6 +18,8 @@ AgentName = Literal[
 ]
 
 ExecutionStatus = Literal["handoff", "final", "error"]
+
+_WORKFLOW = get_workflow_definition("esi_swarm_v1")
 
 
 def merge_dicts(
@@ -121,18 +125,17 @@ class SwarmState(TypedDict):
     final_output: Annotated[Optional[Dict[str, Any]], merge_dicts]
 
 
-finalizing_agents: FrozenSet[AgentName] = frozenset({"doctor_agent"})
+finalizing_agents: FrozenSet[AgentName] = frozenset(_WORKFLOW.finalizing_agents)
 handoff_tool_agents: FrozenSet[AgentName] = frozenset(
-    {"esi1_agent", "esi2_agent", "esi345_agent", "vitals_agent"}
+    agent_name
+    for agent_name, targets in _WORKFLOW.allowed_handoffs.items()
+    if len(targets) > 0
 )
-parallel_start_agents: Tuple[AgentName, ...] = ("esi1_agent", "vitals_agent")
+parallel_start_agents: Tuple[AgentName, ...] = _WORKFLOW.start_agents
 
 allowed_handoffs: Dict[AgentName, FrozenSet[AgentName]] = {
-    "esi1_agent": frozenset({"esi2_agent", "doctor_agent"}),
-    "esi2_agent": frozenset({"esi345_agent", "doctor_agent"}),
-    "esi345_agent": frozenset({"doctor_agent"}),
-    "vitals_agent": frozenset({"doctor_agent"}),
-    "doctor_agent": frozenset(),
+    source_agent: frozenset(target_agents)
+    for source_agent, target_agents in _WORKFLOW.allowed_handoffs.items()
 }
 
 
