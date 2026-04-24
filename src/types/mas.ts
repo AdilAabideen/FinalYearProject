@@ -47,6 +47,18 @@ export type MasGateRead = {
   metadata: Record<string, unknown>;
 };
 
+export type MasInputSchemaRead = {
+  schema_name: string;
+  description: string | null;
+  metadata: Record<string, unknown>;
+  json_schema: Record<string, unknown>;
+};
+
+export type MasAgentPositionRead = {
+  x: number;
+  y: number;
+};
+
 export type MasCatalogDetail = {
   metadata: MasWorkflowMetadataRead;
   participating_agents: string[];
@@ -57,4 +69,6 @@ export type MasCatalogDetail = {
   gates: Record<string, MasGateRead>;
   agent_metadata: Record<string, Record<string, unknown>>;
   workflow_metadata: Record<string, unknown>;
+  input_schema: MasInputSchemaRead;
+  agent_positions: Record<string, MasAgentPositionRead>;
 };

@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import { Sidebar, type NavKey } from '../navigation/Sidebar';
 import { TopBar } from '../navigation/TopBar';
 import { PageContainer } from './PageContainer';
@@ -29,10 +29,17 @@ export function AppShell({
   contentOverflow = 'auto',
   children,
 }: AppShellProps) {
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+
   return (
     <div className="h-screen overflow-hidden bg-slate-50 text-slate-900">
       <div className="flex h-full">
-        <Sidebar active={activeNav} onNavigate={onNavigate} />
+        <Sidebar
+          active={activeNav}
+          onNavigate={onNavigate}
+          collapsed={sidebarCollapsed}
+          onToggleCollapsed={() => setSidebarCollapsed((prev) => !prev)}
+        />
         <div className="flex min-w-0 flex-1 flex-col">
           <TopBar title={title} subtitle={subtitle} showSearch={showSearch} backAction={backAction} />
           <main

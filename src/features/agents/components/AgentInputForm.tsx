@@ -82,8 +82,9 @@ export function AgentInputForm({ schema, value, onChange }: AgentInputFormProps)
   }
 
   return (
-    <div className="space-y-4">
-
+    <div className="space-y-4 bg-white p-4">
+      
+      <p className='text-md font-semibold text-slate-900'>Workflow Input</p>
 
       <div className="grid gap-4 sm:grid-cols-2">
         {Object.entries(objectSchema.properties).map(([fieldKey, fieldSchema]) => {

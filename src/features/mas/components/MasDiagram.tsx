@@ -10,19 +10,6 @@ type Point = { x: number; y: number };
 const LINK_STROKE_WIDTH = 3;
 const INPUT_OUTPUT_STROKE_WIDTH = 4;
 
-const agent_positions_map: Record<string, Point> = {
-  esi1_agent: { x: 14, y: 52 },
-  esi2_agent: { x: 30, y: 82 },
-  esi345_agent: { x: 60, y: 70 },
-  vitals_agent: { x: 84, y: 76 },
-  doctor_agent: { x: 67, y: 18 },
-  start_v1: { x: 14, y: 10 },
-  start_v2: { x: 84, y: 10 },
-  end: { x: 70, y: 90 },
-};
-
-
-
 function connectorPath(from: Point, to: Point) {
   return `M ${from.x} ${from.y} L ${to.x} ${to.y}`;
 }
@@ -43,21 +30,22 @@ function formatAgentTitle(agentName: string) {
 }
 
 export function MasDiagram({ workflow }: MasDiagramProps) {
-  const data = workflow 
+  const data = workflow;
+  const agentPositions = data.agent_positions;
 
   const agents = data.participating_agents
     .map((agentName) => ({
       name: agentName,
       title: formatAgentTitle(agentName),
-      position: agent_positions_map[agentName],
+      position: agentPositions[agentName],
     }))
     .filter((agent) => agent.position);
 
   const startNodes = data.start_agents
     .map((agentName, index) => {
       const key = getBoundaryNodeKey('start', index, data.start_agents.length);
-      const position = agent_positions_map[key];
-      const target = agent_positions_map[agentName];
+      const position = agentPositions[key];
+      const target = agentPositions[agentName];
       if (!position || !target) return null;
 
       return {
@@ -75,8 +63,8 @@ export function MasDiagram({ workflow }: MasDiagramProps) {
   const endNodes = data.finalizing_agents
     .map((agentName, index) => {
       const key = getBoundaryNodeKey('end', index, data.finalizing_agents.length);
-      const position = agent_positions_map[key];
-      const source = agent_positions_map[agentName];
+      const position = agentPositions[key];
+      const source = agentPositions[agentName];
       if (!position || !source) return null;
 
       return {
@@ -123,8 +111,8 @@ export function MasDiagram({ workflow }: MasDiagramProps) {
         </defs>
 
         {links.map(({ from, to }) => {
-          const fromPosition = agent_positions_map[from];
-          const toPosition = agent_positions_map[to];
+          const fromPosition = agentPositions[from];
+          const toPosition = agentPositions[to];
           if (!fromPosition || !toPosition) return null;
 
           return (
@@ -167,9 +155,6 @@ export function MasDiagram({ workflow }: MasDiagramProps) {
         ))}
       </svg>
 
-      <div className="absolute right-4 top-4 rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-medium text-slate-500 shadow-sm">
-        {data.metadata.name}
-      </div>
 
       {startNodes.map((node) => (
         <div
