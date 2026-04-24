@@ -19,6 +19,7 @@ type AgentInputFormProps = {
   schema: JsonSchema;
   value: Record<string, unknown>;
   onChange: (next: Record<string, unknown>) => void;
+  submitButtonLabel?: string;
 };
 
 function humanizeKey(key: string) {
@@ -69,7 +70,12 @@ function FieldWrapper({
   );
 }
 
-export function AgentInputForm({ schema, value, onChange }: AgentInputFormProps) {
+export function AgentInputForm({
+  schema,
+  value,
+  onChange,
+  submitButtonLabel,
+}: AgentInputFormProps) {
   const baseId = useId();
   const objectSchema = getObjectSchema(schema, schema);
 
@@ -82,91 +88,179 @@ export function AgentInputForm({ schema, value, onChange }: AgentInputFormProps)
   }
 
   return (
-    <div className="space-y-4 bg-white p-4">
-      
-      <p className='text-md font-semibold text-slate-900'>Workflow Input</p>
+    <div className="flex h-full min-h-0 flex-col overflow-hidden bg-white">
 
-      <div className="grid gap-4 sm:grid-cols-2">
-        {Object.entries(objectSchema.properties).map(([fieldKey, fieldSchema]) => {
-          const resolved = resolveSchema(schema, fieldSchema);
-          const required = objectSchema.required.has(fieldKey);
-          const enumValues = getEnumValues(schema, resolved);
-          const title = getSchemaTitle(resolved) ?? humanizeKey(fieldKey);
-          const description = getSchemaDescription(resolved);
-          const fieldId = `${baseId}-${safeIdSegment(fieldKey)}`;
+     
 
-          const primaryType = getPrimaryType(schema, resolved);
-          const stringFormat = getStringFormat(schema, resolved);
+      <div className="min-h-0 flex-1 overflow-auto my-4 mb-24">
+        <div className="grid gap-4 p-4 pt-0 sm:grid-cols-2">
+          {Object.entries(objectSchema.properties).map(([fieldKey, fieldSchema]) => {
+            const resolved = resolveSchema(schema, fieldSchema);
+            const required = objectSchema.required.has(fieldKey);
+            const enumValues = getEnumValues(schema, resolved);
+            const title = getSchemaTitle(resolved) ?? humanizeKey(fieldKey);
+            const description = getSchemaDescription(resolved);
+            const fieldId = `${baseId}-${safeIdSegment(fieldKey)}`;
 
-          if (primaryType === 'boolean') {
-            const checked = Boolean(value[fieldKey]);
-            return (
-              <div key={fieldKey} className="sm:col-span-2">
-                <label
+            const primaryType = getPrimaryType(schema, resolved);
+            const stringFormat = getStringFormat(schema, resolved);
+
+            if (primaryType === 'boolean') {
+              const checked = Boolean(value[fieldKey]);
+              return (
+                <div key={fieldKey} className="sm:col-span-2">
+                  <label
+                    htmlFor={fieldId}
+                    className="flex items-start justify-between gap-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"
+                  >
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold text-slate-900">
+                        {title}
+                        {required ? <span className="ml-1 text-rose-600">*</span> : null}
+                      </p>
+                      {description ? <p className="mt-1 text-sm text-slate-600">{description}</p> : null}
+                    </div>
+                    <input
+                      id={fieldId}
+                      name={fieldKey}
+                      type="checkbox"
+                      className="mt-1 h-5 w-5 rounded-md border-slate-300 text-PrimaryBlue focus:outline-none focus-visible:ring-2 focus-visible:ring-PrimaryBlue focus-visible:ring-offset-2 focus-visible:ring-offset-white"
+                      checked={checked}
+                      onChange={(e) => onChange({ ...value, [fieldKey]: e.target.checked })}
+                    />
+                  </label>
+                </div>
+              );
+            }
+
+            if (enumValues) {
+              const current = value[fieldKey];
+              const stringValue = typeof current === 'string' ? current : current == null ? '' : String(current);
+
+              return (
+                <FieldWrapper
+                  key={fieldKey}
                   htmlFor={fieldId}
-                  className="flex items-start justify-between gap-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"
+                  label={title}
+                  required={required}
+                  description={description}
+                  fullWidth={shouldUseTextArea(fieldKey, schema, resolved)}
                 >
-                  <div className="min-w-0">
-                    <p className="text-sm font-semibold text-slate-900">
-                      {title}
-                      {required ? <span className="ml-1 text-rose-600">*</span> : null}
-                    </p>
-                    {description ? <p className="mt-1 text-sm text-slate-600">{description}</p> : null}
-                  </div>
+                  <select
+                    id={fieldId}
+                    name={fieldKey}
+                    required={required}
+                    className="w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 shadow-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-PrimaryBlue focus-visible:ring-offset-2 focus-visible:ring-offset-white"
+                    value={stringValue}
+                    onChange={(e) => onChange({ ...value, [fieldKey]: e.target.value })}
+                  >
+                    {required ? null : <option value="">—</option>}
+                    {enumValues.map((option) => {
+                      const optionValue =
+                        typeof option === 'string' ? option : option == null ? '' : String(option);
+                      return (
+                        <option key={optionValue} value={optionValue}>
+                          {optionValue}
+                        </option>
+                      );
+                    })}
+                  </select>
+                </FieldWrapper>
+              );
+            }
+
+            if (primaryType === 'integer' || primaryType === 'number') {
+              const current = value[fieldKey];
+              const stringValue = typeof current === 'string' ? current : current == null ? '' : String(current);
+              const minimum = getNumberConstraint(schema, resolved, 'minimum');
+              const maximum = getNumberConstraint(schema, resolved, 'maximum');
+
+              return (
+                <FieldWrapper
+                  key={fieldKey}
+                  htmlFor={fieldId}
+                  label={title}
+                  required={required}
+                  description={description}
+                >
                   <input
                     id={fieldId}
                     name={fieldKey}
-                    type="checkbox"
-                    className="mt-1 h-5 w-5 rounded-md border-slate-300 text-PrimaryBlue focus:outline-none focus-visible:ring-2 focus-visible:ring-PrimaryBlue focus-visible:ring-offset-2 focus-visible:ring-offset-white"
-                    checked={checked}
-                    onChange={(e) => onChange({ ...value, [fieldKey]: e.target.checked })}
+                    type="number"
+                    step={primaryType === 'integer' ? 1 : 'any'}
+                    min={minimum}
+                    max={maximum}
+                    required={required}
+                    className="w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700  placeholder:text-slate-400 focus:outline-none focus-visible:ring-2 focus-visible:ring-PrimaryBlue focus-visible:ring-offset-2 focus-visible:ring-offset-white"
+                    value={stringValue}
+                    onChange={(e) => onChange({ ...value, [fieldKey]: e.target.value })}
                   />
-                </label>
-              </div>
-            );
-          }
+                </FieldWrapper>
+              );
+            }
 
-          if (enumValues) {
-            const current = value[fieldKey];
-            const stringValue = typeof current === 'string' ? current : current == null ? '' : String(current);
+            if (primaryType === 'string') {
+              const current = value[fieldKey];
+              const stringValue = typeof current === 'string' ? current : current == null ? '' : String(current);
+              const minLength = getStringConstraint(schema, resolved, 'minLength');
+              const maxLength = getStringConstraint(schema, resolved, 'maxLength');
+              const pattern = getPattern(schema, resolved);
+              const multiline = shouldUseTextArea(fieldKey, schema, resolved);
 
-            return (
-              <FieldWrapper
-                key={fieldKey}
-                htmlFor={fieldId}
-                label={title}
-                required={required}
-                description={description}
-                fullWidth={shouldUseTextArea(fieldKey, schema, resolved)}
-              >
-                <select
-                  id={fieldId}
-                  name={fieldKey}
+              const inputType =
+                stringFormat === 'date-time'
+                  ? 'datetime-local'
+                  : stringFormat === 'date'
+                    ? 'date'
+                    : stringFormat === 'time'
+                      ? 'time'
+                      : 'text';
+
+              return (
+                <FieldWrapper
+                  key={fieldKey}
+                  htmlFor={fieldId}
+                  label={title}
                   required={required}
-                  className="w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 shadow-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-PrimaryBlue focus-visible:ring-offset-2 focus-visible:ring-offset-white"
-                  value={stringValue}
-                  onChange={(e) => onChange({ ...value, [fieldKey]: e.target.value })}
+                  description={description}
+                  fullWidth={multiline}
                 >
-                  {required ? null : <option value="">—</option>}
-                  {enumValues.map((option) => {
-                    const optionValue =
-                      typeof option === 'string' ? option : option == null ? '' : String(option);
-                    return (
-                      <option key={optionValue} value={optionValue}>
-                        {optionValue}
-                      </option>
-                    );
-                  })}
-                </select>
-              </FieldWrapper>
-            );
-          }
+                  {multiline ? (
+                    <textarea
+                      id={fieldId}
+                      name={fieldKey}
+                      required={required}
+                      minLength={minLength}
+                      maxLength={maxLength}
+                      className="min-h-24 w-full resize-y rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700  placeholder:text-slate-400 focus:outline-none focus-visible:ring-2 focus-visible:ring-PrimaryBlue focus-visible:ring-offset-2 focus-visible:ring-offset-white"
+                      value={stringValue}
+                      onChange={(e) => onChange({ ...value, [fieldKey]: e.target.value })}
+                    />
+                  ) : (
+                    <input
+                      id={fieldId}
+                      name={fieldKey}
+                      type={inputType}
+                      required={required}
+                      minLength={minLength}
+                      maxLength={maxLength}
+                      pattern={pattern}
+                      className="w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700  placeholder:text-slate-400 focus:outline-none focus-visible:ring-2 focus-visible:ring-PrimaryBlue focus-visible:ring-offset-2 focus-visible:ring-offset-white"
+                      value={stringValue}
+                      onChange={(e) => onChange({ ...value, [fieldKey]: e.target.value })}
+                    />
+                  )}
+                </FieldWrapper>
+              );
+            }
 
-          if (primaryType === 'integer' || primaryType === 'number') {
-            const current = value[fieldKey];
-            const stringValue = typeof current === 'string' ? current : current == null ? '' : String(current);
-            const minimum = getNumberConstraint(schema, resolved, 'minimum');
-            const maximum = getNumberConstraint(schema, resolved, 'maximum');
+            const fallbackValue = value[fieldKey];
+            const stringValue =
+              typeof fallbackValue === 'string'
+                ? fallbackValue
+                : fallbackValue == null
+                  ? ''
+                  : JSON.stringify(fallbackValue, null, 2);
 
             return (
               <FieldWrapper
@@ -174,108 +268,37 @@ export function AgentInputForm({ schema, value, onChange }: AgentInputFormProps)
                 htmlFor={fieldId}
                 label={title}
                 required={required}
-                description={description}
+                description={description ?? 'Unsupported schema type. Provide raw JSON.'}
+                fullWidth
               >
-                <input
+                <textarea
                   id={fieldId}
                   name={fieldKey}
-                  type="number"
-                  step={primaryType === 'integer' ? 1 : 'any'}
-                  min={minimum}
-                  max={maximum}
                   required={required}
-                  className="w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700  placeholder:text-slate-400 focus:outline-none focus-visible:ring-2 focus-visible:ring-PrimaryBlue focus-visible:ring-offset-2 focus-visible:ring-offset-white"
+                  className="min-h-24 w-full resize-y rounded-xl border border-slate-200 bg-white px-3 py-2 font-mono text-xs text-slate-700 shadow-sm placeholder:text-slate-400 focus:outline-none focus-visible:ring-2 focus-visible:ring-PrimaryBlue focus-visible:ring-offset-2 focus-visible:ring-offset-white"
                   value={stringValue}
                   onChange={(e) => onChange({ ...value, [fieldKey]: e.target.value })}
                 />
               </FieldWrapper>
             );
-          }
+          })}
 
-          if (primaryType === 'string') {
-            const current = value[fieldKey];
-            const stringValue = typeof current === 'string' ? current : current == null ? '' : String(current);
-            const minLength = getStringConstraint(schema, resolved, 'minLength');
-            const maxLength = getStringConstraint(schema, resolved, 'maxLength');
-            const pattern = getPattern(schema, resolved);
-            const multiline = shouldUseTextArea(fieldKey, schema, resolved);
-
-            const inputType =
-              stringFormat === 'date-time'
-                ? 'datetime-local'
-                : stringFormat === 'date'
-                  ? 'date'
-                  : stringFormat === 'time'
-                    ? 'time'
-                    : 'text';
-
-            return (
-              <FieldWrapper
-                key={fieldKey}
-                htmlFor={fieldId}
-                label={title}
-                required={required}
-                description={description}
-                fullWidth={multiline}
+        </div>
+      {submitButtonLabel ? (
+        <div className="shrink-0  border-slate-200 bg-white p-3">
+          <div className="flex justify-end">
+            <button
+              type="button"
+                className="rounded-xl bg-PrimaryBlue px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-PrimaryBlue/90 focus:outline-none focus-visible:ring-2 focus-visible:ring-PrimaryBlue focus-visible:ring-offset-2 focus-visible:ring-offset-white"
               >
-                {multiline ? (
-                  <textarea
-                    id={fieldId}
-                    name={fieldKey}
-                    required={required}
-                    minLength={minLength}
-                    maxLength={maxLength}
-                    className="min-h-24 w-full resize-y rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700  placeholder:text-slate-400 focus:outline-none focus-visible:ring-2 focus-visible:ring-PrimaryBlue focus-visible:ring-offset-2 focus-visible:ring-offset-white"
-                    value={stringValue}
-                    onChange={(e) => onChange({ ...value, [fieldKey]: e.target.value })}
-                  />
-                ) : (
-                  <input
-                    id={fieldId}
-                    name={fieldKey}
-                    type={inputType}
-                    required={required}
-                    minLength={minLength}
-                    maxLength={maxLength}
-                    pattern={pattern}
-                    className="w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700  placeholder:text-slate-400 focus:outline-none focus-visible:ring-2 focus-visible:ring-PrimaryBlue focus-visible:ring-offset-2 focus-visible:ring-offset-white"
-                    value={stringValue}
-                    onChange={(e) => onChange({ ...value, [fieldKey]: e.target.value })}
-                  />
-                )}
-              </FieldWrapper>
-            );
-          }
-
-          const fallbackValue = value[fieldKey];
-          const stringValue =
-            typeof fallbackValue === 'string'
-              ? fallbackValue
-              : fallbackValue == null
-                ? ''
-                : JSON.stringify(fallbackValue, null, 2);
-
-          return (
-            <FieldWrapper
-              key={fieldKey}
-              htmlFor={fieldId}
-              label={title}
-              required={required}
-              description={description ?? 'Unsupported schema type. Provide raw JSON.'}
-              fullWidth
-            >
-              <textarea
-                id={fieldId}
-                name={fieldKey}
-                required={required}
-                className="min-h-24 w-full resize-y rounded-xl border border-slate-200 bg-white px-3 py-2 font-mono text-xs text-slate-700 shadow-sm placeholder:text-slate-400 focus:outline-none focus-visible:ring-2 focus-visible:ring-PrimaryBlue focus-visible:ring-offset-2 focus-visible:ring-offset-white"
-                value={stringValue}
-                onChange={(e) => onChange({ ...value, [fieldKey]: e.target.value })}
-              />
-            </FieldWrapper>
-          );
-        })}
+                {submitButtonLabel}
+              </button>
+            </div>
+          </div>
+        ) : null}
       </div>
+
+
     </div>
   );
 }
