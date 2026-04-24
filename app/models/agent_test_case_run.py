@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 
 from sqlalchemy import (
     JSON,
@@ -17,6 +17,11 @@ from sqlalchemy import (
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base, TimestampMixin
+
+if TYPE_CHECKING:
+    from app.models.agent_run import AgentRun
+    from app.models.agent_test_case import AgentTestCase
+    from app.models.agent_test_run import AgentTestRun
 
 
 class AgentTestCaseRun(Base, TimestampMixin):

@@ -77,7 +77,7 @@ def run_esi1_agent(input: ES1AgentInput, *, verbose: bool = True):
             model_spec=model_spec,
             model=get_chat_model(model_id),
         )
-        agent = build_vitals_agent(runtime)
+        agent = build_es1_agent(runtime)
         payload = {"messages": [("user", input.model_dump_json())]}
 
         if not verbose:

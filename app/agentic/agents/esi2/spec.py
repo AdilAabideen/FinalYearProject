@@ -67,7 +67,7 @@ def _maybe_pretty_json(text: str) -> str:
     return json.dumps(obj, indent=2, sort_keys=True, ensure_ascii=False)
 
 
-def run_esi2_agent(input: ES1AgentInput, *, verbose: bool = True):
+def run_esi2_agent(input: ES2AgentInput, *, verbose: bool = True):
     """Run the vitals LangGraph agent with optional verbose stream logging."""
     try:
         model_id = settings.OPENAI_MODEL
@@ -77,7 +77,7 @@ def run_esi2_agent(input: ES1AgentInput, *, verbose: bool = True):
             model_spec=model_spec,
             model=get_chat_model(model_id),
         )
-        agent = build_vitals_agent(runtime)
+        agent = build_esi2_agent(runtime)
         payload = {"messages": [("user", input.model_dump_json())]}
 
         if not verbose:
