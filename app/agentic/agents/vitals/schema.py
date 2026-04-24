@@ -14,8 +14,6 @@ class VitalsAgentInput(BaseModel):
     sbp: float
     dbp: float
     pain: float
-    subject_id: int
-    intime: datetime
     age_years: float
     chiefcomplaint: str
 

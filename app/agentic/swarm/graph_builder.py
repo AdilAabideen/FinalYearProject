@@ -27,7 +27,10 @@ def default_bootstrap_update_factory(workflow: WorkflowDefinition) -> Dict[str, 
 
 
 def default_branch_state_factory(state: SwarmState) -> SwarmState:
-    return make_initial_swarm_state(dict(state.get("case_info") or {}))
+    return make_initial_swarm_state(
+        dict(state.get("case_info") or {}),
+        execution_context=dict(state.get("execution_context") or {}),
+    )
 
 
 class SwarmGraphBuilder:

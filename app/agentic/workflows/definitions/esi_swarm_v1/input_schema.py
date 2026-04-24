@@ -29,5 +29,4 @@ class SwarmV1Input(BaseModel):
     o2sat: float = Field(description="Measured peripheral oxygen saturation percentage.")
     sbp: float = Field(description="Measured systolic blood pressure.")
     dbp: float = Field(description="Measured diastolic blood pressure.")
-    subject_id: int = Field(description="Unique patient or encounter identifier from the source dataset.")
-    intime: datetime = Field(description="Timestamp when the patient encounter or triage intake began.")
+

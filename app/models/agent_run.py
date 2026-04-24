@@ -13,6 +13,13 @@ class AgentRun(Base, TimestampMixin):
     __tablename__ = "agent_runs"
 
     id: Mapped[str] = mapped_column(String, primary_key=True)
+    swarm_run_id: Mapped[Optional[str]] = mapped_column(String, nullable=True, index=True)
+    workflow_id: Mapped[Optional[str]] = mapped_column(String, nullable=True, index=True)
+    workflow_version: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    sequence_index: Mapped[Optional[int]] = mapped_column(nullable=True)
+    parent_handoff_id: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    outgoing_handoff_id: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    is_final_agent: Mapped[Optional[bool]] = mapped_column(nullable=True)
     agent_name: Mapped[str] = mapped_column(String, nullable=False, index=True)
     status: Mapped[str] = mapped_column(String, nullable=False, index=True)
 
@@ -26,7 +33,8 @@ class AgentRun(Base, TimestampMixin):
     finished_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
 
     __table_args__ = (
+        Index("idx_agent_runs_swarm_run_created_at", "swarm_run_id", "created_at"),
+        Index("idx_agent_runs_workflow_created_at", "workflow_id", "created_at"),
         Index("idx_agent_runs_agent_name_created_at", "agent_name", "created_at"),
         Index("idx_agent_runs_status_created_at", "status", "created_at"),
     )
-

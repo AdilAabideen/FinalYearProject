@@ -69,6 +69,33 @@ def ensure_runtime_schema_upgrades() -> None:
                 if name not in metrics_existing:
                     conn.execute(text(f"ALTER TABLE agent_run_metrics ADD COLUMN {name} {sql_type}"))
 
+        if "agent_runs" in table_names:
+            agent_runs_existing = {col["name"] for col in inspector.get_columns("agent_runs")}
+            agent_runs_required: dict[str, str] = {
+                "swarm_run_id": "VARCHAR",
+                "workflow_id": "VARCHAR",
+                "workflow_version": "VARCHAR",
+                "sequence_index": "INTEGER",
+                "parent_handoff_id": "VARCHAR",
+                "outgoing_handoff_id": "VARCHAR",
+                "is_final_agent": "BOOLEAN",
+            }
+            for name, sql_type in agent_runs_required.items():
+                if name not in agent_runs_existing:
+                    conn.execute(text(f"ALTER TABLE agent_runs ADD COLUMN {name} {sql_type}"))
+            conn.execute(
+                text(
+                    "CREATE INDEX IF NOT EXISTS idx_agent_runs_swarm_run_created_at "
+                    "ON agent_runs (swarm_run_id, created_at)"
+                )
+            )
+            conn.execute(
+                text(
+                    "CREATE INDEX IF NOT EXISTS idx_agent_runs_workflow_created_at "
+                    "ON agent_runs (workflow_id, created_at)"
+                )
+            )
+
         if "agent_run_reliability_issues" not in table_names:
             conn.execute(
                 text(
@@ -115,6 +142,179 @@ def ensure_runtime_schema_upgrades() -> None:
             )
             conn.execute(
                 text("CREATE INDEX ix_agent_run_reliability_issues_tool_call_id ON agent_run_reliability_issues (tool_call_id)")
+            )
+
+        if "swarm_runs" not in table_names:
+            conn.execute(
+                text(
+                    """
+                    CREATE TABLE swarm_runs (
+                        id VARCHAR NOT NULL PRIMARY KEY,
+                        workflow_id VARCHAR NOT NULL,
+                        workflow_version VARCHAR,
+                        status VARCHAR NOT NULL,
+                        case_id VARCHAR,
+                        input_schema_name VARCHAR,
+                        input_json JSON NOT NULL,
+                        metadata_json JSON,
+                        current_agent_run_id VARCHAR,
+                        current_gate_id VARCHAR,
+                        final_output_json JSON,
+                        error_text TEXT,
+                        started_at DATETIME,
+                        finished_at DATETIME,
+                        duration_ms INTEGER,
+                        created_at DATETIME NOT NULL,
+                        updated_at DATETIME
+                    )
+                    """
+                )
+            )
+            conn.execute(
+                text(
+                    "CREATE INDEX idx_swarm_runs_workflow_created_at ON swarm_runs (workflow_id, created_at)"
+                )
+            )
+            conn.execute(
+                text(
+                    "CREATE INDEX idx_swarm_runs_status_created_at ON swarm_runs (status, created_at)"
+                )
+            )
+            conn.execute(
+                text(
+                    "CREATE INDEX idx_swarm_runs_case_id_created_at ON swarm_runs (case_id, created_at)"
+                )
+            )
+        else:
+            swarm_runs_existing = {col["name"] for col in inspector.get_columns("swarm_runs")}
+            swarm_runs_required: dict[str, str] = {
+                "workflow_id": "VARCHAR NOT NULL DEFAULT ''",
+                "workflow_version": "VARCHAR",
+                "status": "VARCHAR NOT NULL DEFAULT 'created'",
+                "case_id": "VARCHAR",
+                "input_schema_name": "VARCHAR",
+                "input_json": "JSON",
+                "metadata_json": "JSON",
+                "current_agent_run_id": "VARCHAR",
+                "current_gate_id": "VARCHAR",
+                "final_output_json": "JSON",
+                "error_text": "TEXT",
+                "started_at": "DATETIME",
+                "finished_at": "DATETIME",
+                "duration_ms": "INTEGER",
+            }
+            for name, sql_type in swarm_runs_required.items():
+                if name not in swarm_runs_existing:
+                    conn.execute(text(f"ALTER TABLE swarm_runs ADD COLUMN {name} {sql_type}"))
+            conn.execute(
+                text(
+                    "CREATE INDEX IF NOT EXISTS idx_swarm_runs_workflow_created_at "
+                    "ON swarm_runs (workflow_id, created_at)"
+                )
+            )
+            conn.execute(
+                text(
+                    "CREATE INDEX IF NOT EXISTS idx_swarm_runs_status_created_at "
+                    "ON swarm_runs (status, created_at)"
+                )
+            )
+            conn.execute(
+                text(
+                    "CREATE INDEX IF NOT EXISTS idx_swarm_runs_case_id_created_at "
+                    "ON swarm_runs (case_id, created_at)"
+                )
+            )
+
+        if "swarm_handoffs" not in table_names:
+            conn.execute(
+                text(
+                    """
+                    CREATE TABLE swarm_handoffs (
+                        id VARCHAR NOT NULL PRIMARY KEY,
+                        swarm_run_id VARCHAR NOT NULL,
+                        from_agent_run_id VARCHAR NOT NULL,
+                        from_agent_name VARCHAR NOT NULL,
+                        to_agent_name VARCHAR NOT NULL,
+                        to_agent_run_id VARCHAR,
+                        handoff_name VARCHAR NOT NULL,
+                        payload_schema VARCHAR,
+                        payload_json JSON NOT NULL,
+                        status VARCHAR NOT NULL,
+                        accepted_at DATETIME,
+                        latency_ms INTEGER,
+                        metadata_json JSON,
+                        created_at DATETIME NOT NULL,
+                        updated_at DATETIME
+                    )
+                    """
+                )
+            )
+            conn.execute(
+                text(
+                    "CREATE INDEX idx_swarm_handoffs_swarm_created_at "
+                    "ON swarm_handoffs (swarm_run_id, created_at)"
+                )
+            )
+            conn.execute(
+                text(
+                    "CREATE INDEX idx_swarm_handoffs_from_run_created_at "
+                    "ON swarm_handoffs (from_agent_run_id, created_at)"
+                )
+            )
+            conn.execute(
+                text(
+                    "CREATE INDEX idx_swarm_handoffs_to_agent_created_at "
+                    "ON swarm_handoffs (to_agent_name, created_at)"
+                )
+            )
+            conn.execute(
+                text(
+                    "CREATE INDEX idx_swarm_handoffs_status_created_at "
+                    "ON swarm_handoffs (status, created_at)"
+                )
+            )
+        else:
+            swarm_handoffs_existing = {col["name"] for col in inspector.get_columns("swarm_handoffs")}
+            swarm_handoffs_required: dict[str, str] = {
+                "swarm_run_id": "VARCHAR NOT NULL DEFAULT ''",
+                "from_agent_run_id": "VARCHAR NOT NULL DEFAULT ''",
+                "from_agent_name": "VARCHAR NOT NULL DEFAULT ''",
+                "to_agent_name": "VARCHAR NOT NULL DEFAULT ''",
+                "to_agent_run_id": "VARCHAR",
+                "handoff_name": "VARCHAR NOT NULL DEFAULT ''",
+                "payload_schema": "VARCHAR",
+                "payload_json": "JSON",
+                "status": "VARCHAR NOT NULL DEFAULT 'created'",
+                "accepted_at": "DATETIME",
+                "latency_ms": "INTEGER",
+                "metadata_json": "JSON",
+            }
+            for name, sql_type in swarm_handoffs_required.items():
+                if name not in swarm_handoffs_existing:
+                    conn.execute(text(f"ALTER TABLE swarm_handoffs ADD COLUMN {name} {sql_type}"))
+            conn.execute(
+                text(
+                    "CREATE INDEX IF NOT EXISTS idx_swarm_handoffs_swarm_created_at "
+                    "ON swarm_handoffs (swarm_run_id, created_at)"
+                )
+            )
+            conn.execute(
+                text(
+                    "CREATE INDEX IF NOT EXISTS idx_swarm_handoffs_from_run_created_at "
+                    "ON swarm_handoffs (from_agent_run_id, created_at)"
+                )
+            )
+            conn.execute(
+                text(
+                    "CREATE INDEX IF NOT EXISTS idx_swarm_handoffs_to_agent_created_at "
+                    "ON swarm_handoffs (to_agent_name, created_at)"
+                )
+            )
+            conn.execute(
+                text(
+                    "CREATE INDEX IF NOT EXISTS idx_swarm_handoffs_status_created_at "
+                    "ON swarm_handoffs (status, created_at)"
+                )
             )
 
 def get_db():

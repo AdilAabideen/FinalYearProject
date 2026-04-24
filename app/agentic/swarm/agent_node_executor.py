@@ -5,6 +5,11 @@ from typing import Any, Callable, Dict, Mapping, Optional
 
 from app.agentic.payload_builder import build_pending_agent_payload
 from app.agentic.swarm.execution_strategy import ExecutionRequest, ExecutionStrategy
+from app.agentic.swarm.swarm_execution_tracker import (
+    SwarmExecutionTracker,
+    TrackedAgentExecution,
+    TrackedExecutionPersistenceOutcome,
+)
 from app.agentic.swarm_contract import AgentExecutionResult, AgentName, HandoffEnvelope, SwarmState
 from app.agentic.workflows.workflow_definition import WorkflowDefinition
 
@@ -31,30 +36,45 @@ class AgentNodeExecutor:
         workflow: WorkflowDefinition,
         strategy: ExecutionStrategy,
         payload_builder: PayloadBuilder = build_pending_agent_payload,
+        execution_tracker: SwarmExecutionTracker | None = None,
     ) -> None:
         self.workflow = workflow
         self.strategy = strategy
         self.payload_builder = payload_builder
+        self.execution_tracker = execution_tracker
 
     async def execute(self, *, agent_name: AgentName, state: SwarmState) -> AgentNodeExecutionOutcome:
         pending_agent_payload = self.payload_builder(agent_name, state)
+        tracked_execution = self._begin_tracking(
+            agent_name=agent_name,
+            state=state,
+            pending_agent_payload=pending_agent_payload,
+        )
+        state_snapshot = self._state_snapshot_for_request(
+            state=state,
+            tracked_execution=tracked_execution,
+        )
         request = ExecutionRequest(
             workflow=self.workflow,
             agent_name=agent_name,
             pending_agent_payload=dict(pending_agent_payload),
-            state_snapshot=dict(state),
+            state_snapshot=state_snapshot,
         )
         result = await self.strategy.execute(request)
+        tracking_outcome = self._complete_tracking(tracked=tracked_execution, result=result)
         updates = self._base_updates(
             agent_name=agent_name,
             pending_agent_payload=pending_agent_payload,
             result=result,
+            tracked_execution=tracked_execution,
+            tracking_outcome=tracking_outcome,
         )
         return self._finalize_outcome(
             agent_name=agent_name,
             pending_agent_payload=pending_agent_payload,
             result=result,
             updates=updates,
+            tracking_outcome=tracking_outcome,
         )
 
     def _base_updates(
@@ -63,8 +83,10 @@ class AgentNodeExecutor:
         agent_name: AgentName,
         pending_agent_payload: Dict[str, Any],
         result: AgentExecutionResult,
+        tracked_execution: TrackedAgentExecution | None,
+        tracking_outcome: TrackedExecutionPersistenceOutcome | None,
     ) -> Dict[str, Any]:
-        return {
+        updates = {
             "active_agent": agent_name,
             "pending_agent_payload": pending_agent_payload,
             "completed_agents": [agent_name],
@@ -78,6 +100,24 @@ class AgentNodeExecutor:
                 }
             ],
         }
+        if self.execution_tracker is not None:
+            updates.update(
+                self.execution_tracker.state_updates_for_completion(
+                    tracked=tracked_execution,
+                    persisted=tracking_outcome,
+                )
+            )
+        if tracking_outcome is not None:
+            updates.setdefault("execution_trace", [])
+            updates["execution_trace"].append(
+                {
+                    "event": "agent_run_persisted",
+                    "agent": agent_name,
+                    "agent_run_id": tracking_outcome.agent_run_id,
+                    "sequence_index": tracking_outcome.sequence_index,
+                }
+            )
+        return updates
 
     def _finalize_outcome(
         self,
@@ -86,6 +126,7 @@ class AgentNodeExecutor:
         pending_agent_payload: Dict[str, Any],
         result: AgentExecutionResult,
         updates: Dict[str, Any],
+        tracking_outcome: TrackedExecutionPersistenceOutcome | None,
     ) -> AgentNodeExecutionOutcome:
         if result.status == "final":
             updates["final_output"] = result.final_output or {}
@@ -139,7 +180,10 @@ class AgentNodeExecutor:
                 terminal=True,
             )
 
-        handoff_dict = handoff.model_dump()
+        handoff_dict = self._decorate_handoff_dict(
+            handoff=handoff,
+            tracking_outcome=tracking_outcome,
+        )
         updates["pending_handoff"] = handoff_dict
         updates["handoff_history"] = [handoff_dict]
         updates["execution_trace"].append(
@@ -148,6 +192,7 @@ class AgentNodeExecutor:
                 "from_agent": handoff.from_agent,
                 "target_agent": handoff.target_agent,
                 "handoff_name": handoff.handoff_name,
+                "handoff_id": handoff_dict.get("handoff_id"),
             }
         )
         return AgentNodeExecutionOutcome(
@@ -188,3 +233,61 @@ class AgentNodeExecutor:
                 )
             )
         return matches[0]
+
+    def _begin_tracking(
+        self,
+        *,
+        agent_name: AgentName,
+        state: SwarmState,
+        pending_agent_payload: Dict[str, Any],
+    ) -> TrackedAgentExecution | None:
+        if self.execution_tracker is None:
+            return None
+        return self.execution_tracker.begin_agent_execution(
+            agent_name=agent_name,
+            state=state,
+            pending_agent_payload=pending_agent_payload,
+        )
+
+    def _complete_tracking(
+        self,
+        *,
+        tracked: TrackedAgentExecution | None,
+        result: AgentExecutionResult,
+    ) -> TrackedExecutionPersistenceOutcome | None:
+        if self.execution_tracker is None:
+            return None
+        return self.execution_tracker.complete_agent_execution(
+            tracked=tracked,
+            result=result,
+        )
+
+    def _decorate_handoff_dict(
+        self,
+        *,
+        handoff: HandoffEnvelope,
+        tracking_outcome: TrackedExecutionPersistenceOutcome | None,
+    ) -> Dict[str, Any]:
+        handoff_dict = handoff.model_dump()
+        if self.execution_tracker is None:
+            return handoff_dict
+        return self.execution_tracker.decorate_handoff_dict(
+            handoff_dict=handoff_dict,
+            persisted=tracking_outcome,
+        )
+
+    @staticmethod
+    def _state_snapshot_for_request(
+        *,
+        state: SwarmState,
+        tracked_execution: TrackedAgentExecution | None,
+    ) -> Dict[str, Any]:
+        snapshot = dict(state)
+        if tracked_execution is None:
+            return snapshot
+
+        execution_context = dict(snapshot.get("execution_context") or {})
+        execution_context["current_agent_run_id"] = tracked_execution.agent_run_id
+        execution_context["next_sequence_index"] = int(tracked_execution.sequence_index) + 1
+        snapshot["execution_context"] = execution_context
+        return snapshot

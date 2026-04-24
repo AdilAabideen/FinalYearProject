@@ -116,6 +116,7 @@ class AgentExecutionResult(BaseModel):
 
 class SwarmState(TypedDict):
     case_info: Dict[str, Any]
+    execution_context: Annotated[Optional[Dict[str, Any]], merge_dicts]
     active_agent: Annotated[Optional[str], take_latest_str]
     pending_handoff: Annotated[Optional[Dict[str, Any]], merge_dicts]
     pending_agent_payload: Annotated[Optional[Dict[str, Any]], merge_dicts]
@@ -155,9 +156,13 @@ def is_parallel_start_agent(agent_name: AgentName) -> bool:
     return agent_name in parallel_start_agents
 
 
-def make_initial_swarm_state(case_info: Dict[str, Any]) -> SwarmState:
+def make_initial_swarm_state(
+    case_info: Dict[str, Any],
+    execution_context: Optional[Dict[str, Any]] = None,
+) -> SwarmState:
     return {
         "case_info": dict(case_info),
+        "execution_context": dict(execution_context or {}),
         "active_agent": None,
         "pending_handoff": None,
         "pending_agent_payload": None,

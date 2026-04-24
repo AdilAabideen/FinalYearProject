@@ -795,6 +795,13 @@ def create_agent_run(payload: AgentRunCreateRequest, db: Session) -> AgentRunCre
     now = datetime.utcnow()
     run = AgentRun(
         id=run_id,
+        swarm_run_id=payload.swarm_run_id,
+        workflow_id=payload.workflow_id,
+        workflow_version=payload.workflow_version,
+        sequence_index=payload.sequence_index,
+        parent_handoff_id=payload.parent_handoff_id,
+        outgoing_handoff_id=payload.outgoing_handoff_id,
+        is_final_agent=payload.is_final_agent,
         agent_name=payload.agent_name,
         status="created",
         model_name=model_id,
@@ -836,6 +843,13 @@ def start_agent_run(
     now = datetime.utcnow()
     run = AgentRun(
         id=run_id,
+        swarm_run_id=payload.swarm_run_id,
+        workflow_id=payload.workflow_id,
+        workflow_version=payload.workflow_version,
+        sequence_index=payload.sequence_index,
+        parent_handoff_id=payload.parent_handoff_id,
+        outgoing_handoff_id=payload.outgoing_handoff_id,
+        is_final_agent=payload.is_final_agent,
         agent_name=payload.agent_name,
         status="running",
         model_name=model_id,

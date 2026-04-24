@@ -6,6 +6,8 @@ import asyncio
 import json
 from typing import Any, Dict
 
+from sqlalchemy.orm import Session
+
 from app.agentic.model_registry import get_chat_model, resolve_model_spec
 from app.agentic.runtime import AgentRuntime, RuntimeConfig
 from app.agentic.swarm_agent_registry import SwarmAgentRegistry
@@ -23,8 +25,12 @@ from app.agentic.swarm import (
     CallableExecutionStrategy,
     ExecutionRequest,
     GateEvaluator,
+    SwarmExecutionTracker,
     SwarmGraphBuilder,
 )
+from app.api.services import swarm_runs_service
+from app.database import SessionLocal
+from app.schemas.swarm_runs import SwarmRunCreateRequest
 from app.agentic.workflows.registry import get_workflow_definition
 from app.config import settings
 
@@ -35,11 +41,20 @@ DOCTOR_GATE_ID = WORKFLOW.workflow_metadata.get("doctor_gate_id", "doctor_gate")
 def _json(data: Any) -> str:
     return json.dumps(data, indent=2, sort_keys=True, default=str)
 
-def _build_real_executor(registry: SwarmAgentRegistry) -> AgentNodeExecutor:
+def _build_real_executor(
+    registry: SwarmAgentRegistry,
+    *,
+    execution_tracker: SwarmExecutionTracker | None = None,
+) -> AgentNodeExecutor:
     async def _execute(request: ExecutionRequest) -> AgentExecutionResult:
         agent = registry.get(request.agent_name)
         state = request.state_dict()
-        run_id = str((state.get("case_info") or {}).get("case_id") or request.workflow_id)
+        execution_context = dict(state.get("execution_context") or {})
+        run_id = str(
+            execution_context.get("current_agent_run_id")
+            or (state.get("case_info") or {}).get("case_id")
+            or request.workflow_id
+        )
         agent.set_event_context(run_id=run_id, agent_name=request.agent_name)
         raw_result = await agent.ainvoke(request.payload_dict())
         return normalize_agent_result(request.agent_name, raw_result)
@@ -50,11 +65,16 @@ def _build_real_executor(registry: SwarmAgentRegistry) -> AgentNodeExecutor:
             mode="real",
             execute_fn=_execute,
         ),
+        execution_tracker=execution_tracker,
     )
 
 
-def build_graph(*, registry: SwarmAgentRegistry):
-    executor = _build_real_executor(registry)
+def build_graph(
+    *,
+    registry: SwarmAgentRegistry,
+    execution_tracker: SwarmExecutionTracker | None = None,
+):
+    executor = _build_real_executor(registry, execution_tracker=execution_tracker)
     gate_evaluator = GateEvaluator(workflow=WORKFLOW)
     return SwarmGraphBuilder(
         workflow=WORKFLOW,
@@ -174,10 +194,62 @@ def build_real_registry() -> SwarmAgentRegistry:
 
 
 async def run_real_demo() -> None:
+    db: Session = SessionLocal()
     registry = build_real_registry()
-    graph = build_graph(registry=registry)
-    result = await graph.ainvoke(make_initial_swarm_state(demo_case()))
-    print_run_result(result)
+    case = demo_case()
+    create_response = swarm_runs_service.create_swarm_run(
+        SwarmRunCreateRequest(
+            workflow_id=WORKFLOW.metadata.workflow_id,
+            workflow_version=WORKFLOW.metadata.version,
+            case_id=str(case.get("case_id")) if case.get("case_id") is not None else None,
+            input_schema_name=None,
+            input=case,
+            metadata={
+                "source": "swarm_v1_demo",
+                "workflow_name": WORKFLOW.metadata.name,
+            },
+        ),
+        db,
+    )
+    swarm_runs_service.start_swarm_run(create_response.swarm_run_id, db)
+
+    tracker = SwarmExecutionTracker(
+        db=db,
+        workflow_id=WORKFLOW.metadata.workflow_id,
+        workflow_version=WORKFLOW.metadata.version,
+    )
+    graph = build_graph(registry=registry, execution_tracker=tracker)
+    initial_state = make_initial_swarm_state(
+        case,
+        execution_context={
+            "swarm_run_id": create_response.swarm_run_id,
+            "workflow_id": WORKFLOW.metadata.workflow_id,
+            "workflow_version": WORKFLOW.metadata.version,
+            "next_sequence_index": 1,
+        },
+    )
+
+    try:
+        result = await graph.ainvoke(initial_state)
+        execution_context = dict(result.get("execution_context") or {})
+        swarm_runs_service.finalize_swarm_run(
+            create_response.swarm_run_id,
+            db,
+            status="completed",
+            final_output_json=result.get("final_output"),
+            current_agent_run_id=execution_context.get("current_agent_run_id"),
+        )
+        print_run_result(result)
+    except Exception as exc:
+        swarm_runs_service.finalize_swarm_run(
+            create_response.swarm_run_id,
+            db,
+            status="failed",
+            error_text=str(exc),
+        )
+        raise
+    finally:
+        db.close()
 
 
 def main() -> None:
