@@ -7,52 +7,42 @@ import uuid
 from typing import Optional
 
 from langchain_core.messages import AIMessage, ToolMessage
-from langgraph.prebuilt import create_react_agent
 
+from app.agentic.HandRolledAgent import SSEHandrolledAgent
 from app.agentic.agents.base.spec import AgentSpec
-from app.agentic.handoff import create_handoff_tools
 from app.agentic.model_registry import get_chat_model, resolve_model_spec
 from app.agentic.runtime import AgentRuntime, RuntimeConfig
 from app.config import settings
 
-from .prompt import HANDOFF_REQUIREMENTS, SINGLE_AGENT_OUTPUT_REQUIREMENTS, SYSTEM_PROMPT
+from .evaluator import DoctorAlwaysPassEvaluator
+from .prompt import SYSTEM_PROMPT
+from .schema import DoctorAgentInput, DoctorAgentOutput
 from .tools import TOOLS
-from .evaluator import ESI2AcuityEvaluator
-from .handoffs import HANDOFFS
-
-from app.agentic.HandRolledAgent import SSEHandrolledAgent
-from .schema import ES2AgentInput, ES2AgentOutput
 
 
-def build_esi2_agent(runtime: AgentRuntime, runtime_config: Optional[RuntimeConfig] = None):
-    """Build the ESI2 agent."""
+def build_doctor_agent(runtime: AgentRuntime, runtime_config: Optional[RuntimeConfig] = None):
+    """Build the doctor/supervisor agent."""
     try:
-        handoff_tools = create_handoff_tools("esi2_agent", HANDOFFS)
-        handoff_tool_names = [tool.name for tool in handoff_tools]
-        tools = [*TOOLS, *handoff_tools] if runtime_config and runtime_config.multi_agent else TOOLS
         return SSEHandrolledAgent(
             model=runtime.model,
-            tools=tools,
+            tools=TOOLS,
             system_prompt=SYSTEM_PROMPT,
-            single_agent_prompt_addon=SINGLE_AGENT_OUTPUT_REQUIREMENTS,
-            multi_agent_prompt_addon=HANDOFF_REQUIREMENTS,
-            response_format=ES2AgentOutput,
-            handoff_tool_names=handoff_tool_names,
+            response_format=DoctorAgentOutput,
             runtime_config=runtime_config,
         )
     except Exception as e:
-        raise Exception(f"Error building vitals agent: {e}")
+        raise Exception(f"Error building doctor agent: {e}")
 
 
-ESI2_AGENT_SPEC = AgentSpec(
-    name="esi2_agent",
-    title="ESI2 Agent",
-    description="Identifies ESI-2 cases based on immediate life-saving criteria.",
-    input_model=ES2AgentInput,
-    output_model=ES2AgentOutput,
+DOCTOR_AGENT_SPEC = AgentSpec(
+    name="doctor_agent",
+    title="Doctor Agent",
+    description="Combines upstream agent findings and vitals into a final review.",
+    input_model=DoctorAgentInput,
+    output_model=DoctorAgentOutput,
     tools=TOOLS,
-    build=build_esi2_agent,
-    evaluator=ESI2AcuityEvaluator(),
+    build=build_doctor_agent,
+    evaluator=DoctorAlwaysPassEvaluator(),
 )
 
 
@@ -67,8 +57,8 @@ def _maybe_pretty_json(text: str) -> str:
     return json.dumps(obj, indent=2, sort_keys=True, ensure_ascii=False)
 
 
-def run_esi2_agent(input: ES2AgentInput, *, verbose: bool = True):
-    """Run the vitals LangGraph agent with optional verbose stream logging."""
+def run_doctor_agent(input: DoctorAgentInput, *, verbose: bool = True):
+    """Run the doctor agent with optional verbose stream logging."""
     try:
         model_id = settings.OPENAI_MODEL
         model_spec = resolve_model_spec(model_id)
@@ -77,7 +67,7 @@ def run_esi2_agent(input: ES2AgentInput, *, verbose: bool = True):
             model_spec=model_spec,
             model=get_chat_model(model_id),
         )
-        agent = build_esi2_agent(runtime)
+        agent = build_doctor_agent(runtime)
         payload = {"messages": [("user", input.model_dump_json())]}
 
         if not verbose:
@@ -114,7 +104,7 @@ def run_esi2_agent(input: ES2AgentInput, *, verbose: bool = True):
                 return GREEN
             return YELLOW
 
-        prefix = _c(f"[vitals-agent:{run_id}] ", DIM, GRAY)
+        prefix = _c(f"[doctor-agent:{run_id}] ", DIM, GRAY)
 
         def _log(line: str) -> None:
             print(f"{prefix}{line}", flush=True)
@@ -172,4 +162,4 @@ def run_esi2_agent(input: ES2AgentInput, *, verbose: bool = True):
         _log(_c("END", DIM, GRAY))
         return final_state if final_state is not None else agent.invoke(payload)
     except Exception as e:
-        raise Exception(f"Error running vitals agent: {e}")
+        raise Exception(f"Error running doctor agent: {e}")

@@ -30,6 +30,11 @@ from .tool_protocol import (
     normalize_tool_calls,
     normalize_tool_calls_typed,
 )
+from .prompt_protocol import (
+    build_system_prompt,
+    join_prompt_sections,
+    normalize_prompt_block,
+)
 
 __all__ = [
     "AllowedToolNames",
@@ -51,9 +56,12 @@ __all__ = [
     "recover_tool_calls_from_content",
     "to_legacy_recovery_output",
     "build_tool_instruction",
+    "build_system_prompt",
     "coerce_bound_tools",
     "extract_allowed_tool_names",
     "inject_tool_instruction",
+    "join_prompt_sections",
+    "normalize_prompt_block",
     "normalize_tool_calls",
     "normalize_tool_calls_typed",
 ]

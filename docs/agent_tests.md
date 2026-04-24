@@ -32,7 +32,7 @@ flowchart LR
 - `DELETE /api/tests/cases/{case_id}` (soft-delete: sets `enabled=false`)
 
 **Vitals agent expected_json**
-- For `agent_name="vitals_agent"`, `expected_json` must be exactly:
+- For `agent_name="vitals_agent"`, `expected_json` must be exactly: 
   - `{"recommendation": {"consider_uptriage": true|false}}`
 
 ### Test runs

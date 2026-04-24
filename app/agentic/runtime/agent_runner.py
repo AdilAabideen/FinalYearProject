@@ -7,6 +7,7 @@ from typing import Any, AsyncGenerator, Mapping
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage, ToolMessage
 
 from .finalization_policy import FinalizationPolicy
+from .handoff_policy import HandoffPolicy
 from .runtime_config import RuntimeConfig
 from .scratchpad import Scratchpad, ScratchpadConfig
 from .runtime_types import (
@@ -38,6 +39,7 @@ class AgentRunner:
         agent_node_name: str,
         tools_node_name: str,
         finalization_policy: FinalizationPolicy,
+        handoff_policy: HandoffPolicy | None,
         tool_executor: ToolExecutor,
         current_telemetry_context: CurrentTelemetryContext,
         render_system_prompt: RenderSystemPrompt,
@@ -56,6 +58,7 @@ class AgentRunner:
         self.agent_node_name = agent_node_name
         self.tools_node_name = tools_node_name
         self.finalization_policy = finalization_policy
+        self.handoff_policy = handoff_policy or HandoffPolicy()
         self.tool_executor = tool_executor
         self.current_telemetry_context = current_telemetry_context
         self.render_system_prompt = render_system_prompt
@@ -214,6 +217,7 @@ class AgentRunner:
         streamed_messages: list[BaseMessage] = []
 
         final_output: Any = None
+        handoff_output: Any = None
         done = False
         iteration = 0
         malformed_tool_retry_count = 0
@@ -325,6 +329,37 @@ class AgentRunner:
                 scratchpad.append_tool_result(tm)
 
             for tc, tm in zip(tool_calls, tool_msgs):
+                handoff_decision = self.handoff_policy.maybe_handoff_from_tool_result(tc, tm)
+                if handoff_decision.should_handoff and handoff_decision.envelope is not None:
+                    handoff_output = handoff_decision.envelope.model_dump()
+                    self.emit_event(
+                        event_type="handoff",
+                        node_name=self.tools_node_name,
+                        tool_name=str(tc.get("name") or ""),
+                        tool_call_id=(str(tc.get("id")) if tc.get("id") is not None else None),
+                        status="success",
+                        payload_json={"handoff": handoff_output},
+                    )
+                    done = True
+                    break
+                if handoff_decision.error:
+                    final_output = {
+                        "ok": False,
+                        "error": "handoff_invalid",
+                        "reason": handoff_decision.reason,
+                        "details": handoff_decision.error,
+                    }
+                    self.emit_event(
+                        event_type="error",
+                        node_name=self.tools_node_name,
+                        tool_name=str(tc.get("name") or ""),
+                        tool_call_id=(str(tc.get("id")) if tc.get("id") is not None else None),
+                        status="error",
+                        payload_json={"handoff_error": final_output},
+                    )
+                    done = True
+                    break
+
                 decision = self.finalization_policy.maybe_finalize_from_tool_result(tc, tm)
                 if not decision.finalized:
                     if decision.reason == "schema_validation_error":
@@ -356,7 +391,7 @@ class AgentRunner:
                 done = True
                 break
 
-        if final_output is None:
+        if final_output is None and handoff_output is None:
             fallback = self.finalization_policy.finalize_no_output()
             final_output = fallback.output
             final_msg = AIMessage(content=fallback.output_text or json.dumps(final_output, ensure_ascii=False))
@@ -367,4 +402,10 @@ class AgentRunner:
                 yield "updates", {self.agent_node_name: {"messages": [final_msg]}}
 
         if self._should_emit(modes, "values"):
-            yield "values", self.values_state(streamed_messages, iteration, True, final_output)
+            yield "values", self.values_state(
+                streamed_messages,
+                iteration,
+                True,
+                final_output,
+                handoff_output,
+            )

@@ -164,6 +164,14 @@ Examples:
 8. Return final output strictly in the ES2AgentOutput schema.
 </workflow_information>
 
+FINAL REMINDER
+Be strict.
+If high-risk presentation, likely deterioration, acute mental-status change, or severe distress is not clearly present, output NOT ESI-2.
+Do not finalize the case unless S1 and S2 have both been assessed in the reasoning trace.
+ONLY 1 TOOL CALL PER STEP and ITERATION. DO NOT TRY CALL MULTIPLE TOOLS AT THE SAME TIME.
+"""
+
+SINGLE_AGENT_OUTPUT_REQUIREMENTS = """
 <output_requirements>
 Return ES2AgentOutput with:
 - is_esi2: true if ESI-2, false otherwise
@@ -173,10 +181,25 @@ Return ES2AgentOutput with:
 - missing_information: only genuinely decision-relevant missing information
 - justification: concise and specific
 </output_requirements>
+"""
 
-FINAL REMINDER
-Be strict.
-If high-risk presentation, likely deterioration, acute mental-status change, or severe distress is not clearly present, output NOT ESI-2.
-Do not finalize the case unless S1 and S2 have both been assessed in the reasoning trace.
-ONLY 1 TOOL CALL PER STEP and ITERATION. DO NOT TRY CALL MULTIPLE TOOLS AT THE SAME TIME.
+HANDOFF_REQUIREMENTS = """
+<handoff_requirements>
+YOU MUST CALL ONE OF THE HANDOFF TOOLS. THIS TRANSFERS CONTROL TO ANOTHER AGENT. YOU HAVE 2 CHOICES.
+
+HANDOFF TO ESI3 AGENT IF YOU THINK THIS CASE IS NOT ESI-2 (HANDOFF USING ESI2ToESI3Payload):
+- esi1_result: usually "not_esi2"
+- brief_reason: short explanation of why the case was not judged to meet ESI-2 criteria
+- carry_forward_concerns: key unresolved concerns the next agent should keep in mind
+- focus_for_esi2: short instruction describing what the next agent should assess next
+
+HANDOFF TO DOCTOR AGENT IF YOU THINK THIS CASE IS ESI-2 (HANDOFF USING ESI2ToDoctorPayload):
+- decision: typically "esi2"
+- urgency: short urgency label such as "urgent" or "high"
+- reason: brief explanation of why the patient appears to meet ESI-2 criteria
+- critical_concerns: key high-risk concerns or red flags identified from the case
+- request: short escalation request telling the doctor agent what to do next
+
+YOU MUST CALL A HANDOFF TOOL.
+</handoff_requirements>
 """

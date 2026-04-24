@@ -13,9 +13,14 @@ from langchain_core.tools import BaseTool, tool as lc_tool
 from langchain_openai import ChatOpenAI
 from pydantic import BaseModel, ConfigDict
 
-from app.agentic.protocols import extract_tool_calls_with_priority, looks_like_malformed_tool_call_content
+from app.agentic.protocols import (
+    build_system_prompt,
+    extract_tool_calls_with_priority,
+    looks_like_malformed_tool_call_content,
+)
 from app.agentic.runtime.agent_runner import AgentRunner
 from app.agentic.runtime.finalization_policy import FinalizationPolicy
+from app.agentic.runtime.handoff_policy import HandoffPolicy
 from app.agentic.runtime.runtime_config import RuntimeConfig
 from app.agentic.runtime.tool_executor import ToolExecutionTrace, ToolExecutor
 from app.agentic.telemetry import (
@@ -43,6 +48,9 @@ class SSEHandrolledAgent:
         system_prompt: str = "You are a helpful assistant.",
         response_format: dict[str, Any] | type[BaseModel] | None = None,
         *,
+        single_agent_prompt_addon: str | None = None,
+        multi_agent_prompt_addon: str | None = None,
+        prompt_extra_sections: Sequence[str] | None = None,
         final_answer_tool_name: str | None = "final_answer",
         llm_kwargs: dict[str, Any] | None = None,
         agent_node_name: str = "agent",
@@ -51,6 +59,7 @@ class SSEHandrolledAgent:
         event_handlers: Sequence[Callable[[dict[str, Any]], None]] | None = None,
         llm_call_handlers: Sequence[Callable[[dict[str, Any]], None]] | None = None,
         tool_call_handlers: Sequence[Callable[[dict[str, Any]], None]] | None = None,
+        handoff_tool_names: Sequence[str] | None = None,
         max_tool_calls: int = 2,
         runtime_config: RuntimeConfig | None = None,
     ) -> None:
@@ -60,18 +69,24 @@ class SSEHandrolledAgent:
         self.system_prompt = (
             system_prompt if isinstance(system_prompt, str) and system_prompt.strip() else "You are a helpful assistant."
         )
+        self.single_agent_prompt_addon = (
+            single_agent_prompt_addon.strip()
+            if isinstance(single_agent_prompt_addon, str) and single_agent_prompt_addon.strip()
+            else None
+        )
+        self.multi_agent_prompt_addon = (
+            multi_agent_prompt_addon.strip()
+            if isinstance(multi_agent_prompt_addon, str) and multi_agent_prompt_addon.strip()
+            else None
+        )
+        self.prompt_extra_sections = [
+            str(section).strip()
+            for section in list(prompt_extra_sections or [])
+            if isinstance(section, str) and section.strip()
+        ]
         self.response_format = response_format
         self.final_answer_tool_name = final_answer_tool_name
 
-        if self.final_answer_tool_name and self.response_format is not None:
-            existing = {t.name for t in self.tools}
-            if self.final_answer_tool_name not in existing:
-                self.tools.append(self._build_final_answer_tool())
-
-        self.tools_by_name: dict[str, BaseTool] = {t.name: t for t in self.tools}
-        self.agent_node_name = agent_node_name
-        self.tools_node_name = tools_node_name
-        self.run_timeout_s = None if run_timeout_s is None else float(run_timeout_s)
         if not isinstance(max_tool_calls, int):
             raise TypeError("max_tool_calls must be an integer.")
         if max_tool_calls < 1:
@@ -85,6 +100,16 @@ class SSEHandrolledAgent:
             allow_plain_json_final_output=True,
             drop_extra_tool_calls=True,
         )
+
+        if self._should_add_final_answer_tool(handoff_tool_names=handoff_tool_names):
+            existing = {t.name for t in self.tools}
+            if self.final_answer_tool_name not in existing:
+                self.tools.append(self._build_final_answer_tool())
+
+        self.tools_by_name: dict[str, BaseTool] = {t.name: t for t in self.tools}
+        self.agent_node_name = agent_node_name
+        self.tools_node_name = tools_node_name
+        self.run_timeout_s = None if run_timeout_s is None else float(run_timeout_s)
         self.max_tool_calls = int(self.runtime_config.max_tool_calls_per_turn)
         self._token_estimator = TokenEstimator()
         self._events = EventEmitter()
@@ -94,6 +119,7 @@ class SSEHandrolledAgent:
             final_answer_tool_name=self.final_answer_tool_name,
             validate_output=self._schema_validation_error_for_output,
         )
+        self._handoff_policy = HandoffPolicy(handoff_tool_names=handoff_tool_names)
         self._tool_executor = ToolExecutor(
             tools_by_name=self.tools_by_name,
             estimate_tool_result_tokens=self._token_estimator.estimate_tool_result_tokens,
@@ -115,6 +141,7 @@ class SSEHandrolledAgent:
             agent_node_name=self.agent_node_name,
             tools_node_name=self.tools_node_name,
             finalization_policy=self._finalization_policy,
+            handoff_policy=self._handoff_policy,
             tool_executor=self._tool_executor,
             current_telemetry_context=self._telemetry.current_context,
             render_system_prompt=self._render_system_prompt,
@@ -156,6 +183,20 @@ class SSEHandrolledAgent:
 
         return FinalAnswerPayload
 
+    def _should_add_final_answer_tool(self, *, handoff_tool_names: Sequence[str] | None) -> bool:
+        if not self.final_answer_tool_name or self.response_format is None:
+            return False
+
+        has_handoff_tools = bool(list(handoff_tool_names or []))
+        if (
+            self.runtime_config.multi_agent
+            and self.runtime_config.disable_final_answer_tool_when_handoff_tools_present
+            and has_handoff_tools
+        ):
+            return False
+
+        return True
+
     def _build_final_answer_tool(self) -> BaseTool:
         if not self.final_answer_tool_name:
             raise ValueError("final_answer_tool_name must be set to build final_answer tool.")
@@ -189,12 +230,21 @@ class SSEHandrolledAgent:
             return str(exc)
 
     def _render_system_prompt(self) -> str:
-        return self.system_prompt
+        return build_system_prompt(
+            self.system_prompt,
+            multi_agent_addon=self.multi_agent_prompt_addon,
+            single_agent_addon=self.single_agent_prompt_addon,
+            multi_agent=bool(self.runtime_config.multi_agent),
+            extra_sections=self.prompt_extra_sections,
+        )
 
     @staticmethod
     def _payload_to_human_content(payload: Any) -> str:
         if isinstance(payload, str):
             return payload
+
+        if isinstance(payload, Mapping) and isinstance(payload.get("llm_payload"), Mapping):
+            return json.dumps(payload["llm_payload"], indent=2, default=str, ensure_ascii=False)
 
         if isinstance(payload, Mapping) and isinstance(payload.get("input"), str):
             return str(payload["input"])
@@ -208,7 +258,7 @@ class SSEHandrolledAgent:
                 if isinstance(item, HumanMessage):
                     return str(item.content or "")
 
-        return json.dumps(payload, default=str, ensure_ascii=False)
+        return json.dumps(payload, indent=2, default=str, ensure_ascii=False)
 
     @staticmethod
     def _json_from_text(text: str) -> tuple[Any | None, str]:
@@ -249,6 +299,20 @@ class SSEHandrolledAgent:
         return tool_calls[: self.max_tool_calls], tool_calls[self.max_tool_calls :]
 
     def _emit_tool_execution_trace(self, trace: ToolExecutionTrace) -> None:
+        if self.runtime_config.print_events:
+            status = trace.status or "unknown"
+            print(
+                "[agent-tool] name={name} status={status} latency_ms={latency_ms}".format(
+                    name=trace.tool_name,
+                    status=status,
+                    latency_ms=trace.latency_ms,
+                ),
+                flush=True,
+            )
+
+        if not self.runtime_config.persist_events:
+            return
+
         if not trace.run_id or not trace.agent_name:
             return
 
@@ -275,12 +339,14 @@ class SSEHandrolledAgent:
         iteration: int,
         done: bool,
         output_json: Any,
+        handoff_json: Any = None,
     ) -> dict[str, Any]:
         return {
             "messages": list(messages),
             "iteration": iteration,
             "done": done,
             "output": output_json,
+            "handoff": handoff_json,
         }
 
     def set_event_context(self, *, run_id: str, agent_name: str, start_seq: int = 0) -> None:
@@ -402,30 +468,29 @@ class SSEHandrolledAgent:
 
             if run_id and agent_name:
                 call_index = self._telemetry.next_call_index()
-                self._telemetry.emit_llm(
-                    LLMCallMetric(
-                        run_id=run_id,
-                        agent_name=agent_name,
-                        call_index=call_index,
-                        iteration=iteration,
-                        call_kind=call_kind,
-                        model_name=str(model_name) if model_name else None,
-                        started_at=started_at,
-                        ended_at=ended_at,
-                        latency_ms=latency_ms,
-                        input_tokens=int(in_tok),
-                        output_tokens=int(out_tok),
-                        tokens_total=int(tot_tok),
-                        usage_source=str(usage_source or "estimated"),
-                        had_tool_calls=bool(tool_calls),
-                        tool_call_count=len(tool_calls),
-                        tool_call_parse_source=parse_source,
-                        text_recovered_tool_call_count=text_recovered_tool_call_count,
-                        native_tool_call_count=native_tool_call_count,
-                        tool_names=tool_names,
-                        error_text=None,
-                    )
+                metric = LLMCallMetric(
+                    run_id=run_id,
+                    agent_name=agent_name,
+                    call_index=call_index,
+                    iteration=iteration,
+                    call_kind=call_kind,
+                    model_name=str(model_name) if model_name else None,
+                    started_at=started_at,
+                    ended_at=ended_at,
+                    latency_ms=latency_ms,
+                    input_tokens=int(in_tok),
+                    output_tokens=int(out_tok),
+                    tokens_total=int(tot_tok),
+                    usage_source=str(usage_source or "estimated"),
+                    had_tool_calls=bool(tool_calls),
+                    tool_call_count=len(tool_calls),
+                    tool_call_parse_source=parse_source,
+                    text_recovered_tool_call_count=text_recovered_tool_call_count,
+                    native_tool_call_count=native_tool_call_count,
+                    tool_names=tool_names,
+                    error_text=None,
                 )
+                self._emit_llm_metric(metric)
 
             return response
         except Exception as exc:
@@ -441,32 +506,53 @@ class SSEHandrolledAgent:
 
             if run_id and agent_name:
                 call_index = self._telemetry.next_call_index()
-                self._telemetry.emit_llm(
-                    LLMCallMetric(
-                        run_id=run_id,
-                        agent_name=agent_name,
-                        call_index=call_index,
-                        iteration=iteration,
-                        call_kind=call_kind,
-                        model_name=str(model_name) if model_name else None,
-                        started_at=started_at,
-                        ended_at=ended_at,
-                        latency_ms=latency_ms,
-                        input_tokens=int(in_tok),
-                        output_tokens=0,
-                        tokens_total=int(in_tok),
-                        usage_source="estimated",
-                        had_tool_calls=False,
-                        tool_call_count=0,
-                        tool_call_parse_source=None,
-                        text_recovered_tool_call_count=0,
-                        native_tool_call_count=0,
-                        tool_names=[],
-                        error_text=str(normalized_exc),
-                    )
+                metric = LLMCallMetric(
+                    run_id=run_id,
+                    agent_name=agent_name,
+                    call_index=call_index,
+                    iteration=iteration,
+                    call_kind=call_kind,
+                    model_name=str(model_name) if model_name else None,
+                    started_at=started_at,
+                    ended_at=ended_at,
+                    latency_ms=latency_ms,
+                    input_tokens=int(in_tok),
+                    output_tokens=0,
+                    tokens_total=int(in_tok),
+                    usage_source="estimated",
+                    had_tool_calls=False,
+                    tool_call_count=0,
+                    tool_call_parse_source=None,
+                    text_recovered_tool_call_count=0,
+                    native_tool_call_count=0,
+                    tool_names=[],
+                    error_text=str(normalized_exc),
                 )
+                self._emit_llm_metric(metric)
 
             raise normalized_exc
+
+    def _emit_llm_metric(self, metric: LLMCallMetric) -> None:
+        if self.runtime_config.print_events:
+            status = "error" if metric.error_text else "ok"
+            tool_names = ",".join(metric.tool_names) if metric.tool_names else "none"
+            print(
+                "[agent-llm] agent={agent} call={call_index} kind={kind} status={status} tokens={tokens} tools={tools} latency_ms={latency_ms}".format(
+                    agent=metric.agent_name,
+                    call_index=metric.call_index,
+                    kind=metric.call_kind,
+                    status=status,
+                    tokens=metric.tokens_total,
+                    tools=tool_names,
+                    latency_ms=metric.latency_ms,
+                ),
+                flush=True,
+            )
+
+        if not self.runtime_config.persist_events:
+            return
+
+        self._telemetry.emit_llm(metric)
 
     def _emit_event(
         self,
@@ -479,6 +565,20 @@ class SSEHandrolledAgent:
         payload_json: dict[str, Any] | None = None,
         payload_text: str | None = None,
     ) -> None:
+        if self.runtime_config.print_events:
+            details = []
+            if node_name:
+                details.append("node={node}".format(node=node_name))
+            if tool_name:
+                details.append("tool={tool}".format(tool=tool_name))
+            if status:
+                details.append("status={status}".format(status=status))
+            suffix = " " + " ".join(details) if details else ""
+            print("[agent-event] type={event_type}{suffix}".format(event_type=event_type, suffix=suffix), flush=True)
+
+        if not self.runtime_config.persist_events:
+            return
+
         self._events.emit(
             event_type=event_type,
             node_name=node_name,
@@ -499,9 +599,13 @@ class SSEHandrolledAgent:
 
     async def ainvoke(self, payload: Any) -> Any:
         final_output: Any = None
+        final_handoff: Any = None
         async for mode, data in self.astream(payload, stream_mode=("values",)):
             if mode == "values" and isinstance(data, Mapping):
                 final_output = data.get("output")
+                final_handoff = data.get("handoff")
+        if final_handoff is not None:
+            return {"handoff": final_handoff, "output": final_output}
         return final_output
 
     def invoke(self, payload: Any) -> Any:
