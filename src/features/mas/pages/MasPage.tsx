@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import type { MasWorkflowSummary } from '../../../types/mas';
 import { masDiscoveryService } from '../../../services/masDiscoveryService';
+import type { MasCatalogDetail, MasWorkflowSummary } from '../../../types/mas';
 import { MasCard, MasCardSkeleton } from '../../agents/components/MasCard';
 import { MasDetailSplitView } from '../components/MasDetailSplitView';
 
@@ -25,7 +25,8 @@ type MasPageProps = {
 type MasDetailState =
   | { status: 'closed' }
   | { status: 'loading'; workflowId: string }
-  | { status: 'success'; workflow: MasWorkflowSummary };
+  | { status: 'error'; workflowId: string; message: string }
+  | { status: 'success'; workflow: MasCatalogDetail };
 
 export function MasPage({ onHeaderChange }: MasPageProps) {
   const [state, setState] = useState<MasLoadState>({ status: 'loading' });
@@ -55,13 +56,13 @@ export function MasPage({ onHeaderChange }: MasPageProps) {
     return () => ac.abort();
   }, []);
 
-  const skeletons = useMemo(() => Array.from({ length: 6 }, (_, i) => i), []);
-
   useEffect(() => {
     return () => {
       detailAbortRef.current?.abort();
     };
   }, []);
+
+  const skeletons = useMemo(() => Array.from({ length: 6 }, (_, i) => i), []);
 
   function closeDetail() {
     detailAbortRef.current?.abort();
@@ -89,22 +90,26 @@ export function MasPage({ onHeaderChange }: MasPageProps) {
     detailAbortRef.current = ac;
     setDetail({ status: 'loading', workflowId });
 
-    window.setTimeout(() => {
+    try {
+      const workflow = await masDiscoveryService.getWorkflow(workflowId, ac.signal);
       if (ac.signal.aborted) return;
-      if (!summary) {
-        closeDetail();
-        return;
-      }
 
-      setDetail({ status: 'success', workflow: summary });
+      setDetail({ status: 'success', workflow });
       onHeaderChange?.({
-        title: summary.name,
-        subtitle: summary.description,
+        title: workflow.metadata.name,
+        subtitle: workflow.metadata.description,
         showSearch: false,
         backAction: { label: 'Back to workflows', onClick: closeDetail },
         contentOverflow: 'hidden',
       });
-    }, 180);
+    } catch (e: unknown) {
+      if (ac.signal.aborted) return;
+      setDetail({
+        status: 'error',
+        workflowId,
+        message: e instanceof Error ? e.message : 'Failed to load workflow',
+      });
+    }
   }
 
   if (detail.status !== 'closed') {
@@ -128,6 +133,23 @@ export function MasPage({ onHeaderChange }: MasPageProps) {
             </div>
           ) : null}
 
+          {detail.status === 'error' ? (
+            <div className="space-y-4 p-6">
+              <div className="rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">
+                {detail.message}
+              </div>
+              <div className="flex flex-wrap gap-3">
+                <button
+                  type="button"
+                  onClick={() => openWorkflow(detail.workflowId)}
+                  className="inline-flex items-center rounded-xl bg-PrimaryBlue px-3 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-PrimaryBlue/90"
+                >
+                  Retry
+                </button>
+              </div>
+            </div>
+          ) : null}
+
           {detail.status === 'success' ? (
             <div className="flex-1 min-h-0">
               <MasDetailSplitView workflow={detail.workflow} />
@@ -147,23 +169,23 @@ export function MasPage({ onHeaderChange }: MasPageProps) {
           </div>
         ) : null}
 
-        <div className="grid items-start gap-8 sm:grid-cols-2 lg:grid-cols-3 p-6">
+        <div className="grid items-start gap-8 p-6 sm:grid-cols-2 lg:grid-cols-3">
           {state.status === 'success'
             ? state.mas.map((mas) => (
-              <MasCard
-                key={mas.workflowId}
-                workflowId={mas.workflowId}
-                name={mas.name}
-                version={mas.version}
-                description={mas.description}
-                participatingAgentsCount={mas.participatingAgentsCount}
-                startAgentsCount={mas.startAgentsCount}
-                finalizingAgentsCount={mas.finalizingAgentsCount}
-                gatesCount={mas.gatesCount}
-                sourcesCount={mas.sourcesCount}
-                onOpen={openWorkflow}
-              />
-            ))
+                <MasCard
+                  key={mas.workflowId}
+                  workflowId={mas.workflowId}
+                  name={mas.name}
+                  version={mas.version}
+                  description={mas.description}
+                  participatingAgentsCount={mas.participatingAgentsCount}
+                  startAgentsCount={mas.startAgentsCount}
+                  finalizingAgentsCount={mas.finalizingAgentsCount}
+                  gatesCount={mas.gatesCount}
+                  sourcesCount={mas.sourcesCount}
+                  onOpen={openWorkflow}
+                />
+              ))
             : skeletons.map((i) => <MasCardSkeleton key={i} />)}
         </div>
       </div>
