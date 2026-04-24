@@ -29,8 +29,6 @@ from app.agentic.swarm_result_normalizer import normalize_agent_result
 from app.agentic.workflows.registry import get_workflow_definition
 from app.config import settings
 
-
-ACUITY_AGENTS = {"esi1_agent", "esi2_agent", "esi345_agent"}
 WORKFLOW = get_workflow_definition("esi_swarm_v1")
 DOCTOR_GATE_ID = WORKFLOW.workflow_metadata.get("doctor_gate_id", "doctor_gate")
 
@@ -39,17 +37,11 @@ def _json(data: Any) -> str:
     return json.dumps(data, indent=2, sort_keys=True, default=str)
 
 
-def _handoff_to_doctor_from(state: SwarmState, sources: set[str]) -> bool:
-    for item in state.get("handoff_history", []):
-        if item.get("target_agent") == "doctor_agent" and item.get("from_agent") in sources:
-            return True
-    return False
-
-
 def doctor_gate_ready(state: SwarmState) -> bool:
-    has_acuity = _handoff_to_doctor_from(state, ACUITY_AGENTS)
-    has_vitals = _handoff_to_doctor_from(state, {"vitals_agent"})
-    return has_acuity and has_vitals
+    return WORKFLOW.is_gate_ready(
+        DOCTOR_GATE_ID,
+        list(state.get("handoff_history", [])),
+    )
 
 
 def _validated_handoff_history(state: SwarmState) -> List[HandoffEnvelope]:
@@ -233,9 +225,9 @@ def execute_stub_agent(
         for item in handoff_history:
             if item.target_agent != "doctor_agent":
                 continue
-            if item.from_agent in ACUITY_AGENTS:
+            if "acuity" in WORKFLOW.sources_for_agent(item.from_agent):
                 acuity_handoff = item
-            if item.from_agent == "vitals_agent":
+            if "vitals" in WORKFLOW.sources_for_agent(item.from_agent):
                 vitals_handoff = item
 
         if acuity_handoff is None or vitals_handoff is None:
@@ -415,11 +407,25 @@ def route_bootstrap(state: SwarmState) -> List[Send]:
 
 def doctor_gate(state: SwarmState) -> Dict[str, Any]:
     ready = doctor_gate_ready(state)
+    satisfied_sources = list(
+        WORKFLOW.gate_satisfied_sources(
+            DOCTOR_GATE_ID,
+            list(state.get("handoff_history", [])),
+        )
+    )
+    missing_sources = list(
+        WORKFLOW.gate_missing_sources(
+            DOCTOR_GATE_ID,
+            list(state.get("handoff_history", [])),
+        )
+    )
     return {
         "execution_trace": [
             {
                 "event": "doctor_gate",
                 "ready": ready,
+                "satisfied_sources": satisfied_sources,
+                "missing_sources": missing_sources,
                 "handoffs_to_doctor": [
                     item
                     for item in state.get("handoff_history", [])
@@ -496,8 +502,11 @@ def inspect_graph() -> None:
         print(f"- {node}")
 
     print("\nDoctor gate rule:")
-    print("- requires at least one acuity handoff to doctor_agent")
-    print("- requires one vitals_agent handoff to doctor_agent")
+    gate = WORKFLOW.gates[DOCTOR_GATE_ID]
+    print("- required sources: {sources}".format(sources=", ".join(gate.required_sources)))
+    print("- source mapping:")
+    for source_id in gate.required_sources:
+        print("  {source}: {agents}".format(source=source_id, agents=", ".join(WORKFLOW.source_agents(source_id))))
 
     print("\nMermaid:")
     print("flowchart LR")

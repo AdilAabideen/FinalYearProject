@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from app.agentic.workflows.workflow_definition import (
     GateNodeDefinition,
+    SourceDefinition,
     WorkflowDefinition,
     WorkflowMetadata,
 )
@@ -24,6 +25,22 @@ ESI_SWARM_V1 = WorkflowDefinition(
         "vitals_agent",
         "doctor_agent",
     ),
+    sources={
+        "acuity": SourceDefinition(
+            source_id="acuity",
+            name="Acuity Branch",
+            agent_names=("esi1_agent", "esi2_agent", "esi345_agent"),
+            description="The main ESI acuity decision pathway.",
+            metadata={"branch_type": "clinical_acuity"},
+        ),
+        "vitals": SourceDefinition(
+            source_id="vitals",
+            name="Vitals Branch",
+            agent_names=("vitals_agent",),
+            description="The vitals-only parallel support branch.",
+            metadata={"branch_type": "physiologic_support"},
+        ),
+    },
     start_agents=(
         "esi1_agent",
         "vitals_agent",
@@ -44,11 +61,10 @@ ESI_SWARM_V1 = WorkflowDefinition(
             name="Doctor Gate",
             description="Waits until both the acuity branch and vitals branch have handed off before doctor finalization.",
             required_sources=("acuity", "vitals"),
-            incoming_from=("esi1_agent", "esi2_agent", "esi345_agent", "vitals_agent"),
             target_node="doctor_agent",
             metadata={
                 "gate_type": "readiness_gate",
-                "ready_rule": "requires_acuity_and_vitals_handoffs_to_doctor",
+                "ready_rule": "requires_required_sources_to_handoff_to_target",
                 "terminal_when_not_ready": True,
             },
         ),
