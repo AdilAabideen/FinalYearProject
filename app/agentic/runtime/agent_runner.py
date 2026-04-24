@@ -119,6 +119,54 @@ class AgentRunner:
         )
         return HumanMessage(content=content)
 
+    def _expected_tool_for_retry(self, ai_msg: AIMessage) -> str | None:
+        content = str(getattr(ai_msg, "content", "") or "")
+        lowered = content.lower()
+
+        final_answer_tool_name = str(self.finalization_policy.final_answer_tool_name or "").strip()
+        if final_answer_tool_name and final_answer_tool_name.lower() in lowered:
+            return final_answer_tool_name
+
+        available_tool_names = list(self.tool_executor.tools_by_name.keys())
+        matches = [name for name in available_tool_names if name.lower() in lowered]
+        if len(matches) == 1:
+            return matches[0]
+
+        if len(available_tool_names) == 1:
+            return available_tool_names[0]
+
+        return None
+
+    def _retry_key_for_tool(self, tool_name: str | None) -> str:
+        return str(tool_name or "__unknown_tool__")
+
+    def _build_tool_specific_malformed_tool_retry_feedback(
+        self,
+        ai_msg: AIMessage,
+        *,
+        tool_name: str | None,
+    ) -> HumanMessage:
+        if not tool_name:
+            return self._build_malformed_tool_retry_feedback(ai_msg)
+
+        excerpt = self._short_excerpt(str(getattr(ai_msg, "content", "") or ""))
+        content = (
+            "MALFORMED TOOL CALL DETECTED.\n"
+            f"Your previous response attempted to call `{tool_name}` but the JSON/tool-call format was malformed.\n"
+            f"Call EXACTLY one tool: `{tool_name}`.\n"
+            'Required format: {"tool_calls":[{"id":"call_<unique_id>","name":"'
+            f'{tool_name}'
+            '","arguments":{{...}}}]}\n'
+            "Rules:\n"
+            "- Do not use markdown or code fences.\n"
+            "- Do not add prose or explanations.\n"
+            "- Do not add extra top-level keys.\n"
+            "- Put the single tool call inside the tool_calls array.\n"
+            "- Use valid JSON only.\n"
+            f"Previous malformed output excerpt:\n{excerpt}"
+        )
+        return HumanMessage(content=content)
+
     def _extract_normalized_tool_calls(self, ai_msg: AIMessage) -> list[dict[str, Any]]:
         raw_tool_calls = list(getattr(ai_msg, "tool_calls", []) or [])
         normalized_calls: list[dict[str, Any]] = []
@@ -220,7 +268,7 @@ class AgentRunner:
         handoff_output: Any = None
         done = False
         iteration = 0
-        malformed_tool_retry_count = 0
+        malformed_tool_retry_counts: dict[str, int] = {}
         pending_retry_feedback: HumanMessage | None = None
         run_started_t = time.perf_counter()
 
@@ -268,22 +316,29 @@ class AgentRunner:
                 if (
                     malformed_detected
                     and self.runtime_config.malformed_tool_retry_enabled
-                    and malformed_tool_retry_count < self.runtime_config.max_malformed_tool_retries
                 ):
-                    malformed_tool_retry_count += 1
-                    pending_retry_feedback = self._build_malformed_tool_retry_feedback(ai_msg)
-                    self.emit_event(
-                        event_type="runtime_decision",
-                        node_name=self.agent_node_name,
-                        payload_json={
-                            "decision": "retry_after_malformed_tool_call",
-                            "retry_index": malformed_tool_retry_count,
-                            "max_retries": self.runtime_config.max_malformed_tool_retries,
-                        },
-                    )
-                    if self._should_emit(modes, "values"):
-                        yield "values", self.values_state(streamed_messages, iteration, False, None)
-                    continue
+                    retry_tool_name = self._expected_tool_for_retry(ai_msg)
+                    retry_key = self._retry_key_for_tool(retry_tool_name)
+                    retry_count = malformed_tool_retry_counts.get(retry_key, 0)
+                    if retry_count < self.runtime_config.max_malformed_tool_retries_per_tool:
+                        malformed_tool_retry_counts[retry_key] = retry_count + 1
+                        pending_retry_feedback = self._build_tool_specific_malformed_tool_retry_feedback(
+                            ai_msg,
+                            tool_name=retry_tool_name,
+                        )
+                        self.emit_event(
+                            event_type="runtime_decision",
+                            node_name=self.agent_node_name,
+                            payload_json={
+                                "decision": "retry_after_malformed_tool_call",
+                                "tool_name": retry_tool_name,
+                                "retry_index": malformed_tool_retry_counts[retry_key],
+                                "max_retries_per_tool": self.runtime_config.max_malformed_tool_retries_per_tool,
+                            },
+                        )
+                        if self._should_emit(modes, "values"):
+                            yield "values", self.values_state(streamed_messages, iteration, False, None)
+                        continue
 
                 self._emit_assistant_event_from_text(str(ai_msg.content or ""))
                 scratchpad.append_final_assistant(ai_msg)

@@ -13,6 +13,8 @@ EventType = Literal[
     "tool_result",
     "thought",
     "assistant",
+    "runtime_decision",
+    "handoff",
     "run_end",
     "error",
 ]

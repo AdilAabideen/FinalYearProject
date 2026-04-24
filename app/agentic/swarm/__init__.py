@@ -5,10 +5,10 @@ from app.agentic.swarm.execution_strategy import (
     ExecutionRequest,
     ExecutionStrategy,
     ExecutionStrategyMode,
-    SyncCallableExecutionStrategy,
 )
 from app.agentic.swarm.agent_node_executor import AgentNodeExecutionOutcome, AgentNodeExecutor
 from app.agentic.swarm.gate_evaluator import GateEvaluationOutcome, GateEvaluator
+from app.agentic.swarm.graph_builder import SwarmGraphBuilder
 
 __all__ = [
     "AgentNodeExecutionOutcome",
@@ -19,5 +19,5 @@ __all__ = [
     "ExecutionStrategyMode",
     "GateEvaluationOutcome",
     "GateEvaluator",
-    "SyncCallableExecutionStrategy",
+    "SwarmGraphBuilder",
 ]

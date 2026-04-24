@@ -2,13 +2,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from typing import Any, Awaitable, Callable, Dict, Mapping, Protocol, runtime_checkable
-from typing import Literal
 
 from app.agentic.swarm_contract import AgentExecutionResult, AgentName
 from app.agentic.workflows.workflow_definition import WorkflowDefinition
 
 
-ExecutionStrategyMode = Literal["stub", "real"]
+ExecutionStrategyMode = str
 
 
 @dataclass(frozen=True)
@@ -55,7 +54,6 @@ class ExecutionStrategy(Protocol):
 
 
 ExecutionFn = Callable[[ExecutionRequest], Awaitable[AgentExecutionResult]]
-SyncExecutionFn = Callable[[ExecutionRequest], AgentExecutionResult]
 
 
 @dataclass(frozen=True)
@@ -67,14 +65,3 @@ class CallableExecutionStrategy:
 
     async def execute(self, request: ExecutionRequest) -> AgentExecutionResult:
         return await self.execute_fn(request)
-
-
-@dataclass(frozen=True)
-class SyncCallableExecutionStrategy:
-    """Sync strategy adapter for local stub execution."""
-
-    mode: ExecutionStrategyMode
-    execute_fn: SyncExecutionFn
-
-    async def execute(self, request: ExecutionRequest) -> AgentExecutionResult:
-        return self.execute_fn(request)

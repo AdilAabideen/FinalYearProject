@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 from dataclasses import dataclass
 from typing import Any, Callable, Dict, Mapping, Optional
 
@@ -57,9 +56,6 @@ class AgentNodeExecutor:
             result=result,
             updates=updates,
         )
-
-    def execute_sync(self, *, agent_name: AgentName, state: SwarmState) -> AgentNodeExecutionOutcome:
-        return asyncio.run(self.execute(agent_name=agent_name, state=state))
 
     def _base_updates(
         self,
