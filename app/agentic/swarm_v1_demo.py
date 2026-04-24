@@ -10,7 +10,6 @@ from langgraph.graph import END, START, StateGraph
 from langgraph.types import Command, Send
 
 from app.agentic.model_registry import get_chat_model, resolve_model_spec
-from app.agentic.payload_builder import build_pending_agent_payload
 from app.agentic.runtime import AgentRuntime, RuntimeConfig
 from app.agentic.swarm_agent_registry import SwarmAgentRegistry
 from app.agentic.swarm_contract import (
@@ -26,6 +25,13 @@ from app.agentic.swarm_contract import (
     parallel_start_agents,
 )
 from app.agentic.swarm_result_normalizer import normalize_agent_result
+from app.agentic.swarm import (
+    AgentNodeExecutionOutcome,
+    AgentNodeExecutor,
+    CallableExecutionStrategy,
+    ExecutionRequest,
+    SyncCallableExecutionStrategy,
+)
 from app.agentic.workflows.registry import get_workflow_definition
 from app.config import settings
 
@@ -263,124 +269,59 @@ def execute_stub_agent(
     )
 
 
-async def execute_real_agent(
-    *,
-    agent_name: AgentName,
-    pending_agent_payload: Dict[str, Any],
-    registry: SwarmAgentRegistry,
-    state: SwarmState,
-) -> AgentExecutionResult:
-    agent = registry.get(agent_name)
-    run_id = str((state.get("case_info") or {}).get("case_id") or "swarm-v1-real")
-    agent.set_event_context(run_id=run_id, agent_name=agent_name)
-    raw_result = await agent.ainvoke(pending_agent_payload)
-    return normalize_agent_result(agent_name, raw_result)
+def _outcome_to_command(outcome: AgentNodeExecutionOutcome) -> Command:
+    if outcome.terminal or outcome.goto is None:
+        return Command(goto=END, update=outcome.state_updates)
+    return Command(goto=outcome.goto, update=outcome.state_updates)
 
 
-def _route_after_result(result: AgentExecutionResult, updates: Dict[str, Any]) -> Command:
-    if result.status == "final":
-        updates["final_output"] = result.final_output or {}
-        updates["execution_trace"].append(
-            {
-                "event": "final_output_created",
-                "agent": result.agent_name,
-                "final_output": result.final_output,
-            }
+def _build_stub_executor() -> AgentNodeExecutor:
+    def _execute(request: ExecutionRequest) -> AgentExecutionResult:
+        return execute_stub_agent(
+            agent_name=request.agent_name,
+            pending_agent_payload=request.payload_dict(),
+            state=request.state_dict(),  # type: ignore[arg-type]
         )
-        return Command(goto=END, update=updates)
 
-    if result.status == "error":
-        updates["execution_trace"].append(
-            {
-                "event": "agent_error",
-                "agent": result.agent_name,
-                "output": result.output,
-            }
-        )
-        return Command(goto=END, update=updates)
-
-    if result.handoff is None:
-        updates["execution_trace"].append(
-            {
-                "event": "missing_handoff",
-                "agent": result.agent_name,
-            }
-        )
-        return Command(goto=END, update=updates)
-
-    handoff_dict = result.handoff.model_dump()
-    updates["pending_handoff"] = handoff_dict
-    updates["handoff_history"] = [handoff_dict]
-    updates["execution_trace"].append(
-        {
-            "event": "handoff_created",
-            "from_agent": result.handoff.from_agent,
-            "target_agent": result.handoff.target_agent,
-            "handoff_name": result.handoff.handoff_name,
-        }
+    return AgentNodeExecutor(
+        workflow=WORKFLOW,
+        strategy=SyncCallableExecutionStrategy(
+            mode="stub",
+            execute_fn=_execute,
+        ),
     )
 
-    if result.handoff.target_agent == "doctor_agent":
-        return Command(goto=DOCTOR_GATE_ID, update=updates)
-    return Command(goto=result.handoff.target_agent, update=updates)
+
+def _build_real_executor(registry: SwarmAgentRegistry) -> AgentNodeExecutor:
+    async def _execute(request: ExecutionRequest) -> AgentExecutionResult:
+        agent = registry.get(request.agent_name)
+        state = request.state_dict()
+        run_id = str((state.get("case_info") or {}).get("case_id") or request.workflow_id)
+        agent.set_event_context(run_id=run_id, agent_name=request.agent_name)
+        raw_result = await agent.ainvoke(request.payload_dict())
+        return normalize_agent_result(request.agent_name, raw_result)
+
+    return AgentNodeExecutor(
+        workflow=WORKFLOW,
+        strategy=CallableExecutionStrategy(
+            mode="real",
+            execute_fn=_execute,
+        ),
+    )
 
 
-def _agent_updates(
-    *,
-    agent_name: AgentName,
-    pending_agent_payload: Dict[str, Any],
-    result: AgentExecutionResult,
-) -> Dict[str, Any]:
-    return {
-        "active_agent": agent_name,
-        "pending_agent_payload": pending_agent_payload,
-        "completed_agents": [agent_name],
-        "execution_trace": [
-            {
-                "event": "agent_executed",
-                "agent": agent_name,
-                "status": result.status,
-                "output": result.output,
-                "payload_metadata": pending_agent_payload.get("metadata", {}),
-            }
-        ],
-    }
-
-
-def _stub_agent_node(agent_name: AgentName):
+def _stub_agent_node(agent_name: AgentName, executor: AgentNodeExecutor):
     def node(state: SwarmState) -> Command:
-        pending_agent_payload = build_pending_agent_payload(agent_name, state)
-        result = execute_stub_agent(
-            agent_name=agent_name,
-            pending_agent_payload=pending_agent_payload,
-            state=state,
-        )
-
-        updates = _agent_updates(
-            agent_name=agent_name,
-            pending_agent_payload=pending_agent_payload,
-            result=result,
-        )
-        return _route_after_result(result, updates)
+        outcome = executor.execute_sync(agent_name=agent_name, state=state)
+        return _outcome_to_command(outcome)
 
     return node
 
 
-def _real_agent_node(agent_name: AgentName, registry: SwarmAgentRegistry):
+def _real_agent_node(agent_name: AgentName, executor: AgentNodeExecutor):
     async def node(state: SwarmState) -> Command:
-        pending_agent_payload = build_pending_agent_payload(agent_name, state)
-        result = await execute_real_agent(
-            agent_name=agent_name,
-            pending_agent_payload=pending_agent_payload,
-            registry=registry,
-            state=state,
-        )
-        updates = _agent_updates(
-            agent_name=agent_name,
-            pending_agent_payload=pending_agent_payload,
-            result=result,
-        )
-        return _route_after_result(result, updates)
+        outcome = await executor.execute(agent_name=agent_name, state=state)
+        return _outcome_to_command(outcome)
 
     return node
 
@@ -449,17 +390,19 @@ def build_graph(*, registry: Optional[SwarmAgentRegistry] = None):
     graph.add_node("bootstrap", bootstrap)
     graph.add_node(DOCTOR_GATE_ID, doctor_gate)
     if registry is None:
-        graph.add_node("esi1_agent", _stub_agent_node("esi1_agent"))
-        graph.add_node("esi2_agent", _stub_agent_node("esi2_agent"))
-        graph.add_node("esi345_agent", _stub_agent_node("esi345_agent"))
-        graph.add_node("vitals_agent", _stub_agent_node("vitals_agent"))
-        graph.add_node("doctor_agent", _stub_agent_node("doctor_agent"))
+        executor = _build_stub_executor()
+        graph.add_node("esi1_agent", _stub_agent_node("esi1_agent", executor))
+        graph.add_node("esi2_agent", _stub_agent_node("esi2_agent", executor))
+        graph.add_node("esi345_agent", _stub_agent_node("esi345_agent", executor))
+        graph.add_node("vitals_agent", _stub_agent_node("vitals_agent", executor))
+        graph.add_node("doctor_agent", _stub_agent_node("doctor_agent", executor))
     else:
-        graph.add_node("esi1_agent", _real_agent_node("esi1_agent", registry))
-        graph.add_node("esi2_agent", _real_agent_node("esi2_agent", registry))
-        graph.add_node("esi345_agent", _real_agent_node("esi345_agent", registry))
-        graph.add_node("vitals_agent", _real_agent_node("vitals_agent", registry))
-        graph.add_node("doctor_agent", _real_agent_node("doctor_agent", registry))
+        executor = _build_real_executor(registry)
+        graph.add_node("esi1_agent", _real_agent_node("esi1_agent", executor))
+        graph.add_node("esi2_agent", _real_agent_node("esi2_agent", executor))
+        graph.add_node("esi345_agent", _real_agent_node("esi345_agent", executor))
+        graph.add_node("vitals_agent", _real_agent_node("vitals_agent", executor))
+        graph.add_node("doctor_agent", _real_agent_node("doctor_agent", executor))
 
     graph.add_edge(START, "bootstrap")
     graph.add_conditional_edges("bootstrap", route_bootstrap)
