@@ -1,0 +1,67 @@
+from __future__ import annotations
+
+from datetime import datetime
+
+import pytest
+from pydantic import ValidationError
+
+from app.agentic.agents.esi1.schema import ES1AgentInput, ES1AgentOutput
+from app.agentic.agents.esi2.schema import ES2AgentInput, ES2AgentOutput
+from app.agentic.agents.esi345.schema import ES345AgentInput, ES345AgentOutput
+from app.agentic.agents.vitals.schema import VitalsAgentOutput
+
+
+@pytest.mark.unit
+def test_ut_sch_001_vitals_output_schema_accepts_valid_recommendation_payload():
+    payload = VitalsAgentOutput.model_validate(
+        {
+            "ok": True,
+            "recommendation": {
+                "consider_uptriage": True,
+                "reasoning_consider_uptriage": "because",
+                "confidence": "high",
+            },
+        }
+    )
+    assert payload.ok is True
+
+
+@pytest.mark.unit
+def test_ut_sch_002_esi1_output_schema_rejects_confidence_outside_zero_one():
+    with pytest.raises(ValidationError):
+        ES1AgentOutput.model_validate(
+            {"is_esi1": True, "confidence": 2, "case_summary": "x", "key_risks": [], "missing_information": [], "justification": "x"}
+        )
+
+
+@pytest.mark.unit
+def test_ut_sch_003_esi2_output_schema_rejects_confidence_outside_zero_one():
+    with pytest.raises(ValidationError):
+        ES2AgentOutput.model_validate(
+            {"is_esi2": True, "confidence": -1, "case_summary": "x", "key_risks": [], "missing_information": [], "justification": "x"}
+        )
+
+
+@pytest.mark.unit
+def test_ut_sch_004_esi345_output_schema_rejects_esi_level_outside_three_four_five():
+    with pytest.raises(ValidationError):
+        ES345AgentOutput.model_validate(
+            {"esi_level": 2, "num_resources": 1, "predicted_resources": [], "confidence": 0.5, "case_summary": "x", "key_risks": [], "missing_information": [], "justification": "x"}
+        )
+
+
+@pytest.mark.unit
+def test_ut_sch_005_esi345_output_schema_rejects_negative_num_resources():
+    with pytest.raises(ValidationError):
+        ES345AgentOutput.model_validate(
+            {"esi_level": 3, "num_resources": -1, "predicted_resources": [], "confidence": 0.5, "case_summary": "x", "key_risks": [], "missing_information": [], "justification": "x"}
+        )
+
+
+@pytest.mark.unit
+def test_ut_sch_006_esi1_input_accepts_alias_fields():
+    payload = ES1AgentInput.model_validate(
+        {"gender": "m", "race": "x", "arrival": "walk", "pain": "1", "chief complaint": "pain", "age": 20, "triage case": "case"}
+    )
+    assert payload.arrival_transport == "walk"
+

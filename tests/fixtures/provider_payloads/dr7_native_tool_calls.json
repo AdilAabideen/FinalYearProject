@@ -1,0 +1,18 @@
+{
+  "choices": [
+    {
+      "message": {
+        "content": "",
+        "tool_calls": [
+          {
+            "id": "call_dr7",
+            "function": {
+              "name": "lookup_value",
+              "arguments": "{\"value\": \"abc\"}"
+            }
+          }
+        ]
+      }
+    }
+  ]
+}
