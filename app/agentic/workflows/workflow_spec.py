@@ -1,0 +1,42 @@
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from typing import Any, Dict, Optional, Type
+
+from pydantic import BaseModel
+
+from app.agentic.workflows.workflow_definition import WorkflowDefinition
+
+
+@dataclass(frozen=True)
+class WorkflowInputSchemaSpec:
+    """External entry contract for a workflow or MAS variant."""
+
+    schema_name: str
+    model: Type[BaseModel]
+    description: Optional[str] = None
+    metadata: Dict[str, Any] = field(default_factory=dict)
+
+    def json_schema(self) -> Dict[str, Any]:
+        return self.model.model_json_schema()
+
+
+@dataclass(frozen=True)
+class WorkflowSpec:
+    """Unified registry entry for one workflow variant."""
+
+    workflow_definition: WorkflowDefinition
+    input_schema: WorkflowInputSchemaSpec
+    metadata: Dict[str, Any] = field(default_factory=dict)
+
+    @property
+    def workflow_id(self) -> str:
+        return self.workflow_definition.metadata.workflow_id
+
+    @property
+    def name(self) -> str:
+        return self.workflow_definition.metadata.name
+
+    @property
+    def version(self) -> str:
+        return self.workflow_definition.metadata.version

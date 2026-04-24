@@ -78,6 +78,27 @@ class MASGateRead(BaseModel):
     )
 
 
+class MASInputSchemaRead(BaseModel):
+    schema_name: str = Field(description="Stable name of the workflow input schema.")
+    description: Optional[str] = Field(
+        default=None,
+        description="Optional human-readable description of the workflow input contract.",
+    )
+    metadata: dict[str, Any] = Field(
+        default_factory=dict,
+        description="Optional metadata for UI rendering or schema handling.",
+    )
+    json_schema: dict[str, Any] = Field(
+        default_factory=dict,
+        description="JSON Schema representation of the workflow input model.",
+    )
+
+
+class MASAgentPositionRead(BaseModel):
+    x: int = Field(description="Horizontal position used for workflow rendering.")
+    y: int = Field(description="Vertical position used for workflow rendering.")
+
+
 class MASCatalogDetail(BaseModel):
     metadata: MASWorkflowMetadataRead = Field(description="Workflow metadata.")
     participating_agents: list[str] = Field(
@@ -111,4 +132,9 @@ class MASCatalogDetail(BaseModel):
     workflow_metadata: dict[str, Any] = Field(
         default_factory=dict,
         description="Optional workflow-level metadata.",
+    )
+    input_schema: MASInputSchemaRead = Field(description="Workflow input contract and JSON schema.")
+    agent_positions: dict[str, MASAgentPositionRead] = Field(
+        default_factory=dict,
+        description="Optional node positions for frontend workflow rendering.",
     )

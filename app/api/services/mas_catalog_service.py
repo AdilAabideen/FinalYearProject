@@ -2,7 +2,11 @@ from __future__ import annotations
 
 from fastapi import HTTPException
 
-from app.agentic.workflows.registry import get_workflow_definition, list_workflow_definitions
+from app.agentic.workflows.registry import (
+    get_workflow_definition,
+    get_workflow_spec,
+    list_workflow_definitions,
+)
 from app.agentic.workflows.workflow_definition import (
     GateNodeDefinition,
     SourceDefinition,
@@ -12,6 +16,8 @@ from app.schemas.mas_catalog import (
     MASCatalogDetail,
     MASCatalogSummary,
     MASGateRead,
+    MASInputSchemaRead,
+    MASAgentPositionRead,
     MASSourceRead,
     MASWorkflowMetadataRead,
 )
@@ -68,9 +74,10 @@ def list_mas_catalog() -> list[MASCatalogSummary]:
 
 def get_mas_catalog(workflow_id: str) -> MASCatalogDetail:
     try:
-        workflow = get_workflow_definition(workflow_id)
+        workflow_spec = get_workflow_spec(workflow_id)
     except ValueError:
         raise HTTPException(status_code=404, detail="Unknown workflow")
+    workflow = workflow_spec.workflow_definition
 
     return MASCatalogDetail(
         metadata=_build_metadata(workflow),
@@ -94,4 +101,15 @@ def get_mas_catalog(workflow_id: str) -> MASCatalogDetail:
             for agent_name, metadata in workflow.agent_metadata.items()
         },
         workflow_metadata=dict(workflow.workflow_metadata),
+        input_schema=MASInputSchemaRead(
+            schema_name=workflow_spec.input_schema.schema_name,
+            description=workflow_spec.input_schema.description,
+            metadata=dict(workflow_spec.input_schema.metadata),
+            json_schema=workflow_spec.input_schema.json_schema(),
+        ),
+        agent_positions={
+            node_id: MASAgentPositionRead(**position)
+            for node_id, position in dict(workflow_spec.metadata.get("agent_positions", {})).items()
+            if isinstance(position, dict)
+        },
     )
