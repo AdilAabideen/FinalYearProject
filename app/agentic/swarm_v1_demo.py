@@ -26,10 +26,13 @@ from app.agentic.swarm_contract import (
     parallel_start_agents,
 )
 from app.agentic.swarm_result_normalizer import normalize_agent_result
+from app.agentic.workflows.registry import get_workflow_definition
 from app.config import settings
 
 
 ACUITY_AGENTS = {"esi1_agent", "esi2_agent", "esi345_agent"}
+WORKFLOW = get_workflow_definition("esi_swarm_v1")
+DOCTOR_GATE_ID = WORKFLOW.workflow_metadata.get("doctor_gate_id", "doctor_gate")
 
 
 def _json(data: Any) -> str:
@@ -326,7 +329,7 @@ def _route_after_result(result: AgentExecutionResult, updates: Dict[str, Any]) -
     )
 
     if result.handoff.target_agent == "doctor_agent":
-        return Command(goto="doctor_gate", update=updates)
+        return Command(goto=DOCTOR_GATE_ID, update=updates)
     return Command(goto=result.handoff.target_agent, update=updates)
 
 
@@ -395,7 +398,7 @@ def bootstrap(state: SwarmState) -> Dict[str, Any]:
         "execution_trace": [
             {
                 "event": "bootstrap",
-                "parallel_start_agents": list(parallel_start_agents),
+                "parallel_start_agents": list(WORKFLOW.start_agents),
             }
         ]
     }
@@ -407,7 +410,7 @@ def _bootstrap_branch_state(state: SwarmState) -> SwarmState:
 
 def route_bootstrap(state: SwarmState) -> List[Send]:
     branch_state = _bootstrap_branch_state(state)
-    return [Send(agent_name, dict(branch_state)) for agent_name in parallel_start_agents]
+    return [Send(agent_name, dict(branch_state)) for agent_name in WORKFLOW.start_agents]
 
 
 def doctor_gate(state: SwarmState) -> Dict[str, Any]:
@@ -438,7 +441,7 @@ def route_doctor_gate(state: SwarmState) -> str:
 def build_graph(*, registry: Optional[SwarmAgentRegistry] = None):
     graph = StateGraph(SwarmState)
     graph.add_node("bootstrap", bootstrap)
-    graph.add_node("doctor_gate", doctor_gate)
+    graph.add_node(DOCTOR_GATE_ID, doctor_gate)
     if registry is None:
         graph.add_node("esi1_agent", _stub_agent_node("esi1_agent"))
         graph.add_node("esi2_agent", _stub_agent_node("esi2_agent"))
@@ -454,14 +457,14 @@ def build_graph(*, registry: Optional[SwarmAgentRegistry] = None):
 
     graph.add_edge(START, "bootstrap")
     graph.add_conditional_edges("bootstrap", route_bootstrap)
-    graph.add_conditional_edges("doctor_gate", route_doctor_gate)
+    graph.add_conditional_edges(DOCTOR_GATE_ID, route_doctor_gate)
     return graph.compile()
 
 
 def inspect_graph() -> None:
     print("=== Swarm V1 Graph Inspection ===")
     print("\nStart agents:")
-    for agent in parallel_start_agents:
+    for agent in WORKFLOW.start_agents:
         print(f"- {agent}")
 
     print("\nFinalizing agents:")
@@ -473,7 +476,7 @@ def inspect_graph() -> None:
         print(f"- {agent}")
 
     print("\nAllowed handoffs:")
-    for source, targets in allowed_handoffs.items():
+    for source, targets in WORKFLOW.allowed_handoffs.items():
         if not targets:
             print(f"- {source} -> none")
             continue
@@ -487,7 +490,7 @@ def inspect_graph() -> None:
         "vitals_agent",
         "esi2_agent",
         "esi345_agent",
-        "doctor_gate",
+        DOCTOR_GATE_ID,
         "doctor_agent",
     ]:
         print(f"- {node}")
@@ -502,12 +505,12 @@ def inspect_graph() -> None:
     print('  bootstrap --> esi1_agent')
     print('  bootstrap --> vitals_agent')
     print('  esi1_agent --> esi2_agent')
-    print('  esi1_agent --> doctor_gate')
+    print(f'  esi1_agent --> {DOCTOR_GATE_ID}')
     print('  esi2_agent --> esi345_agent')
-    print('  esi2_agent --> doctor_gate')
-    print('  esi345_agent --> doctor_gate')
-    print('  vitals_agent --> doctor_gate')
-    print('  doctor_gate --> doctor_agent')
+    print(f'  esi2_agent --> {DOCTOR_GATE_ID}')
+    print(f'  esi345_agent --> {DOCTOR_GATE_ID}')
+    print(f'  vitals_agent --> {DOCTOR_GATE_ID}')
+    print(f'  {DOCTOR_GATE_ID} --> doctor_agent')
     print('  doctor_agent --> END')
 
 
