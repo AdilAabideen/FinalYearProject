@@ -10,6 +10,7 @@ class RuntimeConfig:
     multi_agent: bool = False
     print_events: bool = False
     persist_events: bool = True
+    disable_final_answer_tool_when_handoff_tools_present: bool = True
     max_tool_calls_per_turn: int = 2
     require_final_answer_tool: bool = True
     allow_text_tool_recovery: bool = True

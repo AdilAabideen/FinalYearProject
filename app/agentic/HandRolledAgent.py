@@ -87,15 +87,6 @@ class SSEHandrolledAgent:
         self.response_format = response_format
         self.final_answer_tool_name = final_answer_tool_name
 
-        if self.final_answer_tool_name and self.response_format is not None:
-            existing = {t.name for t in self.tools}
-            if self.final_answer_tool_name not in existing:
-                self.tools.append(self._build_final_answer_tool())
-
-        self.tools_by_name: dict[str, BaseTool] = {t.name: t for t in self.tools}
-        self.agent_node_name = agent_node_name
-        self.tools_node_name = tools_node_name
-        self.run_timeout_s = None if run_timeout_s is None else float(run_timeout_s)
         if not isinstance(max_tool_calls, int):
             raise TypeError("max_tool_calls must be an integer.")
         if max_tool_calls < 1:
@@ -109,6 +100,16 @@ class SSEHandrolledAgent:
             allow_plain_json_final_output=True,
             drop_extra_tool_calls=True,
         )
+
+        if self._should_add_final_answer_tool(handoff_tool_names=handoff_tool_names):
+            existing = {t.name for t in self.tools}
+            if self.final_answer_tool_name not in existing:
+                self.tools.append(self._build_final_answer_tool())
+
+        self.tools_by_name: dict[str, BaseTool] = {t.name: t for t in self.tools}
+        self.agent_node_name = agent_node_name
+        self.tools_node_name = tools_node_name
+        self.run_timeout_s = None if run_timeout_s is None else float(run_timeout_s)
         self.max_tool_calls = int(self.runtime_config.max_tool_calls_per_turn)
         self._token_estimator = TokenEstimator()
         self._events = EventEmitter()
@@ -181,6 +182,20 @@ class SSEHandrolledAgent:
             model_config = ConfigDict(extra="allow")
 
         return FinalAnswerPayload
+
+    def _should_add_final_answer_tool(self, *, handoff_tool_names: Sequence[str] | None) -> bool:
+        if not self.final_answer_tool_name or self.response_format is None:
+            return False
+
+        has_handoff_tools = bool(list(handoff_tool_names or []))
+        if (
+            self.runtime_config.multi_agent
+            and self.runtime_config.disable_final_answer_tool_when_handoff_tools_present
+            and has_handoff_tools
+        ):
+            return False
+
+        return True
 
     def _build_final_answer_tool(self) -> BaseTool:
         if not self.final_answer_tool_name:

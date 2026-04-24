@@ -127,6 +127,23 @@ The step field must always match one of the created plan steps.
 
 </workflow_information>
 
+<decision_source_rules>
+DECISION SOURCE RULES
+You must derive decision_source only from the acuity_context.from_agent field.
+
+- If acuity_context.from_agent == "esi1_agent":
+   decision_source must be "esi1_confirmed"
+
+- If acuity_context.from_agent == "esi2_agent":
+   decision_source must be "esi2_confirmed"
+
+- If acuity_context.from_agent == "esi345_agent":
+   decision_source must be "esi345_confirmed" unless you up-triage because of vitals.
+   If you up-triage an ESI-3/4/5 result to ESI-2 because of vitals, decision_source must be "esi345_uptriaged_to_esi2"
+
+Never output "esi345_uptriaged_to_esi2" unless acuity_context.from_agent is exactly "esi345_agent".
+</decision_source_rules>
+
 <output_requirements>
 
 Return DoctorAgentOutput with:

@@ -1,5 +1,5 @@
+# swarm_agent_register.py
 from __future__ import annotations
-
 from typing import Callable, Dict, Optional
 
 from app.agentic.HandRolledAgent import SSEHandrolledAgent

@@ -1,3 +1,4 @@
+#swarm_v1_demo
 from __future__ import annotations
 
 import argparse
@@ -6,7 +7,7 @@ import json
 from typing import Any, Dict, List, Optional
 
 from langgraph.graph import END, START, StateGraph
-from langgraph.types import Command
+from langgraph.types import Command, Send
 
 from app.agentic.model_registry import get_chat_model, resolve_model_spec
 from app.agentic.payload_builder import build_pending_agent_payload
@@ -400,8 +401,13 @@ def bootstrap(state: SwarmState) -> Dict[str, Any]:
     }
 
 
-def route_bootstrap(state: SwarmState) -> List[str]:
-    return list(parallel_start_agents)
+def _bootstrap_branch_state(state: SwarmState) -> SwarmState:
+    return make_initial_swarm_state(dict(state.get("case_info") or {}))
+
+
+def route_bootstrap(state: SwarmState) -> List[Send]:
+    branch_state = _bootstrap_branch_state(state)
+    return [Send(agent_name, dict(branch_state)) for agent_name in parallel_start_agents]
 
 
 def doctor_gate(state: SwarmState) -> Dict[str, Any]:
