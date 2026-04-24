@@ -3,6 +3,7 @@ import type { NavKey } from './navigation/Sidebar';
 import { AppShell } from './layout/AppShell';
 import { AgentsPage } from '../features/agents/pages/AgentsPage';
 import { HomePage } from '../features/home/pages/HomePage';
+import { MasPage } from '../features/mas/pages/MasPage';
 
 type BackAction = { label?: string; onClick: () => void };
 type HeaderOverride = {
@@ -25,6 +26,10 @@ function App() {
     agents: {
       title: 'Available Agents',
       subtitle: 'Select an agent to view its tools and test cases and Test them with test Cases',
+    },
+    mas: {
+      title: 'Multi Agent Systems',
+      subtitle: 'Design and inspect orchestrated workflows across collaborating agents',
     },
   };
 
@@ -54,7 +59,13 @@ function App() {
       backAction={backAction}
       contentOverflow={contentOverflow}
     >
-      {active === 'agents' ? <AgentsPage onHeaderChange={setAgentsHeaderOverride} /> : <HomePage />}
+      {active === 'agents' ? (
+        <AgentsPage onHeaderChange={setAgentsHeaderOverride} />
+      ) : active === 'mas' ? (
+        <MasPage />
+      ) : (
+        <HomePage />
+      )}
     </AppShell>
   );
 }

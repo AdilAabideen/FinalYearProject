@@ -5,7 +5,7 @@ import { SidebarBrand } from './SidebarBrand';
 import { SidebarFooterButton } from './SidebarFooterButton';
 import { SidebarNavItem } from './SidebarNavItem';
 
-export type NavKey = 'home' | 'agents';
+export type NavKey = 'home' | 'agents' | 'mas';
 
 type SidebarProps = {
   active: NavKey;
@@ -16,6 +16,8 @@ export function Sidebar({ active, onNavigate }: SidebarProps) {
   const listRef = useRef<HTMLDivElement | null>(null);
   const homeRef = useRef<HTMLButtonElement | null>(null);
   const agentsRef = useRef<HTMLButtonElement | null>(null);
+  const masRef = useRef<HTMLButtonElement | null>(null);
+
   const [{ y, height, visible }, setIndicator] = useState({ y: 0, height: 0, visible: false });
 
   useLayoutEffect(() => {
@@ -23,7 +25,15 @@ export function Sidebar({ active, onNavigate }: SidebarProps) {
 
     const update = () => {
       const container = listRef.current;
-      const target = active === 'home' ? homeRef.current : agentsRef.current;
+      let target;
+
+      if (active === 'home') {
+        target = homeRef.current;
+      } else if (active === 'mas') {
+        target = masRef.current;
+      } else {
+        target = agentsRef.current;
+      }
 
       if (!container || !target) {
         setIndicator((prev) => (prev.visible ? { ...prev, visible: false } : prev));
@@ -51,6 +61,7 @@ export function Sidebar({ active, onNavigate }: SidebarProps) {
     if (listRef.current) ro.observe(listRef.current);
     if (homeRef.current) ro.observe(homeRef.current);
     if (agentsRef.current) ro.observe(agentsRef.current);
+    if (masRef.current) ro.observe(masRef.current);
 
     let cancelled = false;
     document.fonts?.ready?.then(() => {
@@ -93,6 +104,14 @@ export function Sidebar({ active, onNavigate }: SidebarProps) {
             iconSrc={agentsIcon}
             label="Agents"
             active={active === 'agents'}
+          />
+
+          <SidebarNavItem
+            ref={masRef}
+            onClick={() => onNavigate('mas')}
+            iconSrc={agentsIcon}
+            label="Multi Agent Systems"
+            active={active === 'mas'}
           />
         </div>
       </nav>

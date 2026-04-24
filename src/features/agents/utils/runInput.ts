@@ -7,6 +7,8 @@ const ESI2_TRIAGE_CASE =
   'A 61-year-old male presented to the emergency department via ambulance with a chief complaint of severe right upper quadrant abdominal pain, rated 10/10, accompanied by nausea, vomiting, constipation, and reduced oral intake. He has a significant medical history, including coronary artery disease, hypertension, hyperlipidemia, left ventricular hypertrophy, cholelithiasis, diverticulosis, colon adenoma, and a previous lacunar infarction. Earlier in the day, he was discharged with a diagnosis of gallstones and advised to follow up for surgery but returned with exacerbated symptoms. On arrival, his vital signs showed hypertension (BP 184/0) and hypothermia (T 96.6 F).';
 const ESI345_TRIAGE_CASE =
   'A 72-year-old female with a complex medical history including heart failure, aortic stenosis, history of strokes, COPD, and chronic urinary retention with a Foley catheter, presents to the emergency department with shortness of breath, chest pain, and bilateral pedal edema. The patient reports a one-week history of worsening shortness of breath and pedal edema, along with intermittent left-sided chest and arm pain. On the day of admission, she experienced worsening shortness of breath, requiring oxygen supplementation. The patient denies cough, fever, abdominal pain, or recent weight gain. She was transported by ambulance and has no known drug allergies.';
+const RUN_AGENT_TRIAGE_CASE =
+  "79-year-old white male with a history of depression, acute congestive heart failure, status post mitral valve repair with quadruple CABG, prostate cancer post-TURP, obstructive sleep apnea, hypertension, and Alzheimer's disease, presented to the ED with a chief complaint of head injury following an unwitnessed fall. He was found by a passerby, acutely confused, disoriented, and with associated nausea and vomiting. The patient is amnestic to the events surrounding the trauma, recalling only going for a walk. He arrived by ambulance. Initial vital signs were BP 166/72, HR 68, RR 16, SpO2 98%, with severe pain rated at 8/10. The patient has no known allergies.";
 
 const ESI2_DEFAULT_INPUTS: Record<string, unknown> = {
   gender: 'M',
@@ -31,6 +33,34 @@ const ESI345_DEFAULT_INPUTS: Record<string, unknown> = {
   triagecase: ESI345_TRIAGE_CASE,
   acuity: 3,
   resources_used: 2,
+};
+
+const DOCTOR_AGENT_DEFAULT_INPUTS: Record<string, unknown> = {
+  gender: 'M',
+  race: 'WHITE',
+  arrival_transport: 'AMBULANCE',
+  pain: '8',
+  chiefcomplaint: 's/p Fall, Head injury',
+  age: 79.03214573,
+  tiragecase: RUN_AGENT_TRIAGE_CASE,
+  source_agent: 'esi1_agent',
+  esi1_summary:
+    'Older patient with unwitnessed fall, head injury, acute confusion, disorientation, nausea, vomiting, and amnesia to event.',
+  esi1_reason:
+    'ESI-1 pathway escalated this case because of concern for immediately unsafe post-traumatic presentation with altered mental status after head injury.',
+  esi1_critical_concerns: [
+    'acute confusion',
+    'disorientation',
+    'head injury after unwitnessed fall',
+    'vomiting after trauma',
+    'amnestic to event',
+  ],
+  vitals_consider_uptriage: true,
+  vitals_urgency: 'high',
+  vitals_reason:
+    'Post-traumatic altered mental status with hypertension and severe pain should be treated as high concern from a triage perspective.',
+  abnormal_vitals: ['sbp 166', 'pain 8/10'],
+  vitals_confidence: 'high',
 };
 
 const DEFAULT_INPUTS_BY_AGENT: Record<string, Record<string, unknown>> = {
@@ -116,6 +146,7 @@ const DEFAULT_INPUTS_BY_AGENT: Record<string, Record<string, unknown>> = {
   esi345_agent: ESI345_DEFAULT_INPUTS,
   esi345agent: ESI345_DEFAULT_INPUTS,
   esi_345_agent: ESI345_DEFAULT_INPUTS,
+  doctor_agent: DOCTOR_AGENT_DEFAULT_INPUTS,
 };
 
 export function getDefaultInputs(agent: AgentCatalogDetail): Record<string, unknown> {
