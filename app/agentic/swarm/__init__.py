@@ -7,6 +7,7 @@ from app.agentic.swarm.execution_strategy import (
     ExecutionStrategyMode,
 )
 from app.agentic.swarm.agent_node_executor import AgentNodeExecutionOutcome, AgentNodeExecutor
+from app.agentic.swarm.swarm_event_emitter import SwarmEventEmitter
 from app.agentic.swarm.gate_evaluator import GateEvaluationOutcome, GateEvaluator
 from app.agentic.swarm.graph_builder import SwarmGraphBuilder
 from app.agentic.swarm.swarm_execution_tracker import (
@@ -22,6 +23,7 @@ __all__ = [
     "ExecutionRequest",
     "ExecutionStrategy",
     "ExecutionStrategyMode",
+    "SwarmEventEmitter",
     "GateEvaluationOutcome",
     "GateEvaluator",
     "SwarmGraphBuilder",

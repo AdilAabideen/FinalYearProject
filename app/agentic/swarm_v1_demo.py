@@ -25,6 +25,7 @@ from app.agentic.swarm import (
     CallableExecutionStrategy,
     ExecutionRequest,
     GateEvaluator,
+    SwarmEventEmitter,
     SwarmExecutionTracker,
     SwarmGraphBuilder,
 )
@@ -215,11 +216,27 @@ async def run_real_demo() -> None:
         db,
     )
     swarm_runs_service.start_swarm_run(create_response.swarm_run_id, db)
+    event_emitter = SwarmEventEmitter(
+        workflow_id=WORKFLOW.metadata.workflow_id,
+        session_factory=SessionLocal,
+    )
+    event_emitter.emit(
+        swarm_run_id=create_response.swarm_run_id,
+        event_type="swarm_started",
+        status="running",
+        payload_json={
+            "workflow_id": WORKFLOW.metadata.workflow_id,
+            "workflow_version": WORKFLOW.metadata.version,
+            "case_id": case.get("case_id"),
+            "input": case,
+        },
+    )
 
     tracker = SwarmExecutionTracker(
         session_factory=SessionLocal,
         workflow_id=WORKFLOW.metadata.workflow_id,
         workflow_version=WORKFLOW.metadata.version,
+        event_emitter=event_emitter,
     )
     graph = build_graph(registry=registry, execution_tracker=tracker)
     initial_state = make_initial_swarm_state(

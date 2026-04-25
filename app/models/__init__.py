@@ -9,6 +9,7 @@ from app.models.agent_llm_call import AgentLLMCall
 from app.models.agent_tool_call import AgentToolCall
 from app.models.agent_run_metrics import AgentRunMetrics
 from app.models.agent_run_reliability_issue import AgentRunReliabilityIssue
+from app.models.swarm_event import SwarmEvent
 from app.models.swarm_final_output import SwarmFinalOutput
 from app.models.swarm_gate_evaluation import SwarmGateEvaluation
 from app.models.swarm_handoff import SwarmHandoff

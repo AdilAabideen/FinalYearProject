@@ -2,11 +2,12 @@ from __future__ import annotations
 
 from typing import Optional
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Request
 from sqlalchemy.orm import Session
 
-from app.api.services import swarm_runs_service
+from app.api.services import swarm_events_service, swarm_runs_service
 from app.database import get_db
+from app.schemas.swarm_events import SwarmEventsPage
 from app.schemas.swarm_runs import (
     SwarmRunCreateRequest,
     SwarmRunCreateResponse,
@@ -62,6 +63,27 @@ def finalize_swarm_run(
         current_agent_run_id=payload.current_agent_run_id,
         current_gate_id=payload.current_gate_id,
     )
+
+
+@router.get("/{swarm_run_id}/events", response_model=SwarmEventsPage)
+def list_swarm_events(
+    swarm_run_id: str,
+    after_seq: int = Query(default=0, ge=0),
+    limit: int = Query(default=200, ge=1, le=1000),
+    db: Session = Depends(get_db),
+):
+    return swarm_events_service.list_swarm_events(swarm_run_id, after_seq, limit, db)
+
+
+@router.get("/{swarm_run_id}/events/stream")
+def stream_swarm_events(
+    swarm_run_id: str,
+    request: Request,
+    after_seq: int = Query(default=0, ge=0),
+    poll_interval_s: float = Query(default=0.25, ge=0.05, le=5.0),
+    db: Session = Depends(get_db),
+):
+    return swarm_events_service.stream_swarm_events(swarm_run_id, request, after_seq, poll_interval_s, db)
 
 
 @router.get("/{swarm_run_id}", response_model=SwarmRunRead)

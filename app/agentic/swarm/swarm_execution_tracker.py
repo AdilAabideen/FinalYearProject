@@ -16,6 +16,7 @@ from app.api.repository import (
     swarm_handoffs_repository,
     swarm_runs_repository,
 )
+from app.agentic.swarm.swarm_event_emitter import SwarmEventEmitter
 from app.agentic.swarm.gate_evaluator import GateEvaluationOutcome
 from app.agentic.swarm_contract import AgentExecutionResult, AgentName, HandoffEnvelope, SwarmState
 from app.models.agent_run import AgentRun
@@ -55,11 +56,13 @@ class SwarmExecutionTracker:
         session_factory: Callable[[], Session] | None = None,
         workflow_id: str,
         workflow_version: str | None = None,
+        event_emitter: SwarmEventEmitter | None = None,
     ) -> None:
         self.db = db
         self.session_factory = session_factory
         self.workflow_id = workflow_id
         self.workflow_version = workflow_version
+        self.event_emitter = event_emitter
 
     def begin_agent_execution(
         self,
@@ -114,6 +117,17 @@ class SwarmExecutionTracker:
                 accepted_at=now,
             )
             self._update_swarm_run_on_agent_start(db=db, swarm_run_id=swarm_run_id, agent_run_id=run.id)
+        self._emit_event(
+            swarm_run_id=swarm_run_id,
+            event_type="agent_started",
+            agent_run_id=run_id,
+            agent_name=agent_name,
+            status="running",
+            payload_json={
+                "sequence_index": sequence_index,
+                "parent_handoff_id": incoming_handoff_id,
+            },
+        )
 
         return TrackedAgentExecution(
             swarm_run_id=swarm_run_id,
@@ -147,6 +161,17 @@ class SwarmExecutionTracker:
                 run.status = "failed"
                 run.error_text = self._error_text(result.output)
                 agent_runs_repository.save_run(db, run)
+                self._emit_event(
+                    swarm_run_id=tracked.swarm_run_id,
+                    event_type="agent_completed",
+                    agent_run_id=run.id,
+                    agent_name=tracked.agent_name,
+                    status="failed",
+                    payload_json={
+                        "sequence_index": tracked.sequence_index,
+                        "output": self._result_output_json(result),
+                    },
+                )
                 return TrackedExecutionPersistenceOutcome(
                     agent_run_id=run.id,
                     sequence_index=tracked.sequence_index,
@@ -157,12 +182,21 @@ class SwarmExecutionTracker:
 
             if result.status == "final":
                 run.is_final_agent = True
-                self._persist_swarm_final_output(
+                final_output_id = self._persist_swarm_final_output(
                     db=db,
                     swarm_run_id=tracked.swarm_run_id,
                     final_agent_run_id=run.id,
                     final_output=dict(result.final_output or {}),
                     created_at=now,
+                )
+                self._emit_event(
+                    swarm_run_id=tracked.swarm_run_id,
+                    event_type="final_output_created",
+                    agent_run_id=run.id,
+                    agent_name=tracked.agent_name,
+                    final_output_id=final_output_id,
+                    status="completed",
+                    payload_json=dict(result.final_output or {}),
                 )
             elif result.handoff is not None:
                 handoff_id = self._record_handoff_created(
@@ -174,6 +208,19 @@ class SwarmExecutionTracker:
                 run.outgoing_handoff_id = handoff_id
 
             agent_runs_repository.save_run(db, run)
+        self._emit_event(
+            swarm_run_id=tracked.swarm_run_id,
+            event_type="agent_completed",
+            agent_run_id=tracked.agent_run_id,
+            agent_name=tracked.agent_name,
+            status="succeeded",
+            payload_json={
+                "sequence_index": tracked.sequence_index,
+                "result_status": result.status,
+                "handoff_id": handoff_id,
+                "output": self._result_output_json(result),
+            },
+        )
         return TrackedExecutionPersistenceOutcome(
             agent_run_id=tracked.agent_run_id,
             sequence_index=tracked.sequence_index,
@@ -246,6 +293,20 @@ class SwarmExecutionTracker:
                 gate_id=gate_id,
                 now=now,
             )
+        self._emit_event(
+            swarm_run_id=swarm_run_id,
+            event_type="gate_evaluated",
+            gate_evaluation_id=evaluation_id,
+            status="ready" if outcome.ready else "blocked",
+            payload_json={
+                "gate_id": gate_id,
+                "ready": bool(outcome.ready),
+                "satisfied_sources": list(outcome.satisfied_sources),
+                "missing_sources": list(outcome.missing_sources),
+                "next_target": outcome.next_target,
+                "handoffs_to_target": list(outcome.handoffs_to_target),
+            },
+        )
         return evaluation_id
 
     def _record_handoff_created(
@@ -278,6 +339,21 @@ class SwarmExecutionTracker:
             updated_at=created_at,
         )
         swarm_handoffs_repository.save_swarm_handoff(db, row)
+        self._emit_event(
+            swarm_run_id=tracked.swarm_run_id,
+            event_type="handoff_created",
+            agent_run_id=tracked.agent_run_id,
+            agent_name=tracked.agent_name,
+            handoff_id=handoff_id,
+            status="created",
+            payload_json={
+                "handoff_name": handoff.handoff_name,
+                "from_agent": handoff.from_agent,
+                "target_agent": handoff.target_agent,
+                "payload_schema": handoff.payload_schema,
+                "payload": dict(handoff.payload or {}),
+            },
+        )
         return handoff_id
 
     def _accept_handoff_if_present(
@@ -364,9 +440,10 @@ class SwarmExecutionTracker:
         final_agent_run_id: str,
         final_output: Dict[str, Any],
         created_at: datetime,
-    ) -> None:
+    ) -> str:
+        final_output_id = str(uuid4())
         row = SwarmFinalOutput(
-            id=str(uuid4()),
+            id=final_output_id,
             swarm_run_id=swarm_run_id,
             final_agent_run_id=final_agent_run_id,
             workflow_id=self.workflow_id,
@@ -377,6 +454,36 @@ class SwarmExecutionTracker:
             updated_at=created_at,
         )
         swarm_final_outputs_repository.save_swarm_final_output(db, row)
+        return final_output_id
+
+    def _emit_event(
+        self,
+        *,
+        swarm_run_id: str,
+        event_type: str,
+        agent_run_id: Optional[str] = None,
+        agent_name: Optional[str] = None,
+        handoff_id: Optional[str] = None,
+        gate_evaluation_id: Optional[str] = None,
+        final_output_id: Optional[str] = None,
+        status: Optional[str] = None,
+        payload_json: Optional[dict[str, Any]] = None,
+        payload_text: Optional[str] = None,
+    ) -> None:
+        if self.event_emitter is None:
+            return
+        self.event_emitter.emit(
+            swarm_run_id=swarm_run_id,
+            event_type=event_type,
+            agent_run_id=agent_run_id,
+            agent_name=agent_name,
+            handoff_id=handoff_id,
+            gate_evaluation_id=gate_evaluation_id,
+            final_output_id=final_output_id,
+            status=status,
+            payload_json=payload_json,
+            payload_text=payload_text,
+        )
 
     @contextmanager
     def _session_scope(self) -> Iterator[Session]:

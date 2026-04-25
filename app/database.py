@@ -445,6 +445,85 @@ def ensure_runtime_schema_upgrades() -> None:
                 )
             )
 
+        if "swarm_events" not in table_names:
+            conn.execute(
+                text(
+                    """
+                    CREATE TABLE swarm_events (
+                        id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+                        swarm_run_id VARCHAR NOT NULL,
+                        seq INTEGER NOT NULL,
+                        event_type VARCHAR NOT NULL,
+                        workflow_id VARCHAR,
+                        agent_run_id VARCHAR,
+                        agent_name VARCHAR,
+                        handoff_id VARCHAR,
+                        gate_evaluation_id VARCHAR,
+                        final_output_id VARCHAR,
+                        status VARCHAR,
+                        payload_json JSON,
+                        payload_text TEXT,
+                        created_at DATETIME NOT NULL
+                    )
+                    """
+                )
+            )
+            conn.execute(
+                text(
+                    "CREATE UNIQUE INDEX uq_swarm_events_run_seq "
+                    "ON swarm_events (swarm_run_id, seq)"
+                )
+            )
+            conn.execute(
+                text(
+                    "CREATE INDEX idx_swarm_events_run_seq "
+                    "ON swarm_events (swarm_run_id, seq)"
+                )
+            )
+            conn.execute(
+                text(
+                    "CREATE INDEX idx_swarm_events_type_created_at "
+                    "ON swarm_events (event_type, created_at)"
+                )
+            )
+        else:
+            swarm_events_existing = {col["name"] for col in inspector.get_columns("swarm_events")}
+            swarm_events_required: dict[str, str] = {
+                "swarm_run_id": "VARCHAR NOT NULL DEFAULT ''",
+                "seq": "INTEGER NOT NULL DEFAULT 0",
+                "event_type": "VARCHAR NOT NULL DEFAULT ''",
+                "workflow_id": "VARCHAR",
+                "agent_run_id": "VARCHAR",
+                "agent_name": "VARCHAR",
+                "handoff_id": "VARCHAR",
+                "gate_evaluation_id": "VARCHAR",
+                "final_output_id": "VARCHAR",
+                "status": "VARCHAR",
+                "payload_json": "JSON",
+                "payload_text": "TEXT",
+            }
+            for name, sql_type in swarm_events_required.items():
+                if name not in swarm_events_existing:
+                    conn.execute(text(f"ALTER TABLE swarm_events ADD COLUMN {name} {sql_type}"))
+            conn.execute(
+                text(
+                    "CREATE UNIQUE INDEX IF NOT EXISTS uq_swarm_events_run_seq "
+                    "ON swarm_events (swarm_run_id, seq)"
+                )
+            )
+            conn.execute(
+                text(
+                    "CREATE INDEX IF NOT EXISTS idx_swarm_events_run_seq "
+                    "ON swarm_events (swarm_run_id, seq)"
+                )
+            )
+            conn.execute(
+                text(
+                    "CREATE INDEX IF NOT EXISTS idx_swarm_events_type_created_at "
+                    "ON swarm_events (event_type, created_at)"
+                )
+            )
+
 def get_db():
     """
     FastAPI dependency that provides a database session.
