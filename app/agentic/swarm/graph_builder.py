@@ -85,7 +85,7 @@ class SwarmGraphBuilder:
 
     def _build_gate_node(self, gate_id: str):
         def node(state: SwarmState) -> Dict[str, Any]:
-            outcome = self.gate_evaluator.evaluate(gate_id=gate_id, state=state)
+            outcome = self.gate_evaluator.evaluate(gate_id=gate_id, state=state, persist=True)
             return outcome.state_updates
 
         return node
@@ -94,7 +94,7 @@ class SwarmGraphBuilder:
         def route(state: SwarmState) -> str:
             if state.get("final_output") is not None:
                 return END
-            outcome = self.gate_evaluator.evaluate(gate_id=gate_id, state=state)
+            outcome = self.gate_evaluator.evaluate(gate_id=gate_id, state=state, persist=False)
             return self._gate_outcome_to_route(outcome)
 
         return route

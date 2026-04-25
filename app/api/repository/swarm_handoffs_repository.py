@@ -34,3 +34,21 @@ def list_swarm_handoffs_for_run(
         .limit(limit)
     )
     return db.execute(stmt).scalars().all()
+
+
+def list_pending_handoffs_for_target(
+    db: Session,
+    *,
+    swarm_run_id: str,
+    to_agent_name: str,
+) -> list[SwarmHandoff]:
+    stmt = (
+        select(SwarmHandoff)
+        .where(
+            SwarmHandoff.swarm_run_id == swarm_run_id,
+            SwarmHandoff.to_agent_name == to_agent_name,
+            SwarmHandoff.to_agent_run_id.is_(None),
+        )
+        .order_by(SwarmHandoff.created_at.asc(), SwarmHandoff.id.asc())
+    )
+    return db.execute(stmt).scalars().all()

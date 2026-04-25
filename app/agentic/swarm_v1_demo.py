@@ -75,7 +75,10 @@ def build_graph(
     execution_tracker: SwarmExecutionTracker | None = None,
 ):
     executor = _build_real_executor(registry, execution_tracker=execution_tracker)
-    gate_evaluator = GateEvaluator(workflow=WORKFLOW)
+    gate_evaluator = GateEvaluator(
+        workflow=WORKFLOW,
+        execution_tracker=execution_tracker,
+    )
     return SwarmGraphBuilder(
         workflow=WORKFLOW,
         agent_executor=executor,
@@ -214,7 +217,7 @@ async def run_real_demo() -> None:
     swarm_runs_service.start_swarm_run(create_response.swarm_run_id, db)
 
     tracker = SwarmExecutionTracker(
-        db=db,
+        session_factory=SessionLocal,
         workflow_id=WORKFLOW.metadata.workflow_id,
         workflow_version=WORKFLOW.metadata.version,
     )

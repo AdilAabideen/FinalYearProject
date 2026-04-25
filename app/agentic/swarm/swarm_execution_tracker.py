@@ -1,18 +1,27 @@
 from __future__ import annotations
 
 import json
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Dict, Mapping, Optional
+from typing import Any, Callable, Dict, Iterator, Mapping, Optional
 from uuid import uuid4
 
 from sqlalchemy.orm import Session
 
-from app.api.repository import agent_runs_repository, swarm_handoffs_repository, swarm_runs_repository
+from app.api.repository import (
+    agent_runs_repository,
+    swarm_final_outputs_repository,
+    swarm_gate_evaluations_repository,
+    swarm_handoffs_repository,
+    swarm_runs_repository,
+)
+from app.agentic.swarm.gate_evaluator import GateEvaluationOutcome
 from app.agentic.swarm_contract import AgentExecutionResult, AgentName, HandoffEnvelope, SwarmState
 from app.models.agent_run import AgentRun
+from app.models.swarm_final_output import SwarmFinalOutput
+from app.models.swarm_gate_evaluation import SwarmGateEvaluation
 from app.models.swarm_handoff import SwarmHandoff
-from app.models.swarm_run import SwarmRun
 
 
 @dataclass(frozen=True)
@@ -42,11 +51,13 @@ class SwarmExecutionTracker:
     def __init__(
         self,
         *,
-        db: Session,
+        db: Session | None = None,
+        session_factory: Callable[[], Session] | None = None,
         workflow_id: str,
         workflow_version: str | None = None,
     ) -> None:
         self.db = db
+        self.session_factory = session_factory
         self.workflow_id = workflow_id
         self.workflow_version = workflow_version
 
@@ -65,34 +76,48 @@ class SwarmExecutionTracker:
         sequence_index = self._next_sequence_index(ctx)
         incoming_handoff_id = self._incoming_handoff_id(agent_name=agent_name, state=state)
         now = self._utcnow()
+        run_id = str(uuid4())
 
-        run = AgentRun(
-            id=str(uuid4()),
-            swarm_run_id=swarm_run_id,
-            workflow_id=self._string_or_none(ctx.get("workflow_id")) or self.workflow_id,
-            workflow_version=self._string_or_none(ctx.get("workflow_version")) or self.workflow_version,
-            sequence_index=sequence_index,
-            parent_handoff_id=incoming_handoff_id,
-            outgoing_handoff_id=None,
-            is_final_agent=False,
-            agent_name=agent_name,
-            status="running",
-            model_name=None,
-            input_json=dict(pending_agent_payload),
-            output_json=None,
-            error_text=None,
-            started_at=now,
-            finished_at=None,
-            created_at=now,
-            updated_at=now,
-        )
-        agent_runs_repository.save_run(self.db, run)
-        self._accept_handoff_if_present(incoming_handoff_id=incoming_handoff_id, to_agent_run_id=run.id, accepted_at=now)
-        self._update_swarm_run_on_agent_start(swarm_run_id=swarm_run_id, agent_run_id=run.id)
+        with self._session_scope() as db:
+            run = AgentRun(
+                id=run_id,
+                swarm_run_id=swarm_run_id,
+                workflow_id=self._string_or_none(ctx.get("workflow_id")) or self.workflow_id,
+                workflow_version=self._string_or_none(ctx.get("workflow_version")) or self.workflow_version,
+                sequence_index=sequence_index,
+                parent_handoff_id=incoming_handoff_id,
+                outgoing_handoff_id=None,
+                is_final_agent=False,
+                agent_name=agent_name,
+                status="running",
+                model_name=None,
+                input_json=dict(pending_agent_payload),
+                output_json=None,
+                error_text=None,
+                started_at=now,
+                finished_at=None,
+                created_at=now,
+                updated_at=now,
+            )
+            agent_runs_repository.save_run(db, run)
+            self._accept_handoff_if_present(
+                db=db,
+                incoming_handoff_id=incoming_handoff_id,
+                to_agent_run_id=run.id,
+                accepted_at=now,
+            )
+            self._accept_pending_handoffs_for_target(
+                db=db,
+                swarm_run_id=swarm_run_id,
+                target_agent_name=agent_name,
+                to_agent_run_id=run.id,
+                accepted_at=now,
+            )
+            self._update_swarm_run_on_agent_start(db=db, swarm_run_id=swarm_run_id, agent_run_id=run.id)
 
         return TrackedAgentExecution(
             swarm_run_id=swarm_run_id,
-            agent_run_id=run.id,
+            agent_run_id=run_id,
             agent_name=agent_name,
             sequence_index=sequence_index,
             incoming_handoff_id=incoming_handoff_id,
@@ -106,38 +131,51 @@ class SwarmExecutionTracker:
     ) -> TrackedExecutionPersistenceOutcome | None:
         if tracked is None:
             return None
-
-        run = agent_runs_repository.get_run(self.db, tracked.agent_run_id)
-        if run is None:
-            return None
-
         now = self._utcnow()
-        run.output_json = self._result_output_json(result)
-        run.finished_at = now
-        run.updated_at = now
-
-        if result.status == "error":
-            run.status = "failed"
-            run.error_text = self._error_text(result.output)
-            agent_runs_repository.save_run(self.db, run)
-            return TrackedExecutionPersistenceOutcome(
-                agent_run_id=run.id,
-                sequence_index=tracked.sequence_index,
-            )
-
-        run.status = "succeeded"
-        run.error_text = None
-
         handoff_id: str | None = None
-        if result.status == "final":
-            run.is_final_agent = True
-        elif result.handoff is not None:
-            handoff_id = self._record_handoff_created(tracked=tracked, handoff=result.handoff, created_at=now)
-            run.outgoing_handoff_id = handoff_id
 
-        agent_runs_repository.save_run(self.db, run)
+        with self._session_scope() as db:
+            run = agent_runs_repository.get_run(db, tracked.agent_run_id)
+            if run is None:
+                return None
+
+            run.output_json = self._result_output_json(result)
+            run.finished_at = now
+            run.updated_at = now
+
+            if result.status == "error":
+                run.status = "failed"
+                run.error_text = self._error_text(result.output)
+                agent_runs_repository.save_run(db, run)
+                return TrackedExecutionPersistenceOutcome(
+                    agent_run_id=run.id,
+                    sequence_index=tracked.sequence_index,
+                )
+
+            run.status = "succeeded"
+            run.error_text = None
+
+            if result.status == "final":
+                run.is_final_agent = True
+                self._persist_swarm_final_output(
+                    db=db,
+                    swarm_run_id=tracked.swarm_run_id,
+                    final_agent_run_id=run.id,
+                    final_output=dict(result.final_output or {}),
+                    created_at=now,
+                )
+            elif result.handoff is not None:
+                handoff_id = self._record_handoff_created(
+                    db=db,
+                    tracked=tracked,
+                    handoff=result.handoff,
+                    created_at=now,
+                )
+                run.outgoing_handoff_id = handoff_id
+
+            agent_runs_repository.save_run(db, run)
         return TrackedExecutionPersistenceOutcome(
-            agent_run_id=run.id,
+            agent_run_id=tracked.agent_run_id,
             sequence_index=tracked.sequence_index,
             handoff_id=handoff_id,
         )
@@ -173,9 +211,47 @@ class SwarmExecutionTracker:
         decorated["handoff_id"] = persisted.handoff_id
         return decorated
 
+    def record_gate_evaluation(
+        self,
+        *,
+        gate_id: str,
+        state: SwarmState,
+        outcome: GateEvaluationOutcome,
+    ) -> str | None:
+        ctx = self._execution_context(state)
+        swarm_run_id = self._string_or_none(ctx.get("swarm_run_id"))
+        if swarm_run_id is None:
+            return None
+
+        now = self._utcnow()
+        evaluation_id = str(uuid4())
+        with self._session_scope() as db:
+            row = SwarmGateEvaluation(
+                id=evaluation_id,
+                swarm_run_id=swarm_run_id,
+                gate_id=gate_id,
+                ready=bool(outcome.ready),
+                satisfied_sources_json=list(outcome.satisfied_sources),
+                missing_sources_json=list(outcome.missing_sources),
+                next_target=outcome.next_target,
+                handoffs_to_target_json=list(outcome.handoffs_to_target),
+                metadata_json={"terminal": bool(outcome.terminal)},
+                created_at=now,
+                updated_at=now,
+            )
+            swarm_gate_evaluations_repository.save_swarm_gate_evaluation(db, row)
+            self._update_swarm_run_on_gate_evaluation(
+                db=db,
+                swarm_run_id=swarm_run_id,
+                gate_id=gate_id,
+                now=now,
+            )
+        return evaluation_id
+
     def _record_handoff_created(
         self,
         *,
+        db: Session,
         tracked: TrackedAgentExecution,
         handoff: HandoffEnvelope,
         created_at: datetime,
@@ -201,12 +277,13 @@ class SwarmExecutionTracker:
             created_at=created_at,
             updated_at=created_at,
         )
-        swarm_handoffs_repository.save_swarm_handoff(self.db, row)
+        swarm_handoffs_repository.save_swarm_handoff(db, row)
         return handoff_id
 
     def _accept_handoff_if_present(
         self,
         *,
+        db: Session,
         incoming_handoff_id: str | None,
         to_agent_run_id: str,
         accepted_at: datetime,
@@ -214,7 +291,7 @@ class SwarmExecutionTracker:
         if incoming_handoff_id is None:
             return
 
-        row = swarm_handoffs_repository.get_swarm_handoff(self.db, incoming_handoff_id)
+        row = swarm_handoffs_repository.get_swarm_handoff(db, incoming_handoff_id)
         if row is None:
             return
 
@@ -224,10 +301,35 @@ class SwarmExecutionTracker:
         if row.created_at is not None:
             row.latency_ms = max(0, int((accepted_at - row.created_at).total_seconds() * 1000))
         row.updated_at = accepted_at
-        swarm_handoffs_repository.save_swarm_handoff(self.db, row)
+        swarm_handoffs_repository.save_swarm_handoff(db, row)
 
-    def _update_swarm_run_on_agent_start(self, *, swarm_run_id: str, agent_run_id: str) -> None:
-        row = swarm_runs_repository.get_swarm_run(self.db, swarm_run_id)
+    def _accept_pending_handoffs_for_target(
+        self,
+        *,
+        db: Session,
+        swarm_run_id: str,
+        target_agent_name: str,
+        to_agent_run_id: str,
+        accepted_at: datetime,
+    ) -> None:
+        rows = swarm_handoffs_repository.list_pending_handoffs_for_target(
+            db,
+            swarm_run_id=swarm_run_id,
+            to_agent_name=target_agent_name,
+        )
+        for row in rows:
+            if row.to_agent_run_id is not None:
+                continue
+            row.to_agent_run_id = to_agent_run_id
+            row.accepted_at = accepted_at
+            row.status = "accepted"
+            if row.created_at is not None:
+                row.latency_ms = max(0, int((accepted_at - row.created_at).total_seconds() * 1000))
+            row.updated_at = accepted_at
+            swarm_handoffs_repository.save_swarm_handoff(db, row)
+
+    def _update_swarm_run_on_agent_start(self, *, db: Session, swarm_run_id: str, agent_run_id: str) -> None:
+        row = swarm_runs_repository.get_swarm_run(db, swarm_run_id)
         if row is None:
             return
         now = self._utcnow()
@@ -237,7 +339,57 @@ class SwarmExecutionTracker:
         if row.started_at is None:
             row.started_at = now
         row.updated_at = now
-        swarm_runs_repository.save_swarm_run(self.db, row)
+        swarm_runs_repository.save_swarm_run(db, row)
+
+    def _update_swarm_run_on_gate_evaluation(
+        self,
+        *,
+        db: Session,
+        swarm_run_id: str,
+        gate_id: str,
+        now: datetime,
+    ) -> None:
+        row = swarm_runs_repository.get_swarm_run(db, swarm_run_id)
+        if row is None:
+            return
+        row.current_gate_id = gate_id
+        row.updated_at = now
+        swarm_runs_repository.save_swarm_run(db, row)
+
+    def _persist_swarm_final_output(
+        self,
+        *,
+        db: Session,
+        swarm_run_id: str,
+        final_agent_run_id: str,
+        final_output: Dict[str, Any],
+        created_at: datetime,
+    ) -> None:
+        row = SwarmFinalOutput(
+            id=str(uuid4()),
+            swarm_run_id=swarm_run_id,
+            final_agent_run_id=final_agent_run_id,
+            workflow_id=self.workflow_id,
+            workflow_version=self.workflow_version,
+            output_json=dict(final_output),
+            metadata_json=None,
+            created_at=created_at,
+            updated_at=created_at,
+        )
+        swarm_final_outputs_repository.save_swarm_final_output(db, row)
+
+    @contextmanager
+    def _session_scope(self) -> Iterator[Session]:
+        if self.session_factory is not None:
+            db = self.session_factory()
+            try:
+                yield db
+            finally:
+                db.close()
+            return
+        if self.db is None:
+            raise ValueError("SwarmExecutionTracker requires either db or session_factory.")
+        yield self.db
 
     @staticmethod
     def _utcnow() -> datetime:

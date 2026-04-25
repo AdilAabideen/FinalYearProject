@@ -317,6 +317,134 @@ def ensure_runtime_schema_upgrades() -> None:
                 )
             )
 
+        if "swarm_gate_evaluations" not in table_names:
+            conn.execute(
+                text(
+                    """
+                    CREATE TABLE swarm_gate_evaluations (
+                        id VARCHAR NOT NULL PRIMARY KEY,
+                        swarm_run_id VARCHAR NOT NULL,
+                        gate_id VARCHAR NOT NULL,
+                        ready BOOLEAN NOT NULL,
+                        satisfied_sources_json JSON NOT NULL,
+                        missing_sources_json JSON NOT NULL,
+                        next_target VARCHAR,
+                        handoffs_to_target_json JSON,
+                        metadata_json JSON,
+                        created_at DATETIME NOT NULL,
+                        updated_at DATETIME
+                    )
+                    """
+                )
+            )
+            conn.execute(
+                text(
+                    "CREATE INDEX idx_swarm_gate_evals_swarm_created_at "
+                    "ON swarm_gate_evaluations (swarm_run_id, created_at)"
+                )
+            )
+            conn.execute(
+                text(
+                    "CREATE INDEX idx_swarm_gate_evals_gate_created_at "
+                    "ON swarm_gate_evaluations (gate_id, created_at)"
+                )
+            )
+            conn.execute(
+                text(
+                    "CREATE INDEX idx_swarm_gate_evals_ready_created_at "
+                    "ON swarm_gate_evaluations (ready, created_at)"
+                )
+            )
+        else:
+            swarm_gate_evals_existing = {col["name"] for col in inspector.get_columns("swarm_gate_evaluations")}
+            swarm_gate_evals_required: dict[str, str] = {
+                "swarm_run_id": "VARCHAR NOT NULL DEFAULT ''",
+                "gate_id": "VARCHAR NOT NULL DEFAULT ''",
+                "ready": "BOOLEAN NOT NULL DEFAULT 0",
+                "satisfied_sources_json": "JSON",
+                "missing_sources_json": "JSON",
+                "next_target": "VARCHAR",
+                "handoffs_to_target_json": "JSON",
+                "metadata_json": "JSON",
+            }
+            for name, sql_type in swarm_gate_evals_required.items():
+                if name not in swarm_gate_evals_existing:
+                    conn.execute(text(f"ALTER TABLE swarm_gate_evaluations ADD COLUMN {name} {sql_type}"))
+            conn.execute(
+                text(
+                    "CREATE INDEX IF NOT EXISTS idx_swarm_gate_evals_swarm_created_at "
+                    "ON swarm_gate_evaluations (swarm_run_id, created_at)"
+                )
+            )
+            conn.execute(
+                text(
+                    "CREATE INDEX IF NOT EXISTS idx_swarm_gate_evals_gate_created_at "
+                    "ON swarm_gate_evaluations (gate_id, created_at)"
+                )
+            )
+            conn.execute(
+                text(
+                    "CREATE INDEX IF NOT EXISTS idx_swarm_gate_evals_ready_created_at "
+                    "ON swarm_gate_evaluations (ready, created_at)"
+                )
+            )
+
+        if "swarm_final_outputs" not in table_names:
+            conn.execute(
+                text(
+                    """
+                    CREATE TABLE swarm_final_outputs (
+                        id VARCHAR NOT NULL PRIMARY KEY,
+                        swarm_run_id VARCHAR NOT NULL,
+                        final_agent_run_id VARCHAR NOT NULL,
+                        workflow_id VARCHAR,
+                        workflow_version VARCHAR,
+                        output_json JSON NOT NULL,
+                        metadata_json JSON,
+                        created_at DATETIME NOT NULL,
+                        updated_at DATETIME
+                    )
+                    """
+                )
+            )
+            conn.execute(
+                text(
+                    "CREATE INDEX idx_swarm_final_outputs_swarm_created_at "
+                    "ON swarm_final_outputs (swarm_run_id, created_at)"
+                )
+            )
+            conn.execute(
+                text(
+                    "CREATE INDEX idx_swarm_final_outputs_agent_created_at "
+                    "ON swarm_final_outputs (final_agent_run_id, created_at)"
+                )
+            )
+        else:
+            swarm_final_outputs_existing = {col["name"] for col in inspector.get_columns("swarm_final_outputs")}
+            swarm_final_outputs_required: dict[str, str] = {
+                "swarm_run_id": "VARCHAR NOT NULL DEFAULT ''",
+                "final_agent_run_id": "VARCHAR NOT NULL DEFAULT ''",
+                "workflow_id": "VARCHAR",
+                "workflow_version": "VARCHAR",
+                "output_json": "JSON",
+                "metadata_json": "JSON",
+            }
+            for name, sql_type in swarm_final_outputs_required.items():
+                if name not in swarm_final_outputs_existing:
+                    conn.execute(text(f"ALTER TABLE swarm_final_outputs ADD COLUMN {name} {sql_type}"))
+            conn.execute(
+                text(
+                    "CREATE INDEX IF NOT EXISTS idx_swarm_final_outputs_swarm_created_at "
+                    "ON swarm_final_outputs (swarm_run_id, created_at)"
+                )
+            )
+            conn.execute(
+                text(
+                    "CREATE INDEX IF NOT EXISTS idx_swarm_final_outputs_agent_created_at "
+                    "ON swarm_final_outputs (final_agent_run_id, created_at)"
+                )
+            )
+
 def get_db():
     """
     FastAPI dependency that provides a database session.

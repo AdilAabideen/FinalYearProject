@@ -1,10 +1,13 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 from app.agentic.swarm_contract import SwarmState
 from app.agentic.workflows.workflow_definition import WorkflowDefinition
+
+if TYPE_CHECKING:
+    from app.agentic.swarm.swarm_execution_tracker import SwarmExecutionTracker
 
 
 @dataclass(frozen=True)
@@ -22,10 +25,22 @@ class GateEvaluationOutcome:
 class GateEvaluator:
     """Reusable runtime adapter for workflow gate nodes."""
 
-    def __init__(self, *, workflow: WorkflowDefinition) -> None:
+    def __init__(
+        self,
+        *,
+        workflow: WorkflowDefinition,
+        execution_tracker: "SwarmExecutionTracker | None" = None,
+    ) -> None:
         self.workflow = workflow
+        self.execution_tracker = execution_tracker
 
-    def evaluate(self, *, gate_id: str, state: SwarmState) -> GateEvaluationOutcome:
+    def evaluate(
+        self,
+        *,
+        gate_id: str,
+        state: SwarmState,
+        persist: bool = True,
+    ) -> GateEvaluationOutcome:
         gate = self.workflow.gates[gate_id]
         handoff_history = list(state.get("handoff_history", []))
         ready = self.workflow.is_gate_ready(gate_id, handoff_history)
@@ -51,7 +66,7 @@ class GateEvaluator:
 
         next_target = gate.target_node if ready else None
         terminal = not ready and bool(gate.metadata.get("terminal_when_not_ready", False))
-        return GateEvaluationOutcome(
+        outcome = GateEvaluationOutcome(
             gate_id=gate_id,
             ready=ready,
             satisfied_sources=satisfied_sources,
@@ -61,3 +76,14 @@ class GateEvaluator:
             state_updates=state_updates,
             terminal=terminal,
         )
+        if persist and self.execution_tracker is not None:
+            evaluation_id = self.execution_tracker.record_gate_evaluation(
+                gate_id=gate_id,
+                state=state,
+                outcome=outcome,
+            )
+            if evaluation_id is not None:
+                outcome.state_updates.setdefault("execution_context", {})
+                outcome.state_updates["execution_context"]["last_gate_evaluation_id"] = evaluation_id
+                outcome.state_updates["execution_context"]["current_gate_id"] = gate_id
+        return outcome
