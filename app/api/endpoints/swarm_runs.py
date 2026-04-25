@@ -5,8 +5,15 @@ from typing import Optional
 from fastapi import APIRouter, Depends, Query, Request
 from sqlalchemy.orm import Session
 
-from app.api.services import swarm_events_service, swarm_runs_service
+from app.api.services import swarm_events_service, swarm_query_service, swarm_runs_service
 from app.database import get_db
+from app.schemas.swarm_read import (
+    SwarmAgentRunRead,
+    SwarmFinalOutputRead,
+    SwarmGateEvaluationRead,
+    SwarmHandoffRead,
+    SwarmSummaryRead,
+)
 from app.schemas.swarm_events import SwarmEventsPage
 from app.schemas.swarm_runs import (
     SwarmRunCreateRequest,
@@ -84,6 +91,51 @@ def stream_swarm_events(
     db: Session = Depends(get_db),
 ):
     return swarm_events_service.stream_swarm_events(swarm_run_id, request, after_seq, poll_interval_s, db)
+
+
+@router.get("/{swarm_run_id}/summary", response_model=SwarmSummaryRead)
+def get_swarm_summary(swarm_run_id: str, db: Session = Depends(get_db)):
+    return swarm_query_service.get_swarm_summary(swarm_run_id, db)
+
+
+@router.get("/{swarm_run_id}/agents", response_model=list[SwarmAgentRunRead])
+def list_swarm_agents(
+    swarm_run_id: str,
+    limit: int = Query(default=200, ge=1, le=1000),
+    offset: int = Query(default=0, ge=0),
+    db: Session = Depends(get_db),
+):
+    return swarm_query_service.list_swarm_agents(swarm_run_id, db, limit=limit, offset=offset)
+
+
+@router.get("/{swarm_run_id}/handoffs", response_model=list[SwarmHandoffRead])
+def list_swarm_handoffs(
+    swarm_run_id: str,
+    limit: int = Query(default=200, ge=1, le=1000),
+    offset: int = Query(default=0, ge=0),
+    db: Session = Depends(get_db),
+):
+    return swarm_query_service.list_swarm_handoffs(swarm_run_id, db, limit=limit, offset=offset)
+
+
+@router.get("/{swarm_run_id}/gate-evaluations", response_model=list[SwarmGateEvaluationRead])
+def list_swarm_gate_evaluations(
+    swarm_run_id: str,
+    limit: int = Query(default=200, ge=1, le=1000),
+    offset: int = Query(default=0, ge=0),
+    db: Session = Depends(get_db),
+):
+    return swarm_query_service.list_swarm_gate_evaluations(
+        swarm_run_id,
+        db,
+        limit=limit,
+        offset=offset,
+    )
+
+
+@router.get("/{swarm_run_id}/final-output", response_model=SwarmFinalOutputRead)
+def get_swarm_final_output(swarm_run_id: str, db: Session = Depends(get_db)):
+    return swarm_query_service.get_swarm_final_output(swarm_run_id, db)
 
 
 @router.get("/{swarm_run_id}", response_model=SwarmRunRead)

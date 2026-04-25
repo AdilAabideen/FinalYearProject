@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Optional
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.models.swarm_gate_evaluation import SwarmGateEvaluation
@@ -39,3 +39,12 @@ def list_swarm_gate_evaluations_for_run(
         .limit(limit)
     )
     return db.execute(stmt).scalars().all()
+
+
+def count_swarm_gate_evaluations_for_run(db: Session, *, swarm_run_id: str) -> int:
+    stmt = (
+        select(func.count())
+        .select_from(SwarmGateEvaluation)
+        .where(SwarmGateEvaluation.swarm_run_id == swarm_run_id)
+    )
+    return int(db.execute(stmt).scalar_one())

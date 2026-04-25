@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.models.swarm_event import SwarmEvent
@@ -74,3 +74,8 @@ def list_events_after(
 
 def rollback(db: Session) -> None:
     db.rollback()
+
+
+def count_events_for_swarm(db: Session, *, swarm_run_id: str) -> int:
+    stmt = select(func.count()).select_from(SwarmEvent).where(SwarmEvent.swarm_run_id == swarm_run_id)
+    return int(db.execute(stmt).scalar_one())
