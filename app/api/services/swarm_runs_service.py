@@ -39,7 +39,6 @@ def create_swarm_run(payload: SwarmRunCreateRequest, db: Session) -> SwarmRunCre
         workflow_id=payload.workflow_id,
         workflow_version=payload.workflow_version,
         status="created",
-        case_id=payload.case_id,
         input_schema_name=payload.input_schema_name,
         input_json=payload.input,
         metadata_json=payload.metadata,

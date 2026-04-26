@@ -153,7 +153,6 @@ def ensure_runtime_schema_upgrades() -> None:
                         workflow_id VARCHAR NOT NULL,
                         workflow_version VARCHAR,
                         status VARCHAR NOT NULL,
-                        case_id VARCHAR,
                         input_schema_name VARCHAR,
                         input_json JSON NOT NULL,
                         metadata_json JSON,
@@ -180,18 +179,12 @@ def ensure_runtime_schema_upgrades() -> None:
                     "CREATE INDEX idx_swarm_runs_status_created_at ON swarm_runs (status, created_at)"
                 )
             )
-            conn.execute(
-                text(
-                    "CREATE INDEX idx_swarm_runs_case_id_created_at ON swarm_runs (case_id, created_at)"
-                )
-            )
         else:
             swarm_runs_existing = {col["name"] for col in inspector.get_columns("swarm_runs")}
             swarm_runs_required: dict[str, str] = {
                 "workflow_id": "VARCHAR NOT NULL DEFAULT ''",
                 "workflow_version": "VARCHAR",
                 "status": "VARCHAR NOT NULL DEFAULT 'created'",
-                "case_id": "VARCHAR",
                 "input_schema_name": "VARCHAR",
                 "input_json": "JSON",
                 "metadata_json": "JSON",
@@ -218,12 +211,12 @@ def ensure_runtime_schema_upgrades() -> None:
                     "ON swarm_runs (status, created_at)"
                 )
             )
-            conn.execute(
-                text(
-                    "CREATE INDEX IF NOT EXISTS idx_swarm_runs_case_id_created_at "
-                    "ON swarm_runs (case_id, created_at)"
-                )
-            )
+            conn.execute(text("DROP INDEX IF EXISTS idx_swarm_runs_case_id_created_at"))
+            if "case_id" in swarm_runs_existing:
+                try:
+                    conn.execute(text("ALTER TABLE swarm_runs DROP COLUMN case_id"))
+                except Exception:
+                    pass
 
         if "swarm_handoffs" not in table_names:
             conn.execute(

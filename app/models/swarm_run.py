@@ -17,7 +17,6 @@ class SwarmRun(Base, TimestampMixin):
     workflow_version: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     status: Mapped[str] = mapped_column(String, nullable=False, index=True)
 
-    case_id: Mapped[Optional[str]] = mapped_column(String, nullable=True, index=True)
     input_schema_name: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     input_json: Mapped[dict] = mapped_column(JSON, nullable=False)
     metadata_json: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
@@ -35,5 +34,4 @@ class SwarmRun(Base, TimestampMixin):
     __table_args__ = (
         Index("idx_swarm_runs_workflow_created_at", "workflow_id", "created_at"),
         Index("idx_swarm_runs_status_created_at", "status", "created_at"),
-        Index("idx_swarm_runs_case_id_created_at", "case_id", "created_at"),
     )

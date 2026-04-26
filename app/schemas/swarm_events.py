@@ -8,6 +8,8 @@ from pydantic import BaseModel, ConfigDict
 
 SwarmEventType = Literal[
     "swarm_started",
+    "swarm_completed",
+    "swarm_failed",
     "agent_started",
     "agent_completed",
     "handoff_created",

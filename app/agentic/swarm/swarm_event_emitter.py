@@ -1,15 +1,18 @@
 from __future__ import annotations
 
 import json
+import time
 from contextlib import contextmanager
 from datetime import date, datetime
 from typing import Any, Callable, Dict, Iterator, Mapping, Optional
 
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.api.repository import swarm_events_repository
 
 MAX_EVENT_TEXT_LEN = 50_000
+MAX_EVENT_INSERT_RETRIES = 8
 
 
 class SwarmEventEmitter:
@@ -41,23 +44,35 @@ class SwarmEventEmitter:
         payload_text: Optional[str] = None,
     ) -> int:
         with self._session_scope() as db:
-            next_seq = swarm_events_repository.get_last_event_seq(db, swarm_run_id) + 1
-            swarm_events_repository.append_event(
-                db,
-                swarm_run_id=swarm_run_id,
-                seq=next_seq,
-                event_type=event_type,
-                workflow_id=self.workflow_id,
-                agent_run_id=agent_run_id,
-                agent_name=agent_name,
-                handoff_id=handoff_id,
-                gate_evaluation_id=gate_evaluation_id,
-                final_output_id=final_output_id,
-                status=status,
-                payload_json=self._sanitize_json(payload_json),
-                payload_text=self._safe_text(payload_text),
-            )
-            return next_seq
+            sanitized_payload = self._sanitize_json(payload_json)
+            safe_payload_text = self._safe_text(payload_text)
+
+            for attempt in range(MAX_EVENT_INSERT_RETRIES):
+                next_seq = swarm_events_repository.get_last_event_seq(db, swarm_run_id) + 1
+                try:
+                    swarm_events_repository.append_event(
+                        db,
+                        swarm_run_id=swarm_run_id,
+                        seq=next_seq,
+                        event_type=event_type,
+                        workflow_id=self.workflow_id,
+                        agent_run_id=agent_run_id,
+                        agent_name=agent_name,
+                        handoff_id=handoff_id,
+                        gate_evaluation_id=gate_evaluation_id,
+                        final_output_id=final_output_id,
+                        status=status,
+                        payload_json=sanitized_payload,
+                        payload_text=safe_payload_text,
+                    )
+                    return next_seq
+                except IntegrityError as exc:
+                    swarm_events_repository.rollback(db)
+                    if not self._is_seq_conflict(exc) or attempt == MAX_EVENT_INSERT_RETRIES - 1:
+                        raise
+                    time.sleep(0.002 * (attempt + 1))
+
+        raise RuntimeError("Failed to persist swarm event after retrying sequence allocation.")
 
     @classmethod
     def _sanitize_json(cls, value: Optional[dict[str, Any]]) -> Optional[dict[str, Any]]:
@@ -94,6 +109,14 @@ class SwarmEventEmitter:
         if len(text) <= MAX_EVENT_TEXT_LEN:
             return text
         return text[:MAX_EVENT_TEXT_LEN] + "…(truncated)"
+
+    @staticmethod
+    def _is_seq_conflict(exc: IntegrityError) -> bool:
+        message = str(exc.orig if getattr(exc, "orig", None) is not None else exc)
+        return (
+            "swarm_events.swarm_run_id, swarm_events.seq" in message
+            or "uq_swarm_events_run_seq" in message
+        )
 
     @contextmanager
     def _session_scope(self) -> Iterator[Session]:

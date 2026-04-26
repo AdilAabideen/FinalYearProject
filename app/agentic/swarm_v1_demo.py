@@ -53,7 +53,6 @@ def _build_real_executor(
         execution_context = dict(state.get("execution_context") or {})
         run_id = str(
             execution_context.get("current_agent_run_id")
-            or (state.get("case_info") or {}).get("case_id")
             or request.workflow_id
         )
         agent.set_event_context(run_id=run_id, agent_name=request.agent_name)
@@ -145,7 +144,6 @@ def inspect_graph() -> None:
 
 def demo_case() -> Dict[str, Any]:
     return {
-        "case_id": "demo-001",
         "chiefcomplaint": "abdominal pain with abnormal vitals",
         "needs_immediate_lifesaving_intervention": False,
         "high_risk_situation": False,
@@ -205,7 +203,6 @@ async def run_real_demo() -> None:
         SwarmRunCreateRequest(
             workflow_id=WORKFLOW.metadata.workflow_id,
             workflow_version=WORKFLOW.metadata.version,
-            case_id=str(case.get("case_id")) if case.get("case_id") is not None else None,
             input_schema_name=None,
             input=case,
             metadata={
@@ -227,7 +224,6 @@ async def run_real_demo() -> None:
         payload_json={
             "workflow_id": WORKFLOW.metadata.workflow_id,
             "workflow_version": WORKFLOW.metadata.version,
-            "case_id": case.get("case_id"),
             "input": case,
         },
     )

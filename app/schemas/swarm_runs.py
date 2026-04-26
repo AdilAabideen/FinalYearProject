@@ -15,10 +15,6 @@ class SwarmRunCreateRequest(BaseModel):
         default=None,
         description="Optional workflow version used for this swarm run.",
     )
-    case_id: Optional[str] = Field(
-        default=None,
-        description="Optional case identifier associated with this swarm run.",
-    )
     input_schema_name: Optional[str] = Field(
         default=None,
         description="Optional schema name describing the swarm input contract.",
@@ -91,7 +87,6 @@ class SwarmRunRead(BaseModel):
     workflow_id: str
     workflow_version: Optional[str] = None
     status: SwarmRunStatus
-    case_id: Optional[str] = None
     input_schema_name: Optional[str] = None
     input_json: dict[str, Any]
     metadata_json: Optional[dict[str, Any]] = None
