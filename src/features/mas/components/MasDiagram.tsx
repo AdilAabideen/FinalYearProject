@@ -1,8 +1,10 @@
 import { cn } from '../../../shared/lib/cn';
 import type { MasCatalogDetail } from '../../../types/mas';
+import type { AgentRunningStatus } from './MasDetailSplitView';
 
 type MasDiagramProps = {
   workflow: MasCatalogDetail;
+  agentStatus?: AgentRunningStatus
 };
 
 type Point = { x: number; y: number };
@@ -29,7 +31,7 @@ function formatAgentTitle(agentName: string) {
     .replace('doctor', 'Doctor');
 }
 
-export function MasDiagram({ workflow }: MasDiagramProps) {
+export function MasDiagram({ workflow, agentStatus = {} }: MasDiagramProps) {
   const data = workflow;
   const agentPositions = data.agent_positions;
 
@@ -183,7 +185,7 @@ export function MasDiagram({ workflow }: MasDiagramProps) {
       {agents.map((agent) => (
         <div
           key={agent.name}
-          className="absolute flex h-36 w-36 -translate-x-1/2 -translate-y-1/2 flex-col items-center justify-center gap-2 rounded-full border-2 border-PrimaryBlue bg-white p-6 text-center shadow-sm"
+          className={`absolute flex h-36 w-36 -translate-x-1/2 -translate-y-1/2 flex-col items-center justify-center gap-2 rounded-full border-2 ${agentStatus[agent.name] === 'running' ? 'border-green-500' : "border-PrimaryBlue"} bg-white p-6 text-center shadow-sm`}
           style={{ left: `${agent.position.x}%`, top: `${agent.position.y}%` }}
         >
           <div className="flex items-center justify-center gap-2">

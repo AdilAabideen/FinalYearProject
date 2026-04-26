@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { MasCatalogDetail } from '../../../types/mas';
 import { DEFAULT_MAS_WORKFLOW_INPUT } from '../config/defaultWorkflowInput';
 import { AgentInputForm } from '../../agents/components/AgentInputForm';
@@ -12,6 +12,10 @@ import type { SwarmExecutionStartResponse } from '../../../types/masRuns';
 type MasDetailSplitViewProps = {
   workflow: MasCatalogDetail;
 };
+
+type AgentStatus = 'running' | 'executed' | 'waiting' | 'error'
+
+export type AgentRunningStatus = Record<string, AgentStatus>;
 
 type MasTabKey = 'diagram' | 'test-cases';
 type ResultTabKey = 'traces' | 'output'
@@ -36,6 +40,14 @@ export function MasDetailSplitView({ workflow }: MasDetailSplitViewProps) {
   const [runInfo, setRunInfo] = useState<SwarmExecutionStartResponse>({} as SwarmExecutionStartResponse);
   const abortRef = useRef<AbortController | null>(null);
 
+  const [agentStatus, setAgentStatus] = useState<AgentRunningStatus>(() => {
+    const agentStatusMap : AgentRunningStatus = {}
+    for (const name of workflow.participating_agents ){
+      agentStatusMap[name] = 'waiting'
+    }
+
+    return agentStatusMap
+  });
 
   async function handleSubmitInput() {
 
@@ -65,6 +77,8 @@ export function MasDetailSplitView({ workflow }: MasDetailSplitViewProps) {
     }
 
   }
+
+
 
   return (
     <div className="grid h-full min-h-0 p-0 lg:grid-cols-1">
@@ -99,7 +113,7 @@ export function MasDetailSplitView({ workflow }: MasDetailSplitViewProps) {
         {activeTab === 'diagram' ? (
           <div className="grid h-full grid-cols-6 grid-rows-1">
             <div className="min-h-[560px] col-span-4 flex-1 overflow-hidden rounded-none bg-white">
-              <MasDiagram workflow={workflow} />
+              <MasDiagram workflow={workflow} agentStatus={agentStatus} />
             </div>
             <div className="col-span-2 border-l border-slate-200 bg-white">
               <div className="flex h-full min-h-[560px] flex-col overflow-hidden">
@@ -152,7 +166,7 @@ export function MasDetailSplitView({ workflow }: MasDetailSplitViewProps) {
                           </div>
                           {
                             activeResultTab == 'traces' ? (
-                              <MasTracesTab agentNames={workflow.participating_agents} eventsStreamUrl={runInfo? runInfo.eventsStreamUrl : ""} swarm_run_id={runInfo.swarmRunId} />
+                              <MasTracesTab agentNames={workflow.participating_agents} eventsStreamUrl={runInfo? runInfo.eventsStreamUrl : ""} swarm_run_id={runInfo.swarmRunId} setAgentStatus={setAgentStatus} />
                             ) :
                               (
                                 <MasResultsTab input={workflowInputValue} />

@@ -1,21 +1,32 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
 import type { EventStreamPayload, SwarmEventType } from '../../../types/masRuns';
+import type { AgentRunningStatus } from './MasDetailSplitView';
 
 type MasTracesTabProps = {
   agentNames: string[];
   eventsStreamUrl: string;
   swarm_run_id: string;
+  setAgentStatus: Dispatch<SetStateAction<AgentRunningStatus>>;
 };
 
-type MasEventTypes = "Swarm Started" | "Swarm Ended" | 'Agent Execution Started' | "Agent Execution Finished" | "Swarm Error" | 'Handoff' | 'Gate Evaluated'
-type ArchType = "MAS" | "Agent"
+type MasEventTypes =
+  | 'Swarm Started'
+  | 'Swarm Ended'
+  | 'Agent Execution Started'
+  | 'Agent Execution Finished'
+  | 'Swarm Error'
+  | 'Handoff'
+  | 'Gate Evaluated'
+  | 'Final Output Created';
+type ArchType = 'MAS' | 'Agent';
 
 type MasGeneralEvents = {
   event_type: MasEventTypes;
   arch_type: ArchType;
   description: string;
-}
+  created_at: string;
+};
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -80,10 +91,7 @@ function appendGeneralEvent(
   setGeneralEvents: Dispatch<SetStateAction<MasGeneralEvents[]>>,
   event: MasGeneralEvents,
 ) {
-  setGeneralEvents((prev) => [
-    ...prev,
-    event,
-  ]);
+  setGeneralEvents((prev) => [...prev, event]);
 }
 
 function formatAgentName(agentName: string) {
@@ -97,7 +105,23 @@ function formatAgentName(agentName: string) {
     .replace('doctor', 'Doctor');
 }
 
-export default function MasTracesTab({ agentNames, eventsStreamUrl, swarm_run_id }: MasTracesTabProps) {
+function formatTraceTimestamp(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+
+  return new Intl.DateTimeFormat('en-GB', {
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+  }).format(date);
+}
+
+export default function MasTracesTab({
+  agentNames,
+  eventsStreamUrl,
+  swarm_run_id,
+  setAgentStatus
+}: MasTracesTabProps) {
   const normalizedAgentNames = useMemo(
     () => agentNames.filter((name, index, arr) => arr.indexOf(name) === index),
     [agentNames],
@@ -151,6 +175,7 @@ export default function MasTracesTab({ agentNames, eventsStreamUrl, swarm_run_id
             event_type: 'Swarm Started',
             arch_type: 'MAS',
             description: 'Swarm has started.',
+            created_at: parsed.created_at,
           });
           break;
         }
@@ -161,6 +186,7 @@ export default function MasTracesTab({ agentNames, eventsStreamUrl, swarm_run_id
             event_type: 'Swarm Ended',
             arch_type: 'MAS',
             description: 'Swarm completed successfully.',
+            created_at: parsed.created_at,
           });
           break;
         }
@@ -172,6 +198,7 @@ export default function MasTracesTab({ agentNames, eventsStreamUrl, swarm_run_id
             event_type: 'Swarm Error',
             arch_type: 'MAS',
             description: 'Swarm failed.',
+            created_at: parsed.created_at,
           });
           break;
         }
@@ -184,6 +211,7 @@ export default function MasTracesTab({ agentNames, eventsStreamUrl, swarm_run_id
             event_type: 'Agent Execution Started',
             arch_type: 'Agent',
             description: `${agentName ?? 'Agent'} started execution.`,
+            created_at: parsed.created_at,
           });
 
           if (agentName) {
@@ -191,6 +219,13 @@ export default function MasTracesTab({ agentNames, eventsStreamUrl, swarm_run_id
               ...prev,
               [agentName]: agentRunId,
             }));
+
+            setAgentStatus((prev) => {
+              return {
+                ...prev,
+                [agentName] : "running"
+              }
+            })
           }
           break;
         }
@@ -203,6 +238,7 @@ export default function MasTracesTab({ agentNames, eventsStreamUrl, swarm_run_id
             event_type: 'Agent Execution Finished',
             arch_type: 'Agent',
             description: `${agentName ?? 'Agent'} finished execution.`,
+            created_at: parsed.created_at,
           });
 
           if (agentName) {
@@ -210,7 +246,15 @@ export default function MasTracesTab({ agentNames, eventsStreamUrl, swarm_run_id
               ...prev,
               [agentName]: agentRunId,
             }));
+
+            setAgentStatus((prev) => {
+              return {
+                ...prev,
+                [agentName] : "executed"
+              }
+            })
           }
+
           break;
         }
 
@@ -229,6 +273,7 @@ export default function MasTracesTab({ agentNames, eventsStreamUrl, swarm_run_id
             event_type: 'Handoff',
             arch_type: 'Agent',
             description: `Handoff between ${fromAgent} and ${toAgent}.`,
+            created_at: parsed.created_at,
           });
           break;
         }
@@ -247,20 +292,31 @@ export default function MasTracesTab({ agentNames, eventsStreamUrl, swarm_run_id
               )
               : ['Unknown Source'];
 
-          appendGeneralEvent(setGeneralEvents, {
-            event_type: 'Gate Evaluated',
-            arch_type: 'MAS',
-            description: `Gate evaluated. Missing sources: ${missingSources.join(', ')}.
-        Satisfied sources: ${satisfiedSources.join(', ')}.`,
-          });
+          if (missingSources.length == 0) {
+            appendGeneralEvent(setGeneralEvents, {
+              event_type: 'Gate Evaluated',
+              arch_type: 'MAS',
+              description: `All Sources Satisfied`,
+              created_at: parsed.created_at,
+            });
+          } else {
+            appendGeneralEvent(setGeneralEvents, {
+              event_type: 'Gate Evaluated',
+              arch_type: 'MAS',
+              description: `Gate evaluated. Missing sources: ${missingSources.join(', ')}
+          Satisfied sources: ${satisfiedSources.join(', ')}`,
+              created_at: parsed.created_at,
+            });
+          }
           break;
         }
         case 'final_output_created': {
           appendGeneralEvent(setGeneralEvents, {
-            event_type: 'Gate Evaluated',
+            event_type: 'Final Output Created',
             arch_type: 'MAS',
-            description: "Mas Output finished"
-          })
+            description: 'MAS output finished.',
+            created_at: parsed.created_at,
+          });
           break;
         }
         default: {
@@ -315,6 +371,7 @@ export default function MasTracesTab({ agentNames, eventsStreamUrl, swarm_run_id
   }, [eventsStreamUrl, handleDone, handleError, handleOpen, handleSwarmEvent]);
 
 
+
   return (
     <div className="grid h-full w-full grid-cols-5 grid-rows-1">
       <div className="col-span-1 h-full border-r border-slate-300 bg-slate-100/60">
@@ -353,20 +410,56 @@ export default function MasTracesTab({ agentNames, eventsStreamUrl, swarm_run_id
 
       <div className="col-span-4 flex h-full min-h-0 w-full flex-col bg-white">
         {activeAgentName === 'general' ? (
-          <div className="flex h-full min-h-0 w-full flex-col items-start justify-start">
-            <div className="flex w-full shrink-0 flex-col items-start gap-1 border-b border-slate-200 p-2">
-              <p className="text-lg font-medium text-slate-900">General Traces</p>
-              <p className="text-xs font-semibold text-slate-600">Run ID : <span className="font-mono text-slate-700">{swarm_run_id}</span></p>
-            </div>
-            <div className="flex-1 min-h-0 w-full overflow-y-auto p-3 pt-3">
-              <div className="flex w-full flex-col items-start justify-start gap-6 p-2 pt-0 pb-0 mb-40">
-              {generalEvents.map((event, index) => (
-                <div key={index} className="flex flex-col items-start gap-1">
-                  <p className="text-xs font-bold capitalize text-PrimaryBlue">SWARM EVENT</p>
-                  <p className="text-md text-slate-900 font-medium">{event.event_type}</p>
-                  <p className="text-sm text-slate-700">{event.description}</p>
+          <div className="flex h-full min-h-0 w-full flex-col bg-white">
+            <div className="flex w-full shrink-0 flex-col gap-3 border-b border-slate-200 px-5 py-4">
+              <div className="flex flex-wrap items-end justify-between gap-4">
+                <div className="space-y-1">
+                  <p className="text-xl font-semibold text-slate-900">General Traces</p>
+                  <p className="text-xs font-semibold text-slate-600">
+                    Run ID : <span className="font-mono text-slate-700">{swarm_run_id}</span>
+                  </p>
                 </div>
-              ))}
+              </div>
+
+              <div className="flex flex-wrap gap-3">
+                <div className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">
+                  Stream: {streamState}
+                </div>
+                <div className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-700">
+                  Events: {generalEvents.length}
+                </div>
+                <div className="rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700">
+                  Agents: {normalizedAgentNames.length}
+                </div>
+              </div>
+            </div>
+
+            <div className="min-h-0 flex-1 w-full overflow-y-auto px-5 py-4 pb-20">
+              <div className="mx-auto flex w-full max-w-4xl flex-col gap-8 py-1">
+                {generalEvents.length ? (
+                  generalEvents.map((event, index) => (
+                    <div key={`${event.created_at}-${event.event_type}-${index}`} className="space-y-1">
+                      <div className="flex flex-wrap items-center gap-3">
+                        <p className="text-xs font-semibold tracking-wide text-PrimaryBlue">SWARM EVENT</p>
+                        <p className="text-[11px] font-mono text-slate-400">
+                          {formatTraceTimestamp(event.created_at)}
+                        </p>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="text-sm font-semibold text-slate-900">{event.event_type}</p>
+                        <span className="text-xs text-slate-400">•</span>
+                        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                          {event.arch_type}
+                        </p>
+                      </div>
+                      <p className="max-w-3xl text-sm text-slate-700">{event.description}</p>
+                    </div>
+                  ))
+                ) : (
+                  <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-6 py-10 text-center">
+                    <p className="text-sm font-semibold text-slate-900">Waiting for swarm events</p>
+                  </div>
+                )}
               </div>
             </div>
 
