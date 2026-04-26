@@ -16,6 +16,7 @@ from app.agentic.agents.agents import get_agent_spec, supported_agent_names
 from app.agentic.model_registry import get_chat_model, validate_model_for_agent
 from app.agentic.runtime import AgentRuntime
 from app.agentic.runtime.failure_taxonomy import FailureCategory
+from app.agentic.telemetry.agent_trace_persistence import wire_agent_trace_persistence
 from app.api.repository import agent_metrics_repository, agent_runs_repository
 from app.config import settings
 from app.database import SessionLocal
@@ -433,24 +434,6 @@ def _resolve_agent_system(agent: Any) -> str:
     return "legacy_stream"
 
 
-def _cost_from_tokens(
-    *,
-    model_spec: Any,
-    input_tokens: int,
-    output_tokens: int,
-) -> Optional[float]:
-    pricing = getattr(model_spec, "pricing", None)
-    if pricing is None:
-        return None
-    input_price = getattr(pricing, "input_per_1k", None)
-    output_price = getattr(pricing, "output_per_1k", None)
-    if input_price is None and output_price is None:
-        return None
-    in_cost = (max(0, int(input_tokens)) / 1000.0) * float(input_price or 0.0)
-    out_cost = (max(0, int(output_tokens)) / 1000.0) * float(output_price or 0.0)
-    return in_cost + out_cost
-
-
 def _schema_valid_for_run(run: AgentRun) -> Optional[bool]:
     if run.output_json is None:
         return None
@@ -666,92 +649,16 @@ def _run_agent_and_persist(db: Session, run: AgentRun, seq: int) -> Tuple[int, O
     agent_system = _resolve_agent_system(agent)
     payload = {"messages": [("user", validated_input.model_dump_json())]}
 
-    def _normalize_payload_json(raw: Any) -> Optional[dict]:
-        if raw is None:
-            return None
-        if isinstance(raw, dict):
-            return raw
-        return {"value": raw}
-
-    def _persist_callback_event(item: dict[str, Any]) -> None:
-        event_seq = int(item.get("seq"))
-        _append_event(
-            db=db,
-            run=run,
-            seq=event_seq,
-            event_type=str(item.get("event_type") or ""),
-            node_name=item.get("node_name"),
-            tool_name=item.get("tool_name"),
-            tool_call_id=item.get("tool_call_id"),
-            status=item.get("status"),
-            payload_json=_normalize_payload_json(item.get("payload_json")),
-            payload_text=item.get("payload_text"),
-        )
-
-    def _persist_llm_call(item: dict[str, Any]) -> None:
-        input_tokens = int(item.get("input_tokens") or 0)
-        output_tokens = int(item.get("output_tokens") or 0)
-        total_tokens = int(item.get("tokens_total") or (input_tokens + output_tokens))
-        cost_usd = _cost_from_tokens(
-            model_spec=model_spec,
-            input_tokens=input_tokens,
-            output_tokens=output_tokens,
-        )
-        agent_metrics_repository.append_llm_call(
-            db,
-            run_id=run.id,
-            call_index=int(item.get("call_index") or 0),
-            agent_system=agent_system,
-            agent_name=run.agent_name,
-            model_name=item.get("model_name") or run.model_name,
-            call_kind=str(item.get("call_kind") or "main_loop"),
-            iteration=(int(item.get("iteration")) if item.get("iteration") is not None else None),
-            started_at=item.get("started_at") or datetime.utcnow(),
-            ended_at=item.get("ended_at") or datetime.utcnow(),
-            latency_ms=int(item.get("latency_ms") or 0),
-            input_tokens=input_tokens,
-            output_tokens=output_tokens,
-            tokens_total=total_tokens,
-            usage_source=str(item.get("usage_source") or "estimated"),
-            cost_usd=cost_usd,
-            had_tool_calls=(bool(item.get("had_tool_calls")) if item.get("had_tool_calls") is not None else None),
-            tool_call_count=(int(item.get("tool_call_count")) if item.get("tool_call_count") is not None else None),
-            tool_call_parse_source=(
-                str(item.get("tool_call_parse_source")) if item.get("tool_call_parse_source") else None
-            ),
-            text_recovered_tool_call_count=int(item.get("text_recovered_tool_call_count") or 0),
-            native_tool_call_count=int(item.get("native_tool_call_count") or 0),
-            tool_names=_normalize_tool_names(item.get("tool_names")),
-            error_text=item.get("error_text"),
-        )
-
-    def _persist_tool_call(item: dict[str, Any]) -> None:
-        agent_metrics_repository.append_tool_call(
-            db,
-            run_id=run.id,
-            agent_name=run.agent_name,
-            iteration=int(item.get("iteration") or 0),
-            tool_call_id=(str(item.get("tool_call_id")) if item.get("tool_call_id") else None),
-            tool_name=str(item.get("tool_name") or "tool"),
-            started_at=item.get("started_at") or datetime.utcnow(),
-            ended_at=item.get("ended_at") or datetime.utcnow(),
-            latency_ms=int(item.get("latency_ms") or 0),
-            status=str(item.get("status") or "error"),
-            result_char_count=int(item.get("result_char_count") or 0),
-            result_estimated_tokens=int(item.get("result_estimated_tokens") or 0),
-            error_text=item.get("error_text"),
-        )
-
-    supports_callbacks = all(hasattr(agent, attr) for attr in ("set_event_context", "set_event_handlers"))
-    if not supports_callbacks:
-        raise RuntimeError("Agent does not support callback event persistence")
-
-    agent.set_event_context(run_id=run.id, agent_name=run.agent_name, start_seq=seq)
-    agent.set_event_handlers([_persist_callback_event])
-    if hasattr(agent, "set_llm_call_handlers"):
-        agent.set_llm_call_handlers([_persist_llm_call])
-    if hasattr(agent, "set_tool_call_handlers"):
-        agent.set_tool_call_handlers([_persist_tool_call])
+    wire_agent_trace_persistence(
+        agent=agent,
+        session_factory=SessionLocal,
+        run_id=run.id,
+        agent_name=run.agent_name,
+        agent_system=agent_system,
+        model_name=run.model_name,
+        model_spec=model_spec,
+        start_seq=seq,
+    )
     if hasattr(agent, "run_timeout_s"):
         agent.run_timeout_s = float(settings.AGENT_RUN_TIMEOUT_S)
 
@@ -795,6 +702,13 @@ def create_agent_run(payload: AgentRunCreateRequest, db: Session) -> AgentRunCre
     now = datetime.utcnow()
     run = AgentRun(
         id=run_id,
+        swarm_run_id=payload.swarm_run_id,
+        workflow_id=payload.workflow_id,
+        workflow_version=payload.workflow_version,
+        sequence_index=payload.sequence_index,
+        parent_handoff_id=payload.parent_handoff_id,
+        outgoing_handoff_id=payload.outgoing_handoff_id,
+        is_final_agent=payload.is_final_agent,
         agent_name=payload.agent_name,
         status="created",
         model_name=model_id,
@@ -836,6 +750,13 @@ def start_agent_run(
     now = datetime.utcnow()
     run = AgentRun(
         id=run_id,
+        swarm_run_id=payload.swarm_run_id,
+        workflow_id=payload.workflow_id,
+        workflow_version=payload.workflow_version,
+        sequence_index=payload.sequence_index,
+        parent_handoff_id=payload.parent_handoff_id,
+        outgoing_handoff_id=payload.outgoing_handoff_id,
+        is_final_agent=payload.is_final_agent,
         agent_name=payload.agent_name,
         status="running",
         model_name=model_id,

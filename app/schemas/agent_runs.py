@@ -26,6 +26,34 @@ class AgentRunCreateRequest(BaseModel):
         default=None,
         description="Optional model id (e.g. 'gpt-4o-mini', 'medgemma-4b-it').",
     )
+    swarm_run_id: Optional[str] = Field(
+        default=None,
+        description="Optional swarm execution identifier linking this run to a MAS run.",
+    )
+    workflow_id: Optional[str] = Field(
+        default=None,
+        description="Optional workflow identifier associated with this agent run.",
+    )
+    workflow_version: Optional[str] = Field(
+        default=None,
+        description="Optional workflow version associated with this agent run.",
+    )
+    sequence_index: Optional[int] = Field(
+        default=None,
+        description="Optional execution order index of this agent within a swarm run.",
+    )
+    parent_handoff_id: Optional[str] = Field(
+        default=None,
+        description="Optional incoming handoff identifier that triggered this run.",
+    )
+    outgoing_handoff_id: Optional[str] = Field(
+        default=None,
+        description="Optional outgoing handoff identifier produced by this run.",
+    )
+    is_final_agent: Optional[bool] = Field(
+        default=None,
+        description="Optional marker indicating whether this agent is expected to finalize the swarm run.",
+    )
     input: dict[str, Any] = Field(description="JSON payload passed to the agent.")
 
 
@@ -129,6 +157,13 @@ class AgentRunMetricsSummary(BaseModel):
 
 class AgentRunRead(BaseModel):
     id: str
+    swarm_run_id: Optional[str] = None
+    workflow_id: Optional[str] = None
+    workflow_version: Optional[str] = None
+    sequence_index: Optional[int] = None
+    parent_handoff_id: Optional[str] = None
+    outgoing_handoff_id: Optional[str] = None
+    is_final_agent: Optional[bool] = None
     agent_name: str
     status: RunStatus
     model_name: Optional[str] = None

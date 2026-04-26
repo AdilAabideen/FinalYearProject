@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Literal, List, Union
+from typing import Literal, List, Union, Optional
 
 from pydantic import AliasChoices, BaseModel, Field
 
@@ -13,21 +13,20 @@ class SwarmV1Input(BaseModel):
         validation_alias=AliasChoices("arrival_transport", "arrivaltransport", "arrival", "transfer"),
         description="How the patient arrived to the emergency department, such as walk-in or ambulance.",
     )
-    pain: str = Field(description="Reported pain level or pain assessment captured during intake.")
+    pain: Optional[str] = Field(description="Reported pain level or pain assessment captured during intake.")
     chiefcomplaint: str = Field(
         validation_alias=AliasChoices("chiefcomplaint", "chief complaint", "chief_complaint"),
         description="Primary presenting complaint recorded at triage.",
     )
-    age: Union[float, int] = Field(description="Patient age at the time of the encounter.")
+    age: Optional[float] = Field(description="Patient age at the time of the encounter.")
     tiragecase: str = Field(
         validation_alias=AliasChoices("tiragecase", "triage case", "triage_case"),
         description="Free-text triage case summary or scenario narrative.",
     )
-    temperature: float = Field(description="Measured body temperature during triage, typically in Celsius.")
-    heartrate: float = Field(description="Measured heart rate in beats per minute.")
-    resprate: float = Field(description="Measured respiratory rate in breaths per minute.")
-    o2sat: float = Field(description="Measured peripheral oxygen saturation percentage.")
-    sbp: float = Field(description="Measured systolic blood pressure.")
-    dbp: float = Field(description="Measured diastolic blood pressure.")
-    subject_id: int = Field(description="Unique patient or encounter identifier from the source dataset.")
-    intime: datetime = Field(description="Timestamp when the patient encounter or triage intake began.")
+    temperature: Optional[float] = Field(description="Measured body temperature during triage, typically in Celsius.")
+    heartrate: Optional[float] = Field(description="Measured heart rate in beats per minute.")
+    resprate: Optional[float] = Field(description="Measured respiratory rate in breaths per minute.")
+    o2sat: Optional[float] = Field(description="Measured peripheral oxygen saturation percentage.")
+    sbp: Optional[float] = Field(description="Measured systolic blood pressure.")
+    dbp: Optional[float] = Field(description="Measured diastolic blood pressure.")
+

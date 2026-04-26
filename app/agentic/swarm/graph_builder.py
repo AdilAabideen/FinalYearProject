@@ -27,7 +27,10 @@ def default_bootstrap_update_factory(workflow: WorkflowDefinition) -> Dict[str, 
 
 
 def default_branch_state_factory(state: SwarmState) -> SwarmState:
-    return make_initial_swarm_state(dict(state.get("case_info") or {}))
+    return make_initial_swarm_state(
+        dict(state.get("case_info") or {}),
+        execution_context=dict(state.get("execution_context") or {}),
+    )
 
 
 class SwarmGraphBuilder:
@@ -82,7 +85,7 @@ class SwarmGraphBuilder:
 
     def _build_gate_node(self, gate_id: str):
         def node(state: SwarmState) -> Dict[str, Any]:
-            outcome = self.gate_evaluator.evaluate(gate_id=gate_id, state=state)
+            outcome = self.gate_evaluator.evaluate(gate_id=gate_id, state=state, persist=True)
             return outcome.state_updates
 
         return node
@@ -91,7 +94,7 @@ class SwarmGraphBuilder:
         def route(state: SwarmState) -> str:
             if state.get("final_output") is not None:
                 return END
-            outcome = self.gate_evaluator.evaluate(gate_id=gate_id, state=state)
+            outcome = self.gate_evaluator.evaluate(gate_id=gate_id, state=state, persist=False)
             return self._gate_outcome_to_route(outcome)
 
         return route
