@@ -406,6 +406,8 @@ export function AgentDiagram({ agent }: AgentDiagramProps) {
       );
     });
 
+    
+
     return () => {
       if (frame) cancelAnimationFrame(frame);
     };

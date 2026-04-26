@@ -72,3 +72,4 @@ export type MasCatalogDetail = {
   input_schema: MasInputSchemaRead;
   agent_positions: Record<string, MasAgentPositionRead>;
 };
+

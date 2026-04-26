@@ -150,3 +150,4 @@ export function shouldUseTextArea(fieldKey: string, root: unknown, schema: unkno
   if (isRecord(resolved) && resolved.contentMediaType) return true;
   return /(complaint|description|notes?|message|text|prompt)/i.test(fieldKey);
 }
+

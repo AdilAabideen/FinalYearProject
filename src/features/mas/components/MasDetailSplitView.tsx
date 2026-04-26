@@ -1,10 +1,13 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import type { MasCatalogDetail } from '../../../types/mas';
 import { DEFAULT_MAS_WORKFLOW_INPUT } from '../config/defaultWorkflowInput';
 import { AgentInputForm } from '../../agents/components/AgentInputForm';
 import { MasDiagram } from './MasDiagram';
 import MasResultsTab from './MasResultsTab';
 import MasTracesTab from './MasTracesTab';
+import { masRunService } from '../../../services/masRunService';
+import { coerceInputForRun } from '../utils/jsonSchema';
+import type { SwarmExecutionStartResponse } from '../../../types/masRuns';
 
 type MasDetailSplitViewProps = {
   workflow: MasCatalogDetail;
@@ -30,10 +33,37 @@ export function MasDetailSplitView({ workflow }: MasDetailSplitViewProps) {
   }));
   const [submitted, setSubmitted] = useState(false);
   const [activeResultTab, setActiveResultTab] = useState<ResultTabKey>('traces');
+  const [runInfo, setRunInfo] = useState<SwarmExecutionStartResponse>({} as SwarmExecutionStartResponse);
+  const abortRef = useRef<AbortController | null>(null);
 
-  function handleSubmitInput() {
-    console.log('MAS workflow input:', workflowInputValue);
-    setSubmitted(true)
+
+  async function handleSubmitInput() {
+
+    abortRef.current?.abort();
+    const ac = new AbortController();
+    abortRef.current = ac;
+
+    const payload = coerceInputForRun(workflow.input_schema.json_schema, workflowInputValue)
+    console.log(JSON.stringify({
+      input: payload
+    }))
+
+    try {
+      const mas_run_details : SwarmExecutionStartResponse = await masRunService.startMasRun(
+        workflow.metadata.workflow_id,
+        payload,
+        ac.signal
+      )
+      console.log("Success", mas_run_details)
+      setRunInfo(mas_run_details)
+      if (ac.signal.aborted) return;
+    } catch (e: unknown) {
+      if (ac.signal.aborted) return;
+      console.error("Error : ", e)
+    } finally {
+      setSubmitted(true)
+    }
+
   }
 
   return (
@@ -80,7 +110,7 @@ export function MasDetailSplitView({ workflow }: MasDetailSplitViewProps) {
                     {
                       !submitted ? (
                         <>
-                          <div className="shrink-0 border-b border-slate-300 p-2">
+                          <div className="shrink-0 border-b border-slate-300 p-2 px-4 pt-3">
                             <p className="text-md font-semibold text-slate-900">Workflow Input</p>
                           </div>
                           <AgentInputForm
@@ -122,7 +152,7 @@ export function MasDetailSplitView({ workflow }: MasDetailSplitViewProps) {
                           </div>
                           {
                             activeResultTab == 'traces' ? (
-                              <MasTracesTab agentNames={workflow.participating_agents} />
+                              <MasTracesTab agentNames={workflow.participating_agents} eventsStreamUrl={runInfo? runInfo.eventsStreamUrl : ""} swarm_run_id={runInfo.swarmRunId} />
                             ) :
                               (
                                 <MasResultsTab input={workflowInputValue} />

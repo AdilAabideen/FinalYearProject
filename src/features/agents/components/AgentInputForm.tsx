@@ -86,7 +86,6 @@ export function AgentInputForm({
   const baseId = useId();
   const objectSchema = getObjectSchema(schema, schema);
 
-  console.log(submitButtonLabel)
 
   if (!objectSchema) {
     return (
@@ -101,6 +100,8 @@ export function AgentInputForm({
       <div className="min-h-0 flex-1 overflow-auto mt-4">
         <div className="grid gap-4 p-4 pt-0 sm:grid-cols-2">
           {Object.entries(objectSchema.properties).map(([fieldKey, fieldSchema]) => {
+
+
             const resolved = resolveSchema(schema, fieldSchema);
             const required = objectSchema.required.has(fieldKey);
             const enumValues = getEnumValues(schema, resolved);
