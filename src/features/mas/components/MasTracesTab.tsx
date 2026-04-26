@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
 import type { EventStreamPayload, SwarmEventType } from '../../../types/masRuns';
-import type { ActiveHandoffEdges, AgentRunningStatus } from './MasDetailSplitView';
+import type { ActiveHandoffEdges, AgentRunningStatus, BoundaryEdgeHighlights } from './MasDetailSplitView';
+import { AgentTracesComponent } from '../../agents/components/AgentTracesComponent';
+import JsonRenderer from './JsonRenderer';
 
 type MasTracesTabProps = {
   agentNames: string[];
@@ -9,6 +11,8 @@ type MasTracesTabProps = {
   swarm_run_id: string;
   setAgentStatus: Dispatch<SetStateAction<AgentRunningStatus>>;
   setActiveHandoffEdges: Dispatch<SetStateAction<ActiveHandoffEdges>>;
+  setBoundaryEdgeHighlights: Dispatch<SetStateAction<BoundaryEdgeHighlights>>;
+  onMasDone: () => Promise<void>;
 };
 
 type MasEventTypes =
@@ -27,6 +31,21 @@ type MasGeneralEvents = {
   arch_type: ArchType;
   description: string;
   created_at: string;
+};
+
+type AgentPanelProps = {
+  activeAgentName: string;
+  activeAgentRunId: string | null;
+  activeAgentOutput: unknown;
+  selectedTab: Tabs;
+  setSelectedTab: Dispatch<SetStateAction<Tabs>>;
+};
+
+type GeneralPanelProps = {
+  swarmRunId: string;
+  streamState: string;
+  generalEvents: MasGeneralEvents[];
+  agentCount: number;
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -117,12 +136,182 @@ function formatTraceTimestamp(value: string) {
   }).format(date);
 }
 
+function normalizeOutputValue(value: unknown) {
+  if (value == null) return null;
+  if (typeof value === 'string') {
+    try {
+      return JSON.parse(value);
+    } catch {
+      return value;
+    }
+  }
+
+  return value;
+}
+
+type tabKey = 'traces' | 'output'
+
+type Tabs = {
+  key: tabKey,
+  name: string
+}
+
+const tabs: Tabs[] = [
+  {
+    key: "traces",
+    name: "Traces"
+  },
+  {
+    key: "output",
+    name: "Output"
+  }
+]
+
+function AgentPanel({
+  activeAgentName,
+  activeAgentRunId,
+  activeAgentOutput,
+  selectedTab,
+  setSelectedTab,
+}: AgentPanelProps) {
+  const normalizedOutput = normalizeOutputValue(activeAgentOutput);
+
+  return (
+    <div className="flex h-full min-h-0 w-full flex-col bg-white">
+      <div className="shrink-0 border-b border-slate-200 px-4 py-3">
+        <p className="text-base font-semibold text-slate-900">{formatAgentName(activeAgentName)}</p>
+        <p className="mt-1 text-xs font-medium text-slate-500">{activeAgentName}</p>
+      </div>
+
+      <div className="flex w-full border-b border-slate-200">
+        {tabs.map((tab) => {
+          const active = selectedTab.key === tab.key;
+
+          return (
+            <button
+              key={tab.key}
+              type="button"
+              onClick={() => setSelectedTab(tab)}
+              className={[
+                'border-r cursor-pointer border-slate-200 px-3 py-2 text-sm font-medium transition-colors',
+                active
+                  ? 'bg-slate-100 text-slate-900'
+                  : 'bg-white text-slate-600 hover:bg-slate-50 hover:text-slate-900',
+              ].join(' ')}
+            >
+              {tab.name}
+            </button>
+          );
+        })}
+      </div>
+
+      <div className="min-h-0 flex-1 overflow-hidden">
+        {selectedTab.key === 'traces' ? (
+          activeAgentRunId ? (
+            <div className="h-full min-h-0 overflow-hidden p-3 pb-20">
+              <AgentTracesComponent runId={activeAgentRunId} />
+            </div>
+          ) : (
+            <div className="flex h-full items-start justify-start p-6">
+              <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-6 py-8 text-center">
+                <p className="text-sm font-semibold text-slate-900">Waiting for agent run</p>
+                <p className="mt-2 text-sm text-slate-500">
+                  Trace output will appear here once this agent starts running.
+                </p>
+              </div>
+            </div>
+          )
+        ) : (
+          normalizedOutput ? (
+            <div className="h-full min-h-0 overflow-y-auto pb-20">
+              <div className="space-y-2">
+                <JsonRenderer title="Agent Communication Output" value={normalizedOutput} />
+              </div>
+            </div>
+          ) : (
+            <div className="flex h-full items-start justify-start p-6">
+              <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 px-6 py-8 text-center w-full">
+                <p className="text-sm font-semibold text-slate-900">No Agent Communication</p>
+              </div>
+            </div>
+          )
+        )}
+      </div>
+    </div>
+  );
+}
+
+function GeneralPanel({
+  swarmRunId,
+  streamState,
+  generalEvents,
+  agentCount,
+}: GeneralPanelProps) {
+  return (
+    <div className="flex h-full min-h-0 w-full flex-col bg-white">
+      <div className="flex w-full shrink-0 flex-col gap-3 border-b border-slate-200 px-5 py-4">
+        <div className="flex flex-wrap items-end justify-between gap-4">
+          <div className="space-y-1">
+            <p className="text-xl font-semibold text-slate-900">General Traces</p>
+            <p className="text-xs font-semibold text-slate-600">
+              Run ID : <span className="font-mono text-slate-700">{swarmRunId}</span>
+            </p>
+          </div>
+        </div>
+
+        <div className="flex flex-wrap gap-3">
+          <div className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">
+            Stream: {streamState}
+          </div>
+          <div className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-700">
+            Events: {generalEvents.length}
+          </div>
+          <div className="rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700">
+            Agents: {agentCount}
+          </div>
+        </div>
+      </div>
+
+      <div className="min-h-0 flex-1 w-full overflow-y-auto px-5 py-4 pb-20">
+        <div className="mx-auto flex w-full max-w-4xl flex-col gap-8 py-1">
+          {generalEvents.length ? (
+            generalEvents.map((event, index) => (
+              <div key={`${event.created_at}-${event.event_type}-${index}`} className="space-y-1">
+                <div className="flex flex-wrap items-center gap-3">
+                  <p className="text-xs font-semibold tracking-wide text-PrimaryBlue">SWARM EVENT</p>
+                  <p className="text-[11px] font-mono text-slate-400">
+                    {formatTraceTimestamp(event.created_at)}
+                  </p>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <p className="text-sm font-semibold text-slate-900">{event.event_type}</p>
+                  <span className="text-xs text-slate-400">•</span>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                    {event.arch_type}
+                  </p>
+                </div>
+                <p className="max-w-3xl text-sm text-slate-700">{event.description}</p>
+              </div>
+            ))
+          ) : (
+            <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-6 py-10 text-center">
+              <p className="text-sm font-semibold text-slate-900">Waiting for swarm events</p>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function MasTracesTab({
   agentNames,
   eventsStreamUrl,
   swarm_run_id,
   setAgentStatus,
   setActiveHandoffEdges,
+  setBoundaryEdgeHighlights,
+  onMasDone,
 }: MasTracesTabProps) {
   const normalizedAgentNames = useMemo(
     () => agentNames.filter((name, index, arr) => arr.indexOf(name) === index),
@@ -132,14 +321,41 @@ export default function MasTracesTab({
   const [activeAgentName, setActiveAgentName] = useState<string>('general');
 
   const sourceRef = useRef<EventSource | null>(null);
+  const onMasDoneRef = useRef(onMasDone);
   const handoffTimeoutsRef = useRef<Record<string, number>>({});
+  const boundaryTimeoutsRef = useRef<{ start: number | null; end: number | null }>({
+    start: null,
+    end: null,
+  });
   const [entries, setEntries] = useState<EventStreamPayload[]>([]);
   const [agentRunIds, setAgentRunIds] = useState<Record<string, string | null>>(() =>
     buildInitialAgentRunIds(normalizedAgentNames),
   );
+  const [agentOutputs, setAgentOutputs] = useState<Record<string, unknown>>({});
   const [streamState, setStreamState] = useState<string>('waiting');
   const [errorText, setErrorText] = useState<string | null>(null);
   const [generalEvents, setGeneralEvents] = useState<MasGeneralEvents[]>([]);
+  const activeAgentRunId =
+    activeAgentName && activeAgentName !== 'general' ? agentRunIds[activeAgentName] ?? null : null;
+  const activeAgentOutput =
+    activeAgentName && activeAgentName !== 'general' ? agentOutputs[activeAgentName] ?? null : null;
+
+  const triggerBoundaryHighlight = useCallback((type: 'start' | 'end') => {
+    const existingTimeout = boundaryTimeoutsRef.current[type];
+    if (existingTimeout) window.clearTimeout(existingTimeout);
+
+    setBoundaryEdgeHighlights((prev) => ({ ...prev, [type]: 'active' }));
+    boundaryTimeoutsRef.current[type] = window.setTimeout(() => {
+      setBoundaryEdgeHighlights((prev) => ({ ...prev, [type]: 'visited' }));
+      boundaryTimeoutsRef.current[type] = null;
+    }, 10000);
+  }, [setBoundaryEdgeHighlights]);
+
+  const [selectedTab, setSelectedTab] = useState<Tabs>(tabs[0]);
+
+  useEffect(() => {
+    onMasDoneRef.current = onMasDone;
+  }, [onMasDone]);
 
   useEffect(() => {
     setAgentRunIds((prev) => {
@@ -157,8 +373,11 @@ export default function MasTracesTab({
         window.clearTimeout(timeoutId);
       }
       handoffTimeoutsRef.current = {};
+      if (boundaryTimeoutsRef.current.start) window.clearTimeout(boundaryTimeoutsRef.current.start);
+      if (boundaryTimeoutsRef.current.end) window.clearTimeout(boundaryTimeoutsRef.current.end);
+      boundaryTimeoutsRef.current = { start: null, end: null };
     };
-  }, []);
+  }, [setBoundaryEdgeHighlights]);
 
   const handleOpen = useCallback(() => {
     setStreamState('open');
@@ -189,6 +408,7 @@ export default function MasTracesTab({
             description: 'Swarm has started.',
             created_at: parsed.created_at,
           });
+          triggerBoundaryHighlight('start');
           break;
         }
 
@@ -200,6 +420,7 @@ export default function MasTracesTab({
             description: 'Swarm completed successfully.',
             created_at: parsed.created_at,
           });
+          triggerBoundaryHighlight('end');
           break;
         }
 
@@ -235,7 +456,7 @@ export default function MasTracesTab({
             setAgentStatus((prev) => {
               return {
                 ...prev,
-                [agentName] : "running"
+                [agentName]: "running"
               }
             })
           }
@@ -262,7 +483,7 @@ export default function MasTracesTab({
             setAgentStatus((prev) => {
               return {
                 ...prev,
-                [agentName] : "executed"
+                [agentName]: "executed"
               }
             })
           }
@@ -293,6 +514,13 @@ export default function MasTracesTab({
             const existingTimeout = handoffTimeoutsRef.current[edgeKey];
             if (existingTimeout) window.clearTimeout(existingTimeout);
 
+            if (parsed.payload_json && 'payload' in parsed.payload_json) {
+              setAgentOutputs((prev) => ({
+                ...prev,
+                [fromAgent]: parsed.payload_json?.payload,
+              }));
+            }
+
             setActiveHandoffEdges((prev) => ({
               ...prev,
               [edgeKey]: 'active',
@@ -301,8 +529,8 @@ export default function MasTracesTab({
             setAgentStatus((prev) => {
               return {
                 ...prev,
-                [fromAgent] : "executed",
-                [toAgent] : "running"
+                [fromAgent]: "executed",
+                [toAgent]: "running"
               }
             })
 
@@ -371,13 +599,13 @@ export default function MasTracesTab({
   const handleDone = useCallback((event: MessageEvent<string>) => {
     void event;
     setStreamState('done');
+    triggerBoundaryHighlight('end');
     sourceRef.current?.close();
-  }, []);
+    void onMasDoneRef.current().catch((error: unknown) => {
+      console.error('Failed to fetch MAS final output', error);
+    });
+  }, [triggerBoundaryHighlight]);
 
-  const filteredEntries = useMemo(() => {
-    if (activeAgentName === 'general') return entries;
-    return entries.filter((entry) => entry.agent_name === activeAgentName);
-  }, [activeAgentName, entries]);
 
   useEffect(() => {
     sourceRef.current?.close();
@@ -385,17 +613,23 @@ export default function MasTracesTab({
     if (!eventsStreamUrl) {
       setEntries([]);
       setGeneralEvents([]);
+      setAgentOutputs({});
       setStreamState('waiting');
       setErrorText(null);
       for (const timeoutId of Object.values(handoffTimeoutsRef.current)) {
         window.clearTimeout(timeoutId);
       }
       handoffTimeoutsRef.current = {};
+      if (boundaryTimeoutsRef.current.start) window.clearTimeout(boundaryTimeoutsRef.current.start);
+      if (boundaryTimeoutsRef.current.end) window.clearTimeout(boundaryTimeoutsRef.current.end);
+      boundaryTimeoutsRef.current = { start: null, end: null };
+      setBoundaryEdgeHighlights({ start: 'idle', end: 'idle' });
       return;
     }
 
     setEntries([]);
     setGeneralEvents([]);
+    setAgentOutputs({});
     setStreamState('connecting');
     setErrorText(null);
 
@@ -411,7 +645,7 @@ export default function MasTracesTab({
       source.close();
       if (sourceRef.current === source) sourceRef.current = null;
     };
-  }, [eventsStreamUrl, handleDone, handleError, handleOpen, handleSwarmEvent]);
+  }, [eventsStreamUrl, handleDone, handleError, handleOpen, handleSwarmEvent, setBoundaryEdgeHighlights]);
 
 
 
@@ -453,61 +687,21 @@ export default function MasTracesTab({
 
       <div className="col-span-4 flex h-full min-h-0 w-full flex-col bg-white">
         {activeAgentName === 'general' ? (
-          <div className="flex h-full min-h-0 w-full flex-col bg-white">
-            <div className="flex w-full shrink-0 flex-col gap-3 border-b border-slate-200 px-5 py-4">
-              <div className="flex flex-wrap items-end justify-between gap-4">
-                <div className="space-y-1">
-                  <p className="text-xl font-semibold text-slate-900">General Traces</p>
-                  <p className="text-xs font-semibold text-slate-600">
-                    Run ID : <span className="font-mono text-slate-700">{swarm_run_id}</span>
-                  </p>
-                </div>
-              </div>
-
-              <div className="flex flex-wrap gap-3">
-                <div className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">
-                  Stream: {streamState}
-                </div>
-                <div className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-700">
-                  Events: {generalEvents.length}
-                </div>
-                <div className="rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700">
-                  Agents: {normalizedAgentNames.length}
-                </div>
-              </div>
-            </div>
-
-            <div className="min-h-0 flex-1 w-full overflow-y-auto px-5 py-4 pb-20">
-              <div className="mx-auto flex w-full max-w-4xl flex-col gap-8 py-1">
-                {generalEvents.length ? (
-                  generalEvents.map((event, index) => (
-                    <div key={`${event.created_at}-${event.event_type}-${index}`} className="space-y-1">
-                      <div className="flex flex-wrap items-center gap-3">
-                        <p className="text-xs font-semibold tracking-wide text-PrimaryBlue">SWARM EVENT</p>
-                        <p className="text-[11px] font-mono text-slate-400">
-                          {formatTraceTimestamp(event.created_at)}
-                        </p>
-                      </div>
-                      <div className="flex flex-wrap items-center gap-2">
-                        <p className="text-sm font-semibold text-slate-900">{event.event_type}</p>
-                        <span className="text-xs text-slate-400">•</span>
-                        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                          {event.arch_type}
-                        </p>
-                      </div>
-                      <p className="max-w-3xl text-sm text-slate-700">{event.description}</p>
-                    </div>
-                  ))
-                ) : (
-                  <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-6 py-10 text-center">
-                    <p className="text-sm font-semibold text-slate-900">Waiting for swarm events</p>
-                  </div>
-                )}
-              </div>
-            </div>
-
-          </div>
-        ) : null}
+          <GeneralPanel
+            swarmRunId={swarm_run_id}
+            streamState={streamState}
+            generalEvents={generalEvents}
+            agentCount={normalizedAgentNames.length}
+          />
+        ) :
+          <AgentPanel
+            activeAgentName={activeAgentName}
+            activeAgentRunId={activeAgentRunId}
+            activeAgentOutput={activeAgentOutput}
+            selectedTab={selectedTab}
+            setSelectedTab={setSelectedTab}
+          />
+        }
       </div>
     </div>
   );

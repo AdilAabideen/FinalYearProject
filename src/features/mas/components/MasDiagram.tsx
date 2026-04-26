@@ -1,17 +1,18 @@
 import { cn } from '../../../shared/lib/cn';
 import type { MasCatalogDetail } from '../../../types/mas';
-import type { ActiveHandoffEdges, AgentRunningStatus } from './MasDetailSplitView';
+import type { ActiveHandoffEdges, AgentRunningStatus, BoundaryEdgeHighlights } from './MasDetailSplitView';
 
 type MasDiagramProps = {
   workflow: MasCatalogDetail;
   agentStatus?: AgentRunningStatus;
   activeHandoffEdges?: ActiveHandoffEdges;
+  boundaryEdgeHighlights?: BoundaryEdgeHighlights;
 };
 
 type Point = { x: number; y: number };
 
 const LINK_STROKE_WIDTH = 3;
-const INPUT_OUTPUT_STROKE_WIDTH = 4;
+const INPUT_OUTPUT_STROKE_WIDTH = 3;
 
 function connectorPath(from: Point, to: Point) {
   return `M ${from.x} ${from.y} L ${to.x} ${to.y}`;
@@ -32,7 +33,12 @@ function formatAgentTitle(agentName: string) {
     .replace('doctor', 'Doctor');
 }
 
-export function MasDiagram({ workflow, agentStatus = {}, activeHandoffEdges = {} }: MasDiagramProps) {
+export function MasDiagram({
+  workflow,
+  agentStatus = {},
+  activeHandoffEdges = {},
+  boundaryEdgeHighlights = { start: 'idle', end: 'idle' },
+}: MasDiagramProps) {
   const data = workflow;
   const agentPositions = data.agent_positions;
 
@@ -121,7 +127,7 @@ export function MasDiagram({ workflow, agentStatus = {}, activeHandoffEdges = {}
           const edgeStatus = activeHandoffEdges[edgeKey];
           const strokeClass =
             edgeStatus === 'active'
-              ? 'stroke-PrimaryBlue'
+              ? 'stroke-green-500'
               : edgeStatus === 'visited'
                 ? 'stroke-slate-400'
                 : 'stroke-slate-200';
@@ -145,8 +151,15 @@ export function MasDiagram({ workflow, agentStatus = {}, activeHandoffEdges = {}
             d={connectorPath(node.position, node.target)}
             fill="none"
             strokeLinecap="round"
-            className={cn('transition-colors stroke-slate-200')}
-            strokeWidth={INPUT_OUTPUT_STROKE_WIDTH}
+            className={cn(
+              'transition-colors',
+              boundaryEdgeHighlights.start === 'active'
+                ? 'stroke-green-500'
+                : boundaryEdgeHighlights.start === 'visited'
+                  ? 'stroke-slate-400'
+                  : 'stroke-slate-200',
+            )}
+            strokeWidth={boundaryEdgeHighlights.start === 'active' ? INPUT_OUTPUT_STROKE_WIDTH + 1 : INPUT_OUTPUT_STROKE_WIDTH}
             vectorEffect="non-scaling-stroke"
             markerEnd="url(#mas-boundary-arrow)"
           />
@@ -158,8 +171,15 @@ export function MasDiagram({ workflow, agentStatus = {}, activeHandoffEdges = {}
             d={connectorPath(node.source, node.position)}
             fill="none"
             strokeLinecap="round"
-            className={cn('transition-colors stroke-slate-200')}
-            strokeWidth={INPUT_OUTPUT_STROKE_WIDTH}
+            className={cn(
+              'transition-colors',
+              boundaryEdgeHighlights.end === 'active'
+                ? 'stroke-green-500'
+                : boundaryEdgeHighlights.end === 'visited'
+                  ? 'stroke-slate-400'
+                  : 'stroke-slate-200',
+            )}
+            strokeWidth={boundaryEdgeHighlights.end === 'active' ? INPUT_OUTPUT_STROKE_WIDTH + 1 : INPUT_OUTPUT_STROKE_WIDTH}
             vectorEffect="non-scaling-stroke"
             markerEnd="url(#mas-boundary-arrow)"
           />
@@ -194,7 +214,7 @@ export function MasDiagram({ workflow, agentStatus = {}, activeHandoffEdges = {}
       {agents.map((agent) => (
         <div
           key={agent.name}
-          className={`absolute flex h-36 w-36 -translate-x-1/2 -translate-y-1/2 flex-col items-center justify-center gap-2 rounded-full border-2 ${agentStatus[agent.name] === 'running' ? 'border-green-500' : "border-PrimaryBlue"} bg-white p-6 text-center shadow-sm`}
+          className={`absolute flex h-36 w-36 -translate-x-1/2 -translate-y-1/2 flex-col items-center justify-center gap-2 rounded-full border-3 ${agentStatus[agent.name] === 'running' ? 'border-green-500' : "border-PrimaryBlue"} bg-white p-6 text-center shadow-sm`}
           style={{ left: `${agent.position.x}%`, top: `${agent.position.y}%` }}
         >
           <div className="flex items-center justify-center gap-2">

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { MasCatalogDetail } from '../../../types/mas';
 import { DEFAULT_MAS_WORKFLOW_INPUT } from '../config/defaultWorkflowInput';
 import { AgentInputForm } from '../../agents/components/AgentInputForm';
@@ -8,6 +8,7 @@ import MasTracesTab from './MasTracesTab';
 import { masRunService } from '../../../services/masRunService';
 import { coerceInputForRun } from '../utils/jsonSchema';
 import type { SwarmExecutionStartResponse } from '../../../types/masRuns';
+import { API_BASE_URL } from '../../../config/env';
 
 type MasDetailSplitViewProps = {
   workflow: MasCatalogDetail;
@@ -18,6 +19,10 @@ type AgentStatus = 'running' | 'executed' | 'waiting' | 'error'
 export type AgentRunningStatus = Record<string, AgentStatus>;
 export type HandoffEdgeStatus = 'active' | 'visited';
 export type ActiveHandoffEdges = Record<string, HandoffEdgeStatus>;
+export type BoundaryEdgeHighlights = {
+  start: 'idle' | 'active' | 'visited';
+  end: 'idle' | 'active' | 'visited';
+};
 
 type MasTabKey = 'diagram' | 'test-cases';
 type ResultTabKey = 'traces' | 'output'
@@ -40,6 +45,7 @@ export function MasDetailSplitView({ workflow }: MasDetailSplitViewProps) {
   const [submitted, setSubmitted] = useState(false);
   const [activeResultTab, setActiveResultTab] = useState<ResultTabKey>('traces');
   const [runInfo, setRunInfo] = useState<SwarmExecutionStartResponse>({} as SwarmExecutionStartResponse);
+  const [masOutput, setMasOutput] = useState<Record<string, unknown> | null>(null);
   const abortRef = useRef<AbortController | null>(null);
 
   const [agentStatus, setAgentStatus] = useState<AgentRunningStatus>(() => {
@@ -51,6 +57,10 @@ export function MasDetailSplitView({ workflow }: MasDetailSplitViewProps) {
     return agentStatusMap
   });
   const [activeHandoffEdges, setActiveHandoffEdges] = useState<ActiveHandoffEdges>({});
+  const [boundaryEdgeHighlights, setBoundaryEdgeHighlights] = useState<BoundaryEdgeHighlights>({
+    start: 'idle',
+    end: 'idle',
+  });
 
   async function handleSubmitInput() {
 
@@ -58,11 +68,10 @@ export function MasDetailSplitView({ workflow }: MasDetailSplitViewProps) {
     const ac = new AbortController();
     abortRef.current = ac;
     setActiveHandoffEdges({});
+    setBoundaryEdgeHighlights({ start: 'idle', end: 'idle' });
+    setMasOutput(null);
 
     const payload = coerceInputForRun(workflow.input_schema.json_schema, workflowInputValue)
-    console.log(JSON.stringify({
-      input: payload
-    }))
 
     try {
       const mas_run_details : SwarmExecutionStartResponse = await masRunService.startMasRun(
@@ -70,7 +79,6 @@ export function MasDetailSplitView({ workflow }: MasDetailSplitViewProps) {
         payload,
         ac.signal
       )
-      console.log("Success", mas_run_details)
       setRunInfo(mas_run_details)
       if (ac.signal.aborted) return;
     } catch (e: unknown) {
@@ -82,11 +90,30 @@ export function MasDetailSplitView({ workflow }: MasDetailSplitViewProps) {
 
   }
 
+  const handleMasDone = useCallback(async () => {
+    if (!runInfo?.finalOutputUrl) return;
+
+    const response = await fetch(`${API_BASE_URL}${runInfo.finalOutputUrl}`, {
+      method: 'GET',
+      headers: {
+        Accept: 'application/json',
+      },
+    });
+
+    if (!response.ok) {
+      const message = await response.text();
+      throw new Error(message || 'Failed to fetch MAS final output');
+    }
+
+    const output = (await response.json()) as Record<string, unknown>;
+    setMasOutput(output);
+  }, [runInfo?.finalOutputUrl]);
+
 
 
   return (
     <div className="grid h-full min-h-0 p-0 lg:grid-cols-1">
-      <section className="flex min-h-0 flex-col border-r border-slate-200 p-0">
+      <section className="flex min-h-0 flex-col border-r border-slate-200 p-0 h-full">
         <div className="flex  items-stretch border-b border-slate-200 bg-white">
           {tabs.map((tab) => {
             const active = activeTab === tab.key;
@@ -115,12 +142,17 @@ export function MasDetailSplitView({ workflow }: MasDetailSplitViewProps) {
         </div>
 
         {activeTab === 'diagram' ? (
-          <div className="grid h-full grid-cols-6 grid-rows-1">
-            <div className="min-h-[560px] col-span-4 flex-1 overflow-hidden rounded-none bg-white">
-              <MasDiagram workflow={workflow} agentStatus={agentStatus} activeHandoffEdges={activeHandoffEdges} />
+          <div className="grid h-full min-h-[560px] grid-cols-6 grid-rows-1">
+            <div className="col-span-4 h-full min-h-0 flex-1 overflow-hidden rounded-none bg-white">
+              <MasDiagram
+                workflow={workflow}
+                agentStatus={agentStatus}
+                activeHandoffEdges={activeHandoffEdges}
+                boundaryEdgeHighlights={boundaryEdgeHighlights}
+              />
             </div>
-            <div className="col-span-2 border-l border-slate-200 bg-white">
-              <div className="flex h-full min-h-[560px] flex-col overflow-hidden">
+            <div className="col-span-2 min-h-0 border-l border-slate-200 bg-white">
+              <div className="flex h-full min-h-0 flex-col overflow-hidden">
                 <div className="min-h-0 flex-1 overflow-hidden">
                   <div className="flex h-full min-h-0 flex-col rounded-none border border-slate-200 bg-white">
 
@@ -170,16 +202,22 @@ export function MasDetailSplitView({ workflow }: MasDetailSplitViewProps) {
                           </div>
                           {
                             activeResultTab == 'traces' ? (
-                              <MasTracesTab
-                                agentNames={workflow.participating_agents}
-                                eventsStreamUrl={runInfo ? runInfo.eventsStreamUrl : ""}
-                                swarm_run_id={runInfo.swarmRunId}
-                                setAgentStatus={setAgentStatus}
-                                setActiveHandoffEdges={setActiveHandoffEdges}
-                              />
+                              <div className="min-h-0 flex-1 overflow-hidden">
+                                <MasTracesTab
+                                  agentNames={workflow.participating_agents}
+                                  eventsStreamUrl={runInfo ? runInfo.eventsStreamUrl : ""}
+                                  swarm_run_id={runInfo.swarmRunId}
+                                  setAgentStatus={setAgentStatus}
+                                  setActiveHandoffEdges={setActiveHandoffEdges}
+                                  setBoundaryEdgeHighlights={setBoundaryEdgeHighlights}
+                                  onMasDone={handleMasDone}
+                                />
+                              </div>
                             ) :
                               (
-                                <MasResultsTab input={workflowInputValue} />
+                                <div className="min-h-0 flex-1 overflow-hidden">
+                                  <MasResultsTab input={workflowInputValue} output={masOutput} />
+                                </div>
 
                               )
                           }
