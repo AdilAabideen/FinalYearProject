@@ -13,6 +13,12 @@ function asStringArray(value: unknown) {
   return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : [];
 }
 
+function formatSnakeCaseLabel(value: string) {
+  return value
+    .replace(/_/g, ' ')
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
 function FieldSection({
   label,
   value,
@@ -84,7 +90,7 @@ export default function MasResultsTab({ output }: MasResultsTabProps) {
                   value={finalEsiLevel != null ? String(finalEsiLevel) : '—'}
                   tone="accent"
                 />
-                <AgentStatCard label="Decision Source" value={decisionSource} small={true} />
+                <AgentStatCard label="Decision Source" value={formatSnakeCaseLabel(decisionSource)} small={true} />
                 <AgentStatCard
                   label="Uptriaged"
                   value={uptriaged == null ? 'Unknown' : uptriaged ? 'Yes' : 'No'}
