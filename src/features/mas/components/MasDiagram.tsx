@@ -1,10 +1,11 @@
 import { cn } from '../../../shared/lib/cn';
 import type { MasCatalogDetail } from '../../../types/mas';
-import type { AgentRunningStatus } from './MasDetailSplitView';
+import type { ActiveHandoffEdges, AgentRunningStatus } from './MasDetailSplitView';
 
 type MasDiagramProps = {
   workflow: MasCatalogDetail;
-  agentStatus?: AgentRunningStatus
+  agentStatus?: AgentRunningStatus;
+  activeHandoffEdges?: ActiveHandoffEdges;
 };
 
 type Point = { x: number; y: number };
@@ -31,7 +32,7 @@ function formatAgentTitle(agentName: string) {
     .replace('doctor', 'Doctor');
 }
 
-export function MasDiagram({ workflow, agentStatus = {} }: MasDiagramProps) {
+export function MasDiagram({ workflow, agentStatus = {}, activeHandoffEdges = {} }: MasDiagramProps) {
   const data = workflow;
   const agentPositions = data.agent_positions;
 
@@ -116,6 +117,14 @@ export function MasDiagram({ workflow, agentStatus = {} }: MasDiagramProps) {
           const fromPosition = agentPositions[from];
           const toPosition = agentPositions[to];
           if (!fromPosition || !toPosition) return null;
+          const edgeKey = `${from}->${to}`;
+          const edgeStatus = activeHandoffEdges[edgeKey];
+          const strokeClass =
+            edgeStatus === 'active'
+              ? 'stroke-PrimaryBlue'
+              : edgeStatus === 'visited'
+                ? 'stroke-slate-400'
+                : 'stroke-slate-200';
 
           return (
             <path
@@ -123,8 +132,8 @@ export function MasDiagram({ workflow, agentStatus = {} }: MasDiagramProps) {
               d={connectorPath(fromPosition, toPosition)}
               fill="none"
               strokeLinecap="round"
-              className={cn('transition-colors stroke-slate-300')}
-              strokeWidth={LINK_STROKE_WIDTH}
+              className={cn('transition-colors', strokeClass)}
+              strokeWidth={edgeStatus === 'active' ? LINK_STROKE_WIDTH + 1 : LINK_STROKE_WIDTH}
               vectorEffect="non-scaling-stroke"
             />
           );

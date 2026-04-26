@@ -1,13 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
 import type { EventStreamPayload, SwarmEventType } from '../../../types/masRuns';
-import type { AgentRunningStatus } from './MasDetailSplitView';
+import type { ActiveHandoffEdges, AgentRunningStatus } from './MasDetailSplitView';
 
 type MasTracesTabProps = {
   agentNames: string[];
   eventsStreamUrl: string;
   swarm_run_id: string;
   setAgentStatus: Dispatch<SetStateAction<AgentRunningStatus>>;
+  setActiveHandoffEdges: Dispatch<SetStateAction<ActiveHandoffEdges>>;
 };
 
 type MasEventTypes =
@@ -120,7 +121,8 @@ export default function MasTracesTab({
   agentNames,
   eventsStreamUrl,
   swarm_run_id,
-  setAgentStatus
+  setAgentStatus,
+  setActiveHandoffEdges,
 }: MasTracesTabProps) {
   const normalizedAgentNames = useMemo(
     () => agentNames.filter((name, index, arr) => arr.indexOf(name) === index),
@@ -130,6 +132,7 @@ export default function MasTracesTab({
   const [activeAgentName, setActiveAgentName] = useState<string>('general');
 
   const sourceRef = useRef<EventSource | null>(null);
+  const handoffTimeoutsRef = useRef<Record<string, number>>({});
   const [entries, setEntries] = useState<EventStreamPayload[]>([]);
   const [agentRunIds, setAgentRunIds] = useState<Record<string, string | null>>(() =>
     buildInitialAgentRunIds(normalizedAgentNames),
@@ -147,6 +150,15 @@ export default function MasTracesTab({
       return next;
     });
   }, [normalizedAgentNames]);
+
+  useEffect(() => {
+    return () => {
+      for (const timeoutId of Object.values(handoffTimeoutsRef.current)) {
+        window.clearTimeout(timeoutId);
+      }
+      handoffTimeoutsRef.current = {};
+    };
+  }, []);
 
   const handleOpen = useCallback(() => {
     setStreamState('open');
@@ -275,6 +287,33 @@ export default function MasTracesTab({
             description: `Handoff between ${fromAgent} and ${toAgent}.`,
             created_at: parsed.created_at,
           });
+
+          if (fromAgent !== 'unknown agent' && toAgent !== 'unknown agent') {
+            const edgeKey = `${fromAgent}->${toAgent}`;
+            const existingTimeout = handoffTimeoutsRef.current[edgeKey];
+            if (existingTimeout) window.clearTimeout(existingTimeout);
+
+            setActiveHandoffEdges((prev) => ({
+              ...prev,
+              [edgeKey]: 'active',
+            }));
+
+            setAgentStatus((prev) => {
+              return {
+                ...prev,
+                [fromAgent] : "executed",
+                [toAgent] : "running"
+              }
+            })
+
+            handoffTimeoutsRef.current[edgeKey] = window.setTimeout(() => {
+              setActiveHandoffEdges((prev) => ({
+                ...prev,
+                [edgeKey]: 'visited',
+              }));
+              delete handoffTimeoutsRef.current[edgeKey];
+            }, 10000);
+          }
           break;
         }
         case 'gate_evaluated': {
@@ -348,6 +387,10 @@ export default function MasTracesTab({
       setGeneralEvents([]);
       setStreamState('waiting');
       setErrorText(null);
+      for (const timeoutId of Object.values(handoffTimeoutsRef.current)) {
+        window.clearTimeout(timeoutId);
+      }
+      handoffTimeoutsRef.current = {};
       return;
     }
 
