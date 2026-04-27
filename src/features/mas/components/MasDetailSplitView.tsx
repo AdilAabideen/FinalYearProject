@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import type { MasCatalogDetail } from '../../../types/mas';
 import { DEFAULT_MAS_WORKFLOW_INPUT } from '../config/defaultWorkflowInput';
 import { AgentInputForm } from '../../agents/components/AgentInputForm';
@@ -10,6 +10,7 @@ import { coerceInputForRun } from '../utils/jsonSchema';
 import type { SwarmExecutionStartResponse, SwarmRunMetricsRead } from '../../../types/masRuns';
 import { API_BASE_URL } from '../../../config/env';
 import MasMetricsTab from './MasMetricsTab';
+import MasTestCases from './MasTestCases';
 
 type MasDetailSplitViewProps = {
   workflow: MasCatalogDetail;
@@ -258,14 +259,9 @@ export function MasDetailSplitView({ workflow }: MasDetailSplitViewProps) {
             </div>
           </div>
         ) : (
-          <div className="flex min-h-[560px] flex-1 items-center justify-center bg-white p-6">
-            <div className="rounded-2xl border border-slate-200 bg-slate-50 px-6 py-8 text-center shadow-sm">
-              <p className="text-sm font-semibold text-slate-900">Test Cases</p>
-              <p className="mt-2 text-sm text-slate-500">
-                Test case rendering for MAS workflows can be added here next.
-              </p>
-            </div>
-          </div>
+         <MasTestCases 
+          workflow={workflow}
+         />
         )}
       </section>
     </div>
