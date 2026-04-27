@@ -1,12 +1,10 @@
 import type { SwarmRunMetricsRead } from '../../../types/masRuns';
-import { Badge } from '../../../shared/ui/Badge';
 import { JsonInspector } from '../../../shared/ui/JsonInspector';
 import { AgentStatCard as StatCard } from '../../agents/components/shared/AgentStatCard';
 import {
   formatCurrency,
   formatInteger,
   formatLatencyMs,
-  formatPercent,
   titleCaseKey,
 } from '../../agents/utils/format';
 
@@ -15,18 +13,13 @@ type MasMetricsTabProps = {
 };
 
 export default function MasMetricsTab({ metrics }: MasMetricsTabProps) {
-  const successRate =
-    metrics && metrics.agentRunCount > 0
-      ? metrics.completedAgentCount / metrics.agentRunCount
-      : null;
-
-  const failureReasonEntries = metrics
-    ? [
+  const failureReasonEntries: Array<[string, number]> = metrics
+    ? ([
       ['agent failures', metrics.agentFailureCount],
       ['reliability issues', metrics.reliabilityIssueCount],
       ['reliability errors', metrics.reliabilityErrorCount],
       ['finalization failures', metrics.finalizationFailureCount],
-    ].filter(([, count]) => count > 0)
+    ] as Array<[string, number]>).filter(([, count]) => count > 0)
     : [];
 
   return (
@@ -37,7 +30,7 @@ export default function MasMetricsTab({ metrics }: MasMetricsTabProps) {
         </div>
       ) : (
         <div className="pb-3">
-          <section className="rounded border border-slate-200 bg-white p-4">
+          <section className="rounded border border-l-0 border-slate-200 bg-white p-4">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
                 <p className='text-xl font-semibold text-slate-900 mb-2'>MAS Metrics</p>

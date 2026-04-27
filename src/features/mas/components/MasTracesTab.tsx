@@ -458,13 +458,15 @@ export default function MasTracesTab({
 
   const sourceRef = useRef<EventSource | null>(null);
   const onMasDoneRef = useRef(onMasDone);
+  const setAgentStatusRef = useRef(setAgentStatus);
+  const setActiveHandoffEdgesRef = useRef(setActiveHandoffEdges);
+  const setBoundaryEdgeHighlightsRef = useRef(setBoundaryEdgeHighlights);
   const handoffTimeoutsRef = useRef<Record<string, number>>({});
   const metricsAbortRefs = useRef<Record<string, AbortController>>({});
   const boundaryTimeoutsRef = useRef<{ start: number | null; end: number | null }>({
     start: null,
     end: null,
   });
-  const [entries, setEntries] = useState<EventStreamPayload[]>([]);
   const [agentRunIds, setAgentRunIds] = useState<Record<string, string | null>>(() =>
     buildInitialAgentRunIds(normalizedAgentNames),
   );
@@ -486,18 +488,31 @@ export default function MasTracesTab({
     const existingTimeout = boundaryTimeoutsRef.current[type];
     if (existingTimeout) window.clearTimeout(existingTimeout);
 
-    setBoundaryEdgeHighlights((prev) => ({ ...prev, [type]: 'active' }));
+    const updateBoundaryEdgeHighlights = setBoundaryEdgeHighlightsRef.current;
+    updateBoundaryEdgeHighlights((prev) => ({ ...prev, [type]: 'active' }));
     boundaryTimeoutsRef.current[type] = window.setTimeout(() => {
-      setBoundaryEdgeHighlights((prev) => ({ ...prev, [type]: 'visited' }));
+      updateBoundaryEdgeHighlights((prev) => ({ ...prev, [type]: 'visited' }));
       boundaryTimeoutsRef.current[type] = null;
     }, 10000);
-  }, [setBoundaryEdgeHighlights]);
+  }, []);
 
   const [selectedTab, setSelectedTab] = useState<Tabs>(tabs[0]);
 
   useEffect(() => {
     onMasDoneRef.current = onMasDone;
   }, [onMasDone]);
+
+  useEffect(() => {
+    setAgentStatusRef.current = setAgentStatus;
+  }, [setAgentStatus]);
+
+  useEffect(() => {
+    setActiveHandoffEdgesRef.current = setActiveHandoffEdges;
+  }, [setActiveHandoffEdges]);
+
+  useEffect(() => {
+    setBoundaryEdgeHighlightsRef.current = setBoundaryEdgeHighlights;
+  }, [setBoundaryEdgeHighlights]);
 
   useEffect(() => {
     setAgentRunIds((prev) => {
@@ -523,7 +538,7 @@ export default function MasTracesTab({
       if (boundaryTimeoutsRef.current.end) window.clearTimeout(boundaryTimeoutsRef.current.end);
       boundaryTimeoutsRef.current = { start: null, end: null };
     };
-  }, [setBoundaryEdgeHighlights]);
+  }, []);
 
   const handleOpen = useCallback(() => {
     setStreamState('open');
@@ -580,8 +595,6 @@ export default function MasTracesTab({
         return;
       }
 
-      setEntries((prev) => [...prev, parsed]);
-
       switch (parsed.event_type) {
         case 'swarm_started': {
           appendGeneralEvent(setGeneralEvents, {
@@ -635,7 +648,7 @@ export default function MasTracesTab({
               [agentName]: agentRunId,
             }));
 
-            setAgentStatus((prev) => {
+            setAgentStatusRef.current((prev) => {
               return {
                 ...prev,
                 [agentName]: "running"
@@ -662,7 +675,7 @@ export default function MasTracesTab({
               [agentName]: agentRunId,
             }));
 
-            setAgentStatus((prev) => {
+            setAgentStatusRef.current((prev) => {
               return {
                 ...prev,
                 [agentName]: "executed"
@@ -699,6 +712,7 @@ export default function MasTracesTab({
             const edgeKey = `${fromAgent}->${toAgent}`;
             const existingTimeout = handoffTimeoutsRef.current[edgeKey];
             if (existingTimeout) window.clearTimeout(existingTimeout);
+            const updateActiveHandoffEdges = setActiveHandoffEdgesRef.current;
 
             if (parsed.payload_json && 'payload' in parsed.payload_json) {
               setAgentOutputs((prev) => ({
@@ -707,12 +721,12 @@ export default function MasTracesTab({
               }));
             }
 
-            setActiveHandoffEdges((prev) => ({
+            updateActiveHandoffEdges((prev) => ({
               ...prev,
               [edgeKey]: 'active',
             }));
 
-            setAgentStatus((prev) => {
+            setAgentStatusRef.current((prev) => {
               return {
                 ...prev,
                 [fromAgent]: "executed",
@@ -721,7 +735,7 @@ export default function MasTracesTab({
             })
 
             handoffTimeoutsRef.current[edgeKey] = window.setTimeout(() => {
-              setActiveHandoffEdges((prev) => ({
+              updateActiveHandoffEdges((prev) => ({
                 ...prev,
                 [edgeKey]: 'visited',
               }));
@@ -780,7 +794,7 @@ export default function MasTracesTab({
       setErrorText('Error Occured');
       console.error(error);
     }
-  }, [getAgentMetrics, setActiveHandoffEdges, setAgentStatus, triggerBoundaryHighlight]);
+  }, [getAgentMetrics, triggerBoundaryHighlight]);
 
   const handleDone = useCallback((event: MessageEvent<string>) => {
     void event;
@@ -795,30 +809,28 @@ export default function MasTracesTab({
 
   useEffect(() => {
     sourceRef.current?.close();
+    for (const timeoutId of Object.values(handoffTimeoutsRef.current)) {
+      window.clearTimeout(timeoutId);
+    }
+    handoffTimeoutsRef.current = {};
+    if (boundaryTimeoutsRef.current.start) window.clearTimeout(boundaryTimeoutsRef.current.start);
+    if (boundaryTimeoutsRef.current.end) window.clearTimeout(boundaryTimeoutsRef.current.end);
+    boundaryTimeoutsRef.current = { start: null, end: null };
 
     if (!eventsStreamUrl) {
-      setEntries([]);
       setGeneralEvents([]);
       setAgentOutputs({});
       setAgentMetricsStates({});
       setStreamState('waiting');
       setErrorText(null);
-      for (const timeoutId of Object.values(handoffTimeoutsRef.current)) {
-        window.clearTimeout(timeoutId);
-      }
-      handoffTimeoutsRef.current = {};
       for (const controller of Object.values(metricsAbortRefs.current)) {
         controller.abort();
       }
       metricsAbortRefs.current = {};
-      if (boundaryTimeoutsRef.current.start) window.clearTimeout(boundaryTimeoutsRef.current.start);
-      if (boundaryTimeoutsRef.current.end) window.clearTimeout(boundaryTimeoutsRef.current.end);
-      boundaryTimeoutsRef.current = { start: null, end: null };
-      setBoundaryEdgeHighlights({ start: 'idle', end: 'idle' });
+      setBoundaryEdgeHighlightsRef.current({ start: 'idle', end: 'idle' });
       return;
     }
 
-    setEntries([]);
     setGeneralEvents([]);
     setAgentOutputs({});
     setAgentMetricsStates({});
@@ -837,7 +849,7 @@ export default function MasTracesTab({
       source.close();
       if (sourceRef.current === source) sourceRef.current = null;
     };
-  }, [eventsStreamUrl, handleDone, handleError, handleOpen, handleSwarmEvent, setBoundaryEdgeHighlights]);
+  }, [eventsStreamUrl, handleDone, handleError, handleOpen, handleSwarmEvent]);
 
 
 
@@ -878,6 +890,11 @@ export default function MasTracesTab({
       </div>
 
       <div className="col-span-4 flex h-full min-h-0 w-full flex-col bg-white">
+        {errorText ? (
+          <div className="border-b border-rose-200 bg-rose-50 px-4 py-2 text-sm text-rose-700">
+            {errorText}
+          </div>
+        ) : null}
         {activeAgentName === 'general' ? (
           <GeneralPanel
             swarmRunId={swarm_run_id}
