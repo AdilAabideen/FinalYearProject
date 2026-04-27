@@ -4,6 +4,15 @@ import type { EventStreamPayload, SwarmEventType } from '../../../types/masRuns'
 import type { ActiveHandoffEdges, AgentRunningStatus, BoundaryEdgeHighlights } from './MasDetailSplitView';
 import { AgentTracesComponent } from '../../agents/components/AgentTracesComponent';
 import JsonRenderer from './JsonRenderer';
+import type { AgentRunMetrics } from '../../../types/agentRuns';
+import { agentRunService } from '../../../services/agentRunService';
+import { Badge } from '../../../shared/ui/Badge';
+import { AgentStatCard as StatCard } from '../../agents/components/shared/AgentStatCard';
+import { AgentRawJsonDetails } from '../../agents/components/shared/AgentRawJsonDetails';
+import { AgentReliabilitySummaryPanel } from '../../agents/components/shared/AgentReliabilitySummaryPanel';
+import { formatCurrency, formatDuration, formatInteger } from '../../agents/utils/format';
+import { asNumber } from '../../agents/utils/runResult';
+import { getReliabilitySummaryView } from '../../agents/utils/reliability';
 
 type MasTracesTabProps = {
   agentNames: string[];
@@ -37,9 +46,16 @@ type AgentPanelProps = {
   activeAgentName: string;
   activeAgentRunId: string | null;
   activeAgentOutput: unknown;
+  activeMetricsState: MetricsState;
   selectedTab: Tabs;
   setSelectedTab: Dispatch<SetStateAction<Tabs>>;
 };
+
+type MetricsState =
+  | { status: 'idle' }
+  | { status: 'loading' }
+  | { status: 'error'; error: string }
+  | { status: 'ready'; metrics: AgentRunMetrics };
 
 type GeneralPanelProps = {
   swarmRunId: string;
@@ -149,7 +165,7 @@ function normalizeOutputValue(value: unknown) {
   return value;
 }
 
-type tabKey = 'traces' | 'output'
+type tabKey = 'traces' | 'output' | "metrics"
 
 type Tabs = {
   key: tabKey,
@@ -164,17 +180,38 @@ const tabs: Tabs[] = [
   {
     key: "output",
     name: "Output"
+  },
+  {
+    key: "metrics",
+    name: "Metrics"
   }
 ]
+
+const IDLE_METRICS_STATE: MetricsState = { status: 'idle' };
 
 function AgentPanel({
   activeAgentName,
   activeAgentRunId,
   activeAgentOutput,
+  activeMetricsState,
   selectedTab,
   setSelectedTab,
 }: AgentPanelProps) {
   const normalizedOutput = normalizeOutputValue(activeAgentOutput);
+
+  function viewerTabId(key: tabKey) {
+    return `${activeAgentName}-${key}-tab`;
+  }
+
+  function viewerPanelId(key: tabKey) {
+    return `${activeAgentName}-${key}-panel`;
+  }
+
+  const activeMetricsRecord = activeMetricsState.status === 'ready' ? activeMetricsState.metrics : null;
+  const activeReliabilitySummaryView = getReliabilitySummaryView(activeMetricsRecord, {
+    fallbackCountsToZero: true,
+  });
+  const activeCaseStatus = activeMetricsRecord?.status ?? null;
 
   return (
     <div className="flex h-full min-h-0 w-full flex-col bg-white">
@@ -192,6 +229,10 @@ function AgentPanel({
               key={tab.key}
               type="button"
               onClick={() => setSelectedTab(tab)}
+              id={viewerTabId(tab.key)}
+              role="tab"
+              aria-selected={active}
+              aria-controls={viewerPanelId(tab.key)}
               className={[
                 'border-r cursor-pointer border-slate-200 px-3 py-2 text-sm font-medium transition-colors',
                 active
@@ -208,7 +249,12 @@ function AgentPanel({
       <div className="min-h-0 flex-1 overflow-hidden">
         {selectedTab.key === 'traces' ? (
           activeAgentRunId ? (
-            <div className="h-full min-h-0 overflow-hidden p-3 pb-20">
+            <div
+              id={viewerPanelId('traces')}
+              role="tabpanel"
+              aria-labelledby={viewerTabId('traces')}
+              className="h-full min-h-0 overflow-hidden p-3 pb-20"
+            >
               <AgentTracesComponent runId={activeAgentRunId} />
             </div>
           ) : (
@@ -221,20 +267,110 @@ function AgentPanel({
               </div>
             </div>
           )
+        ) : selectedTab.key === 'metrics' ? (
+          <div
+            id={viewerPanelId('metrics')}
+            role="tabpanel"
+            aria-labelledby={viewerTabId('metrics')}
+            className="h-full min-h-0 overflow-auto p-3 pb-20"
+          >
+            {activeMetricsState.status === 'loading' ? (
+              <div className="rounded-2xl border border-slate-200 bg-white p-4 text-sm text-slate-700">
+                Loading metrics…
+              </div>
+            ) : activeMetricsState.status === 'error' ? (
+              <div className="rounded-2xl border border-slate-200 bg-white p-4 text-sm text-slate-700">
+                {activeMetricsState.error}
+              </div>
+            ) : activeMetricsState.status === 'ready' ? (
+              <div className="space-y-4 pb-2">
+                <div className="rounded-2xl border border-slate-200 bg-white p-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <h4 className="text-sm font-semibold text-slate-900">Metrics</h4>
+                    <Badge className="bg-white text-slate-700 ring-slate-200">
+                      {activeCaseStatus ? `Case: ${activeCaseStatus}` : 'Case status unavailable'}
+                    </Badge>
+                  </div>
+
+                  <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                    <StatCard
+                      label="LLM Calls"
+                      value={formatInteger(asNumber(activeMetricsRecord?.llm_call_count))}
+                      tone="accent"
+                    />
+                    <StatCard
+                      label="Tool Calls"
+                      value={formatInteger(asNumber(activeMetricsRecord?.tool_call_count))}
+                    />
+                    <StatCard
+                      label="Input Tokens"
+                      value={formatInteger(asNumber(activeMetricsRecord?.input_tokens_total))}
+                    />
+                    <StatCard
+                      label="Output Tokens"
+                      value={formatInteger(asNumber(activeMetricsRecord?.output_tokens_total))}
+                    />
+                    <StatCard
+                      label="Total Tokens"
+                      value={formatInteger(asNumber(activeMetricsRecord?.tokens_total))}
+                    />
+                    <StatCard
+                      label="Duration"
+                      value={formatDuration(asNumber(activeMetricsRecord?.duration_seconds))}
+                    />
+                    <StatCard
+                      label="Cost"
+                      value={formatCurrency(asNumber(activeMetricsRecord?.cost_usd_total))}
+                    />
+                    <StatCard
+                      label="Failure Reason"
+                      value={
+                        typeof activeMetricsRecord?.failure_reason === 'string' &&
+                        activeMetricsRecord.failure_reason.trim().length > 0
+                          ? activeMetricsRecord.failure_reason
+                          : 'None'
+                      }
+                      tone={
+                        typeof activeMetricsRecord?.failure_reason === 'string' &&
+                        activeMetricsRecord.failure_reason.trim().length > 0
+                          ? 'danger'
+                          : 'positive'
+                      }
+                      small={true}
+                    />
+                  </div>
+
+                  <AgentReliabilitySummaryPanel
+                    summaryView={activeReliabilitySummaryView}
+                    statusSmall={true}
+                  />
+
+                  <AgentRawJsonDetails
+                    summary="Raw Metrics JSON"
+                    value={activeMetricsState.metrics}
+                    className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-3"
+                    contentClassName="mt-3 max-h-[min(24rem,50vh)] overflow-auto rounded-2xl border border-slate-200 bg-white p-3"
+                  />
+                </div>
+              </div>
+            ) : (
+              <div className="rounded-2xl border border-slate-200 bg-white p-4 text-sm text-slate-700">
+                Metrics will appear once this agent finishes running.
+              </div>
+            )}
+          </div>
+        ) : normalizedOutput ? (
+          <div className="h-full min-h-0 overflow-y-auto pb-20">
+            <div className="space-y-2">
+              <JsonRenderer title="Agent Communication Output" value={normalizedOutput} />
+            </div>
+          </div>
         ) : (
-          normalizedOutput ? (
-            <div className="h-full min-h-0 overflow-y-auto pb-20">
-              <div className="space-y-2">
-                <JsonRenderer title="Agent Communication Output" value={normalizedOutput} />
-              </div>
+          <div className="flex h-full items-start justify-start p-6">
+            <div className="w-full rounded-xl border border-dashed border-slate-300 bg-slate-50 px-6 py-8 text-center">
+              <p className="text-sm font-semibold text-slate-900">No Agent Communication</p>
             </div>
-          ) : (
-            <div className="flex h-full items-start justify-start p-6">
-              <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 px-6 py-8 text-center w-full">
-                <p className="text-sm font-semibold text-slate-900">No Agent Communication</p>
-              </div>
-            </div>
-          )
+          </div>
         )}
       </div>
     </div>
@@ -323,6 +459,7 @@ export default function MasTracesTab({
   const sourceRef = useRef<EventSource | null>(null);
   const onMasDoneRef = useRef(onMasDone);
   const handoffTimeoutsRef = useRef<Record<string, number>>({});
+  const metricsAbortRefs = useRef<Record<string, AbortController>>({});
   const boundaryTimeoutsRef = useRef<{ start: number | null; end: number | null }>({
     start: null,
     end: null,
@@ -332,6 +469,7 @@ export default function MasTracesTab({
     buildInitialAgentRunIds(normalizedAgentNames),
   );
   const [agentOutputs, setAgentOutputs] = useState<Record<string, unknown>>({});
+  const [agentMetricsStates, setAgentMetricsStates] = useState<Record<string, MetricsState>>({});
   const [streamState, setStreamState] = useState<string>('waiting');
   const [errorText, setErrorText] = useState<string | null>(null);
   const [generalEvents, setGeneralEvents] = useState<MasGeneralEvents[]>([]);
@@ -339,6 +477,10 @@ export default function MasTracesTab({
     activeAgentName && activeAgentName !== 'general' ? agentRunIds[activeAgentName] ?? null : null;
   const activeAgentOutput =
     activeAgentName && activeAgentName !== 'general' ? agentOutputs[activeAgentName] ?? null : null;
+  const activeMetricsState: MetricsState =
+    activeAgentName && activeAgentName !== 'general'
+      ? agentMetricsStates[activeAgentName] ?? IDLE_METRICS_STATE
+      : IDLE_METRICS_STATE;
 
   const triggerBoundaryHighlight = useCallback((type: 'start' | 'end') => {
     const existingTimeout = boundaryTimeoutsRef.current[type];
@@ -373,6 +515,10 @@ export default function MasTracesTab({
         window.clearTimeout(timeoutId);
       }
       handoffTimeoutsRef.current = {};
+      for (const controller of Object.values(metricsAbortRefs.current)) {
+        controller.abort();
+      }
+      metricsAbortRefs.current = {};
       if (boundaryTimeoutsRef.current.start) window.clearTimeout(boundaryTimeoutsRef.current.start);
       if (boundaryTimeoutsRef.current.end) window.clearTimeout(boundaryTimeoutsRef.current.end);
       boundaryTimeoutsRef.current = { start: null, end: null };
@@ -387,6 +533,42 @@ export default function MasTracesTab({
   const handleError = useCallback(() => {
     setErrorText('Error');
     setStreamState('waiting');
+  }, []);
+
+  const getAgentMetrics = useCallback(async (agentName: string, runId: string) => {
+    metricsAbortRefs.current[agentName]?.abort();
+
+    const ac = new AbortController();
+    metricsAbortRefs.current[agentName] = ac;
+
+    setAgentMetricsStates((prev) => ({
+      ...prev,
+      [agentName]: { status: 'loading' },
+    }));
+
+    try {
+      const metrics = await agentRunService.getAgentRunMetrics(runId, ac.signal);
+      if (ac.signal.aborted) return;
+
+      setAgentMetricsStates((prev) => ({
+        ...prev,
+        [agentName]: { status: 'ready', metrics },
+      }));
+    } catch (error) {
+      if (ac.signal.aborted) return;
+      console.error(error);
+      setAgentMetricsStates((prev) => ({
+        ...prev,
+        [agentName]: {
+          status: 'error',
+          error: error instanceof Error ? error.message : 'Failed to load metrics',
+        },
+      }));
+    } finally {
+      if (metricsAbortRefs.current[agentName] === ac) {
+        delete metricsAbortRefs.current[agentName];
+      }
+    }
   }, []);
 
   const handleSwarmEvent = useCallback((event: MessageEvent<string>) => {
@@ -485,7 +667,11 @@ export default function MasTracesTab({
                 ...prev,
                 [agentName]: "executed"
               }
-            })
+            });
+
+            if (agentRunId) {
+              void getAgentMetrics(agentName, agentRunId);
+            }
           }
 
           break;
@@ -594,7 +780,7 @@ export default function MasTracesTab({
       setErrorText('Error Occured');
       console.error(error);
     }
-  }, []);
+  }, [getAgentMetrics, setActiveHandoffEdges, setAgentStatus, triggerBoundaryHighlight]);
 
   const handleDone = useCallback((event: MessageEvent<string>) => {
     void event;
@@ -614,12 +800,17 @@ export default function MasTracesTab({
       setEntries([]);
       setGeneralEvents([]);
       setAgentOutputs({});
+      setAgentMetricsStates({});
       setStreamState('waiting');
       setErrorText(null);
       for (const timeoutId of Object.values(handoffTimeoutsRef.current)) {
         window.clearTimeout(timeoutId);
       }
       handoffTimeoutsRef.current = {};
+      for (const controller of Object.values(metricsAbortRefs.current)) {
+        controller.abort();
+      }
+      metricsAbortRefs.current = {};
       if (boundaryTimeoutsRef.current.start) window.clearTimeout(boundaryTimeoutsRef.current.start);
       if (boundaryTimeoutsRef.current.end) window.clearTimeout(boundaryTimeoutsRef.current.end);
       boundaryTimeoutsRef.current = { start: null, end: null };
@@ -630,6 +821,7 @@ export default function MasTracesTab({
     setEntries([]);
     setGeneralEvents([]);
     setAgentOutputs({});
+    setAgentMetricsStates({});
     setStreamState('connecting');
     setErrorText(null);
 
@@ -698,6 +890,7 @@ export default function MasTracesTab({
             activeAgentName={activeAgentName}
             activeAgentRunId={activeAgentRunId}
             activeAgentOutput={activeAgentOutput}
+            activeMetricsState={activeMetricsState}
             selectedTab={selectedTab}
             setSelectedTab={setSelectedTab}
           />

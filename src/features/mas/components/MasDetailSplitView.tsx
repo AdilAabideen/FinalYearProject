@@ -7,8 +7,9 @@ import MasResultsTab from './MasResultsTab';
 import MasTracesTab from './MasTracesTab';
 import { masRunService } from '../../../services/masRunService';
 import { coerceInputForRun } from '../utils/jsonSchema';
-import type { SwarmExecutionStartResponse } from '../../../types/masRuns';
+import type { SwarmExecutionStartResponse, SwarmRunMetricsRead } from '../../../types/masRuns';
 import { API_BASE_URL } from '../../../config/env';
+import MasMetricsTab from './MasMetricsTab';
 
 type MasDetailSplitViewProps = {
   workflow: MasCatalogDetail;
@@ -25,16 +26,19 @@ export type BoundaryEdgeHighlights = {
 };
 
 type MasTabKey = 'diagram' | 'test-cases';
-type ResultTabKey = 'traces' | 'output'
+type ResultTabKey = 'traces' | 'output' | 'metrics'
 
 const tabs: Array<{ key: MasTabKey; label: string }> = [
   { key: 'diagram', label: 'MAS Diagram' },
   { key: 'test-cases', label: 'Test Cases' },
+
 ];
 
 const resultTabs: Array<{ key: ResultTabKey; label: string }> = [
   { key: 'traces', label: 'Traces' },
   { key: 'output', label: 'Output' },
+  { key: 'metrics', label: 'Metrics' },
+
 ]
 
 export function MasDetailSplitView({ workflow }: MasDetailSplitViewProps) {
@@ -47,10 +51,11 @@ export function MasDetailSplitView({ workflow }: MasDetailSplitViewProps) {
   const [runInfo, setRunInfo] = useState<SwarmExecutionStartResponse>({} as SwarmExecutionStartResponse);
   const [masOutput, setMasOutput] = useState<Record<string, unknown> | null>(null);
   const abortRef = useRef<AbortController | null>(null);
+  const doneAbortRef = useRef<AbortController | null>(null);
 
   const [agentStatus, setAgentStatus] = useState<AgentRunningStatus>(() => {
-    const agentStatusMap : AgentRunningStatus = {}
-    for (const name of workflow.participating_agents ){
+    const agentStatusMap: AgentRunningStatus = {}
+    for (const name of workflow.participating_agents) {
       agentStatusMap[name] = 'waiting'
     }
 
@@ -61,6 +66,8 @@ export function MasDetailSplitView({ workflow }: MasDetailSplitViewProps) {
     start: 'idle',
     end: 'idle',
   });
+
+  const [masMetrics, setMasMetrics] = useState<SwarmRunMetricsRead | null>(null);
 
   async function handleSubmitInput() {
 
@@ -74,7 +81,7 @@ export function MasDetailSplitView({ workflow }: MasDetailSplitViewProps) {
     const payload = coerceInputForRun(workflow.input_schema.json_schema, workflowInputValue)
 
     try {
-      const mas_run_details : SwarmExecutionStartResponse = await masRunService.startMasRun(
+      const mas_run_details: SwarmExecutionStartResponse = await masRunService.startMasRun(
         workflow.metadata.workflow_id,
         payload,
         ac.signal
@@ -107,6 +114,21 @@ export function MasDetailSplitView({ workflow }: MasDetailSplitViewProps) {
 
     const output = (await response.json()) as Record<string, unknown>;
     setMasOutput(output);
+
+    if (!runInfo.swarmRunId) return;
+
+    doneAbortRef.current?.abort()
+    const ac = new AbortController()
+    doneAbortRef.current = ac
+    const metrics: SwarmRunMetricsRead = await masRunService.getMasRunMetrics(runInfo.swarmRunId, ac.signal)
+
+    if (metrics) {
+      setMasMetrics(metrics)
+    } else (
+      setMasMetrics(null)
+    )
+
+
   }, [runInfo?.finalOutputUrl]);
 
 
@@ -215,10 +237,15 @@ export function MasDetailSplitView({ workflow }: MasDetailSplitViewProps) {
                               </div>
                             ) :
                               (
-                                <div className="min-h-0 flex-1 overflow-hidden">
-                                  <MasResultsTab input={workflowInputValue} output={masOutput} />
-                                </div>
-
+                                activeResultTab == "output" ? (
+                                  <div className="min-h-0 flex-1 overflow-hidden">
+                                    <MasResultsTab input={workflowInputValue} output={masOutput} />
+                                  </div>
+                                ) : (
+                                  <div className="min-h-0 flex-1 overflow-hidden">
+                                    <MasMetricsTab metrics={masMetrics} />
+                                  </div>
+                                )
                               )
                           }
 

@@ -80,7 +80,7 @@ export default function MasResultsTab({ output }: MasResultsTabProps) {
   return (
     <div className="flex h-full min-h-0 overflow-hidden bg-white">
       <div className="flex h-full min-h-0 w-full flex-col overflow-hidden p-4">
-        <p className='text-slate-900 font-medium text-xl mb-2'>Mas Output</p>
+        <p className='text-xl font-semibold text-slate-900 mb-2'>Mas Output</p>
         <div className="min-h-0 flex-1 overflow-y-auto pr-2 pb-6">
           {outputJson ? (
             <div className="space-y-6">
