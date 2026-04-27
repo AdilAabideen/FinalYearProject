@@ -5,13 +5,7 @@ import { AgentReliabilitySummaryPanel } from '../../agents/components/shared/Age
 import { formatCurrency, formatDuration, formatInteger } from '../../agents/utils/format';
 import { asNumber } from '../../agents/utils/runResult';
 import { getReliabilitySummaryView } from '../../agents/utils/reliability';
-import type { AgentRunMetrics } from '../../../types/agentRuns';
-
-export type MetricsState =
-  | { status: 'idle' }
-  | { status: 'loading' }
-  | { status: 'error'; error: string }
-  | { status: 'ready'; metrics: AgentRunMetrics };
+import type { MetricsState } from '../utils/masTraces';
 
 type MasTracesMetricsPanelProps = {
   activeMetricsState: MetricsState;

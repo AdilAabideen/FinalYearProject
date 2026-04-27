@@ -1,5 +1,6 @@
 import type { Dispatch, SetStateAction } from 'react';
 import type { EventStreamPayload, SwarmEventType } from '../../../types/masRuns';
+import type { AgentRunMetrics } from '../../../types/agentRuns';
 
 export type MasEventTypes =
   | 'Swarm Started'
@@ -19,6 +20,12 @@ export type MasGeneralEvent = {
   description: string;
   created_at: string;
 };
+
+export type MetricsState =
+  | { status: 'idle' }
+  | { status: 'loading' }
+  | { status: 'error'; error: string }
+  | { status: 'ready'; metrics: AgentRunMetrics };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -95,4 +102,17 @@ export function formatTraceTimestamp(value: string) {
     minute: '2-digit',
     second: '2-digit',
   }).format(date);
+}
+
+export function normalizeOutputValue(value: unknown) {
+  if (value == null) return null;
+  if (typeof value === 'string') {
+    try {
+      return JSON.parse(value);
+    } catch {
+      return value;
+    }
+  }
+
+  return value;
 }

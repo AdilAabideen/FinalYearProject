@@ -3,7 +3,8 @@ import { AgentTracesComponent } from '../../agents/components/AgentTracesCompone
 import JsonRenderer from './JsonRenderer';
 import { MasTabs } from './MasTabs';
 import { formatMasAgentName } from '../utils/format';
-import { MasTracesMetricsPanel, type MetricsState } from './MasTracesMetricsPanel';
+import { type MetricsState } from '../utils/masTraces';
+import { MasTracesMetricsPanel } from './MasTracesMetricsPanel';
 
 export type TraceTabKey = 'traces' | 'output' | 'metrics';
 
