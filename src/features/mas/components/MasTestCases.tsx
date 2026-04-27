@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { MasTestCaseRead } from '../../../types/masTests';
+import type { MasTestCaseRead, MasTestRunMetrics, MasTestRunResults } from '../../../types/masTests';
 import { masTestService } from '../../../services/masTestService';
 import type { MasCatalogDetail } from '../../../types/mas';
 import { MasDiagram } from './MasDiagram';
@@ -7,27 +7,35 @@ import { JsonInspector } from '../../../shared/ui/JsonInspector';
 import MasTracesTab from './MasTracesTab';
 import MasResultsTab from './MasResultsTab';
 import MasMetricsTab from './MasMetricsTab';
+import { AgentStatCard as StatCard } from '../../agents/components/shared/AgentStatCard';
 import type {
   ActiveHandoffEdges,
   AgentRunningStatus,
   BoundaryEdgeHighlights,
 } from './MasDetailSplitView';
 import { API_BASE_URL } from '../../../config/env';
-import { extractCaseId } from '../../agents/utils/testRunStream';
+import { extractCaseId, extractDiff, extractPassed } from '../../agents/utils/testRunStream';
 import { asString, isRecord } from '../../agents/utils/runResult';
 import { masRunService } from '../../../services/masRunService';
 import type { SwarmRunMetricsRead } from '../../../types/masRuns';
+import { formatDuration, formatInteger, formatLatencyMs, formatPercent } from '../../agents/utils/format';
 
 type MasTestCasesProps = {
   workflow: MasCatalogDetail;
 };
 
 type TestCaseTabKey = 'test_case' | 'traces' | 'output' | 'metrics' | 'diff';
+type MasTestTabKey = 'test' | 'output' | 'metrics'
 
 type TestCaseTab = {
   key: TestCaseTabKey;
   label: string;
 };
+
+type MasTestCaseTab = {
+  key: MasTestTabKey;
+  label: string;
+}
 
 const testCaseTabs: TestCaseTab[] = [
   { key: 'test_case', label: 'Test Case' },
@@ -36,6 +44,12 @@ const testCaseTabs: TestCaseTab[] = [
   { key: 'metrics', label: 'Metrics' },
   { key: 'diff', label: 'Difference' },
 ];
+
+const masTestCaseTabs : MasTestCaseTab[] = [
+  {key: 'test', label: 'Tests'},
+  {key: 'output', label: 'Mas Output'},
+  {key: 'metrics', label: 'Mas Metrics'},
+]
 
 function splitName(name: string) {
   return name.split('-', 1)[0];
@@ -59,12 +73,67 @@ function formatDateTime(value: string) {
   }).format(date);
 }
 
+function ConfusionCell({
+  label,
+  value,
+  tone,
+  maxValue,
+}: {
+  label: string;
+  value: number;
+  tone: 'correct' | 'error';
+  maxValue: number;
+}) {
+  const ratio = maxValue > 0 ? value / maxValue : 0;
+  const strength = ratio > 0.66 ? 'strong' : ratio > 0.33 ? 'medium' : 'soft';
+  const className =
+    tone === 'correct'
+      ? strength === 'strong'
+        ? 'border-emerald-300 bg-emerald-100 text-emerald-900'
+        : strength === 'medium'
+          ? 'border-emerald-200 bg-emerald-50 text-emerald-900'
+          : 'border-emerald-100 bg-emerald-50/40 text-emerald-900'
+      : strength === 'strong'
+        ? 'border-rose-300 bg-rose-100 text-rose-900'
+        : strength === 'medium'
+          ? 'border-rose-200 bg-rose-50 text-rose-900'
+          : 'border-rose-100 bg-rose-50/40 text-rose-900';
+
+  return (
+    <div className={`rounded-xl border p-3 ${className}`}>
+      <p className="text-[11px] font-semibold uppercase tracking-wide">{label}</p>
+      <p className="mt-1 text-xl font-semibold">{formatInteger(value)}</p>
+    </div>
+  );
+}
+
 type TestCaseTraceRun = {
   swarmRunId: string;
   eventsStreamUrl: string;
 };
 
-type TestCaseRunStatus = 'idle' | 'running' | 'completed';
+type TestCaseRunStatus = 'idle' | 'running' | 'passed' | 'failed';
+
+type TestCaseDiffState = {
+  status: 'idle' | 'ready' | 'error';
+  diff?: Record<string, unknown> | null;
+  passed?: boolean | null;
+  score?: number | null;
+  swarmStatus?: string | null;
+  error?: string;
+};
+
+type MasRunResultsState =
+  | { status: 'idle' }
+  | { status: 'loading' }
+  | { status: 'error'; error: string }
+  | { status: 'ready'; data: MasTestRunResults };
+
+type MasRunMetricsState =
+  | { status: 'idle' }
+  | { status: 'loading' }
+  | { status: 'error'; error: string }
+  | { status: 'ready'; data: MasTestRunMetrics };
 
 function extractMasTestRunId(value: unknown) {
   if (!isRecord(value)) return null;
@@ -95,6 +164,8 @@ export default function MasTestCases({ workflow }: MasTestCasesProps) {
   const [selectedTestCaseIds, setSelectedTestCaseIds] = useState<string[]>([]);
   const [showCaseWorkspace, setShowCaseWorkspace] = useState(false);
   const [activeTab, setActiveTab] = useState<TestCaseTabKey>('test_case');
+  const [activeMasTab, setActiveMasTab] = useState<MasTestTabKey>('test')
+  const [activeConfusionLabel, setActiveConfusionLabel] = useState<string | null>(null);
   const [masTestRunId, setMasTestRunId] = useState<string | null>(null);
   const [startingTests, setStartingTests] = useState(false);
   const [testCaseTraceRuns, setTestCaseTraceRuns] = useState<Record<string, TestCaseTraceRun>>({});
@@ -104,10 +175,15 @@ export default function MasTestCases({ workflow }: MasTestCasesProps) {
   const [testCaseBoundaryHighlights, setTestCaseBoundaryHighlights] = useState<
     Record<string, BoundaryEdgeHighlights>
   >({});
+  const [testCaseDiffs, setTestCaseDiffs] = useState<Record<string, TestCaseDiffState>>({});
   const [testCaseOutputs, setTestCaseOutputs] = useState<Record<string, Record<string, unknown> | null>>({});
   const [testCaseMetrics, setTestCaseMetrics] = useState<Record<string, SwarmRunMetricsRead | null>>({});
+  const [masRunResultsState, setMasRunResultsState] = useState<MasRunResultsState>({ status: 'idle' });
+  const [masRunMetricsState, setMasRunMetricsState] = useState<MasRunMetricsState>({ status: 'idle' });
   const runStreamRef = useRef<EventSource | null>(null);
   const doneAbortRefs = useRef<Record<string, AbortController>>({});
+  const resultsAbortRef = useRef<AbortController | null>(null);
+  const batchMetricsAbortRef = useRef<AbortController | null>(null);
 
   const selectedTraceRun = selectedTestCase ? testCaseTraceRuns[selectedTestCase.id] ?? null : null;
   const selectedAgentStatus = selectedTestCase
@@ -119,8 +195,114 @@ export default function MasTestCases({ workflow }: MasTestCasesProps) {
   const selectedBoundaryHighlights = selectedTestCase
     ? testCaseBoundaryHighlights[selectedTestCase.id] ?? { start: 'idle', end: 'idle' }
     : ({ start: 'idle', end: 'idle' } as const);
+  const selectedTestCaseStatus = selectedTestCase ? testCaseRunStatuses[selectedTestCase.id] ?? 'idle' : 'idle';
+  const selectedTestCaseDiffState = selectedTestCase ? testCaseDiffs[selectedTestCase.id] : undefined;
   const selectedTestCaseOutput = selectedTestCase ? testCaseOutputs[selectedTestCase.id] ?? null : null;
   const selectedTestCaseMetrics = selectedTestCase ? testCaseMetrics[selectedTestCase.id] ?? null : null;
+  const selectedDiffRecord =
+    selectedTestCaseDiffState?.status === 'ready' && isRecord(selectedTestCaseDiffState.diff)
+      ? selectedTestCaseDiffState.diff
+      : null;
+  const expectedAnswerRecord =
+    selectedDiffRecord && isRecord(selectedDiffRecord.expected_answer)
+      ? selectedDiffRecord.expected_answer
+      : null;
+  const actualAnswerRecord =
+    selectedDiffRecord && isRecord(selectedDiffRecord.actual_answer)
+      ? selectedDiffRecord.actual_answer
+      : null;
+  const expectedAcuity =
+    expectedAnswerRecord && (typeof expectedAnswerRecord.acuity === 'string' || typeof expectedAnswerRecord.acuity === 'number')
+      ? String(expectedAnswerRecord.acuity)
+      : '—';
+  const actualFinalEsiLevel =
+    actualAnswerRecord &&
+      (typeof actualAnswerRecord.final_esi_level === 'string' || typeof actualAnswerRecord.final_esi_level === 'number')
+      ? String(actualAnswerRecord.final_esi_level)
+      : '—';
+  const masRunResults = masRunResultsState.status === 'ready' ? masRunResultsState.data : null;
+  const masRunMetrics = masRunMetricsState.status === 'ready' ? masRunMetricsState.data : null;
+  const confusionRecord =
+    masRunResults && isRecord(masRunResults.run.metricsJson) && isRecord(masRunResults.run.metricsJson.confusion)
+      ? masRunResults.run.metricsJson.confusion
+      : null;
+  const confusionPerLabelRecord =
+    confusionRecord && isRecord(confusionRecord.per_label)
+      ? confusionRecord.per_label
+      : null;
+  const confusionLabels =
+    confusionRecord && Array.isArray(confusionRecord.labels)
+      ? confusionRecord.labels.filter((label): label is string => typeof label === 'string')
+      : confusionPerLabelRecord
+        ? Object.keys(confusionPerLabelRecord)
+        : [];
+  const selectedConfusionRecord =
+    activeConfusionLabel && confusionPerLabelRecord && isRecord(confusionPerLabelRecord[activeConfusionLabel])
+      ? confusionPerLabelRecord[activeConfusionLabel]
+      : null;
+  const tp = selectedConfusionRecord && typeof selectedConfusionRecord.tp === 'number' ? selectedConfusionRecord.tp : null;
+  const fp = selectedConfusionRecord && typeof selectedConfusionRecord.fp === 'number' ? selectedConfusionRecord.fp : null;
+  const tn = selectedConfusionRecord && typeof selectedConfusionRecord.tn === 'number' ? selectedConfusionRecord.tn : null;
+  const fn = selectedConfusionRecord && typeof selectedConfusionRecord.fn === 'number' ? selectedConfusionRecord.fn : null;
+  const hasConfusionMetrics = confusionLabels.length > 0 && (tp != null || fp != null || tn != null || fn != null);
+  const confusionMax = Math.max(tp ?? 0, fp ?? 0, tn ?? 0, fn ?? 0, 1);
+
+  useEffect(() => {
+    if (confusionLabels.length === 0) {
+      setActiveConfusionLabel(null);
+      return;
+    }
+
+    setActiveConfusionLabel((prev) =>
+      prev && confusionLabels.includes(prev) ? prev : confusionLabels[0],
+    );
+  }, [confusionLabels]);
+
+  const fetchMasRunResults = useCallback(async (runId: string) => {
+    resultsAbortRef.current?.abort();
+    const ac = new AbortController();
+    resultsAbortRef.current = ac;
+    setMasRunResultsState({ status: 'loading' });
+
+    try {
+      const data = await masTestService.getRunResults(runId, ac.signal);
+      if (ac.signal.aborted) return;
+      setMasRunResultsState({ status: 'ready', data });
+    } catch (error) {
+      if (ac.signal.aborted) return;
+      setMasRunResultsState({
+        status: 'error',
+        error: error instanceof Error ? error.message : 'Failed to load MAS test run results',
+      });
+    } finally {
+      if (resultsAbortRef.current === ac) {
+        resultsAbortRef.current = null;
+      }
+    }
+  }, []);
+
+  const fetchMasRunMetrics = useCallback(async (runId: string) => {
+    batchMetricsAbortRef.current?.abort();
+    const ac = new AbortController();
+    batchMetricsAbortRef.current = ac;
+    setMasRunMetricsState({ status: 'loading' });
+
+    try {
+      const data = await masTestService.getRunMetrics(runId, ac.signal);
+      if (ac.signal.aborted) return;
+      setMasRunMetricsState({ status: 'ready', data });
+    } catch (error) {
+      if (ac.signal.aborted) return;
+      setMasRunMetricsState({
+        status: 'error',
+        error: error instanceof Error ? error.message : 'Failed to load MAS test run metrics',
+      });
+    } finally {
+      if (batchMetricsAbortRef.current === ac) {
+        batchMetricsAbortRef.current = null;
+      }
+    }
+  }, []);
 
   const handleMasDone = useCallback(async (testCaseId: string, swarmRunId: string) => {
     const outputResponse = await fetch(
@@ -200,12 +382,19 @@ export default function MasTestCases({ workflow }: MasTestCasesProps) {
     setTestCaseAgentStatuses({});
     setTestCaseHandoffEdges({});
     setTestCaseBoundaryHighlights({});
+    setTestCaseDiffs({});
     setTestCaseOutputs({});
     setTestCaseMetrics({});
+    setMasRunResultsState({ status: 'idle' });
+    setMasRunMetricsState({ status: 'idle' });
     for (const controller of Object.values(doneAbortRefs.current)) {
       controller.abort();
     }
     doneAbortRefs.current = {};
+    resultsAbortRef.current?.abort();
+    resultsAbortRef.current = null;
+    batchMetricsAbortRef.current?.abort();
+    batchMetricsAbortRef.current = null;
 
     console.log(
       JSON.stringify({
@@ -268,9 +457,41 @@ export default function MasTestCases({ workflow }: MasTestCasesProps) {
       const handleCaseDonePayload = (payloadRecord: Record<string, unknown>) => {
         const testCaseId = extractCaseId(payloadRecord);
         if (!testCaseId) return;
+        const passed = extractPassed(payloadRecord);
+        const diff = extractDiff(payloadRecord);
+        const score = typeof payloadRecord.score === 'number'
+          ? payloadRecord.score
+          : isRecord(payloadRecord.result) && typeof payloadRecord.result.score === 'number'
+            ? payloadRecord.result.score
+            : isRecord(payloadRecord.payload_json) && typeof payloadRecord.payload_json.score === 'number'
+              ? payloadRecord.payload_json.score
+              : null;
+        const swarmStatus =
+          asString(payloadRecord.swarm_status) ??
+          (isRecord(payloadRecord.result) ? asString(payloadRecord.result.swarm_status) : undefined) ??
+          (isRecord(payloadRecord.payload_json) ? asString(payloadRecord.payload_json.swarm_status) : undefined) ??
+          null;
+
         setTestCaseRunStatuses((prev) => ({
           ...prev,
-          [testCaseId]: 'completed',
+          [testCaseId]: passed ? 'passed' : 'failed',
+        }));
+        setTestCaseDiffs((prev) => ({
+          ...prev,
+          [testCaseId]: diff && isRecord(diff)
+            ? {
+              status: 'ready',
+              diff,
+              passed,
+              score,
+              swarmStatus,
+            }
+            : {
+              status: 'idle',
+              passed,
+              score,
+              swarmStatus,
+            },
         }));
       };
 
@@ -306,6 +527,8 @@ export default function MasTestCases({ workflow }: MasTestCasesProps) {
       source.addEventListener('done', () => {
         source.close();
         if (runStreamRef.current === source) runStreamRef.current = null;
+        void fetchMasRunResults(runId);
+        void fetchMasRunMetrics(runId);
       });
 
       source.onerror = () => {
@@ -380,6 +603,10 @@ export default function MasTestCases({ workflow }: MasTestCasesProps) {
         controller.abort();
       }
       doneAbortRefs.current = {};
+      resultsAbortRef.current?.abort();
+      resultsAbortRef.current = null;
+      batchMetricsAbortRef.current?.abort();
+      batchMetricsAbortRef.current = null;
     };
   }, []);
 
@@ -388,6 +615,12 @@ export default function MasTestCases({ workflow }: MasTestCasesProps) {
       prev.includes(testCaseId)
         ? prev.filter((id) => id !== testCaseId)
         : [...prev, testCaseId],
+    );
+  }
+
+  function toggleSelectAllTestCases() {
+    setSelectedTestCaseIds((prev) =>
+      prev.length === testCases.length ? [] : testCases.map((testCase) => testCase.id),
     );
   }
 
@@ -412,6 +645,8 @@ export default function MasTestCases({ workflow }: MasTestCasesProps) {
   }
 
   if (!showCaseWorkspace) {
+    const allSelected = testCases.length > 0 && selectedTestCaseIds.length === testCases.length;
+
     return (
       <div className="flex h-full min-h-0 flex-col bg-white">
         <div className="border-b border-slate-200 px-6 py-4">
@@ -427,7 +662,17 @@ export default function MasTestCases({ workflow }: MasTestCasesProps) {
               <thead className="bg-slate-50">
                 <tr>
                   <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
-                    Select
+                    <label className="inline-flex items-center gap-2 normal-case tracking-normal text-slate-600">
+                      <input
+                        type="checkbox"
+                        checked={allSelected}
+                        onChange={toggleSelectAllTestCases}
+                        className="h-4 w-4 rounded border-slate-300 text-PrimaryBlue focus:ring-PrimaryBlue"
+                      />
+                      <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                        Select All
+                      </span>
+                    </label>
                   </th>
                   <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
                     Name
@@ -511,40 +756,348 @@ export default function MasTestCases({ workflow }: MasTestCasesProps) {
   return visibleTestCases.length > 0 ? (
     <div className="flex h-full min-h-0 w-full flex-col overflow-hidden bg-white">
       <div className="flex shrink-0 flex-row items-start p-0  border-b border-slate-200">
-        {visibleTestCases.map((test) => {
-          const active = selectedTestCase?.id === test.id;
-          const runStatus = testCaseRunStatuses[test.id] ?? 'idle';
+        {masTestCaseTabs.map((tab) => {
+          const active = activeMasTab === tab.key;
+
           return (
             <button
-              key={test.id}
+              key={tab.key}
               type="button"
-              onClick={() => setSelectedTestCase(test)}
+              onClick={() => setActiveMasTab(tab.key)}
               className={[
-                'flex h-full cursor-pointer min-w-36 py-2 items-center border-r  border-t border-slate-200 px-4 text-left transition-colors',
+                'flex h-full cursor-pointer min-w-28 py-2 items-center border-r  border-t border-slate-200 px-4 text-left transition-colors',
                 active ? 'bg-slate-50' : 'bg-white hover:bg-slate-50',
               ].join(' ')}
             >
-              <span
-                className={[
-                  'mr-2 inline-block h-2.5 w-2.5 rounded-full',
-                  runStatus === 'completed'
-                    ? 'bg-emerald-500'
-                    : runStatus === 'running'
-                      ? 'bg-amber-500'
-                      : 'bg-slate-300',
-                ].join(' ')}
-              />
+              
               <p
                 className={[
                   'text-sm font-semibold',
                   active ? 'text-slate-900' : 'text-slate-500',
                 ].join(' ')}
               >
-                {'Test ' + splitName(test.name)}
+                {tab.label}
               </p>
             </button>
           );
         })}
+      </div>
+      {activeMasTab === 'output' ? (
+        <div className="min-h-0 flex-1 overflow-auto bg-white p-4">
+          {masRunResultsState.status === 'idle' ? (
+            <div className="rounded-2xl border border-slate-200 bg-white p-4 text-sm text-slate-700">
+              Start and finish a MAS test run to view batch output.
+            </div>
+          ) : masRunResultsState.status === 'loading' ? (
+            <div className="rounded-2xl border border-slate-200 bg-white p-4 text-sm text-slate-700">
+              Loading MAS test run results…
+            </div>
+          ) : masRunResultsState.status === 'error' ? (
+            <div className="rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">
+              {masRunResultsState.error}
+            </div>
+          ) : masRunResults ? (
+            <div className="space-y-4 pb-3">
+              <section className="rounded-2xl border border-slate-200 bg-white p-4">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <p className="text-xl font-semibold text-slate-900">
+                      {masRunResults.run.name || 'MAS Test Run Output'}
+                    </p>
+                    <p className="mt-1 text-sm text-slate-700">
+                      Workflow: {masRunResults.run.workflowId}
+                    </p>
+                    <p className="mt-1 text-xs text-slate-500">
+                      Started: {masRunResults.run.startedAt ?? '—'} · Finished: {masRunResults.run.finishedAt ?? '—'}
+                    </p>
+                  </div>
+                  <div
+                    className={[
+                      'rounded-full border px-3 py-1 text-xs font-semibold',
+                      masRunResults.run.status.toLowerCase().includes('fail')
+                        ? 'border-rose-200 bg-rose-50 text-rose-700'
+                        : 'border-emerald-200 bg-emerald-50 text-emerald-700',
+                    ].join(' ')}
+                  >
+                    {masRunResults.run.status}
+                  </div>
+                </div>
+
+                <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                  <StatCard label="Total Cases" value={formatInteger(masRunResults.summary.totalRuns)} tone="accent" />
+                  <StatCard label="Passed" value={formatInteger(masRunResults.summary.successfulRuns)} tone="positive" />
+                  <StatCard label="Failed" value={formatInteger(masRunResults.summary.failedRuns)} tone={masRunResults.summary.failedRuns > 0 ? 'danger' : 'default'} />
+                  <StatCard label="Accuracy" value={formatPercent(masRunResults.summary.successRate)} tone="accent" />
+                  <StatCard
+                    label="Execution Failed"
+                    value={formatInteger(masRunResults.summary.executionFailedCount)}
+                    tone={masRunResults.summary.executionFailedCount > 0 ? 'danger' : 'default'}
+                  />
+                  <StatCard
+                    label="Missing Final Output"
+                    value={formatInteger(masRunResults.summary.missingFinalOutputCount)}
+                    tone={masRunResults.summary.missingFinalOutputCount > 0 ? 'danger' : 'default'}
+                  />
+                  <StatCard
+                    label="Avg Duration"
+                    value={formatDuration(
+                      masRunResults.summary.durationMsAvg == null
+                        ? null
+                        : masRunResults.summary.durationMsAvg / 1000,
+                    )}
+                  />
+                  <StatCard
+                    label="Runs With Swarm"
+                    value={formatInteger(masRunResults.summary.runsWithSwarmRun)}
+                  />
+                </div>
+              </section>
+
+              {hasConfusionMetrics ? (
+                <section className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Confusion Matrix</p>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {confusionLabels.map((label) => {
+                      const active = activeConfusionLabel === label;
+                      return (
+                        <button
+                          key={label}
+                          type="button"
+                          onClick={() => setActiveConfusionLabel(label)}
+                          className={[
+                            'rounded-lg border px-3 py-1.5 text-xs font-semibold transition-colors',
+                            active
+                              ? 'border-PrimaryBlue/20 bg-PrimaryBlue text-white'
+                              : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50',
+                          ].join(' ')}
+                        >
+                          Acuity {label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <div className="mt-2 grid grid-cols-[5.5rem_1fr_1fr] gap-2">
+                    <div />
+                    <div className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-center text-[11px] font-semibold uppercase tracking-wide text-slate-600">
+                      Predicted Positive
+                    </div>
+                    <div className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-center text-[11px] font-semibold uppercase tracking-wide text-slate-600">
+                      Predicted Negative
+                    </div>
+
+                    <div className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-center text-[11px] font-semibold uppercase tracking-wide text-slate-600">
+                      Actual Positive
+                    </div>
+                    <ConfusionCell label="TP" value={tp ?? 0} tone="correct" maxValue={confusionMax} />
+                    <ConfusionCell label="FN" value={fn ?? 0} tone="error" maxValue={confusionMax} />
+
+                    <div className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-center text-[11px] font-semibold uppercase tracking-wide text-slate-600">
+                      Actual Negative
+                    </div>
+                    <ConfusionCell label="FP" value={fp ?? 0} tone="error" maxValue={confusionMax} />
+                    <ConfusionCell label="TN" value={tn ?? 0} tone="correct" maxValue={confusionMax} />
+                  </div>
+                </section>
+              ) : null}
+
+              <section className="rounded-2xl border border-slate-200 bg-white p-4">
+                <div className="flex items-center justify-between gap-3">
+                  <p className="text-sm font-semibold text-slate-900">Case Results</p>
+                  <p className="text-xs text-slate-500">{masRunResults.cases.length} rows</p>
+                </div>
+                <div className="mt-3 overflow-auto rounded-2xl border border-slate-200">
+                  <table className="min-w-full divide-y divide-slate-200">
+                    <thead className="bg-slate-50">
+                      <tr>
+                        <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Case Name</th>
+                        <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Case ID</th>
+                        <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Swarm Run ID</th>
+                        <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Status</th>
+                        <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Passed</th>
+                        <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Score</th>
+                        <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Failure Reason</th>
+                        <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Swarm Status</th>
+                        <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Duration</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-200 bg-white">
+                      {masRunResults.cases.map((item) => (
+                        <tr key={item.testCaseId} className="hover:bg-slate-50/70">
+                          <td className="px-4 py-3 text-sm font-medium text-slate-900">{item.testCaseName}</td>
+                          <td className="px-4 py-3 text-sm text-slate-600">{item.testCaseId}</td>
+                          <td className="px-4 py-3 text-sm text-slate-600">{item.swarmRunId ?? '—'}</td>
+                          <td className="px-4 py-3 text-sm text-slate-600">{item.status}</td>
+                          <td className="px-4 py-3 text-sm text-slate-600">{item.passed == null ? '—' : item.passed ? 'Yes' : 'No'}</td>
+                          <td className="px-4 py-3 text-sm text-slate-600">{item.score == null ? '—' : String(item.score)}</td>
+                          <td className="px-4 py-3 text-sm text-slate-600">{item.failureReason ?? '—'}</td>
+                          <td className="px-4 py-3 text-sm text-slate-600">{item.swarmStatus ?? '—'}</td>
+                          <td className="px-4 py-3 text-sm text-slate-600">{formatLatencyMs(item.durationMs)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </section>
+
+              <details className="rounded-2xl border border-slate-200 bg-white p-4">
+                <summary className="cursor-pointer select-none text-sm font-semibold text-slate-800">
+                  Raw Results JSON
+                </summary>
+                <div className="mt-3 max-h-[min(24rem,50vh)] overflow-auto rounded-2xl border border-slate-200 bg-slate-50 p-3">
+                  <JsonInspector value={masRunResults} />
+                </div>
+              </details>
+            </div>
+          ) : null}
+        </div>
+      ) : activeMasTab === 'metrics' ? (
+        <div className="min-h-0 flex-1 overflow-auto bg-white p-4">
+          {masRunMetricsState.status === 'idle' ? (
+            <div className="rounded-2xl border border-slate-200 bg-white p-4 text-sm text-slate-700">
+              Start and finish a MAS test run to view batch metrics.
+            </div>
+          ) : masRunMetricsState.status === 'loading' ? (
+            <div className="rounded-2xl border border-slate-200 bg-white p-4 text-sm text-slate-700">
+              Loading MAS metrics…
+            </div>
+          ) : masRunMetricsState.status === 'error' ? (
+            <div className="rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">
+              {masRunMetricsState.error}
+            </div>
+          ) : masRunMetrics ? (
+            <div className="space-y-4 pb-3">
+              <section className="rounded-2xl border border-slate-200 bg-white p-4">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <p className="text-xl font-semibold text-slate-900">
+                      {masRunMetrics.run.name || 'MAS Test Run Metrics'}
+                    </p>
+                    <p className="mt-1 text-sm text-slate-700">
+                      Workflow: {masRunMetrics.run.workflowId}
+                    </p>
+                  </div>
+                  <div className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-700">
+                    {masRunMetrics.run.status}
+                  </div>
+                </div>
+
+                <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                  <StatCard label="Total Cases" value={formatInteger(masRunMetrics.summary.totalCases)} tone="accent" />
+                  <StatCard label="Avg Duration" value={formatDuration(masRunMetrics.summary.durationMsAvg == null ? null : masRunMetrics.summary.durationMsAvg / 1000)} />
+                  <StatCard label="Total Cost" value={masRunMetrics.summary.costUsdTotal == null ? '—' : new Intl.NumberFormat(undefined, { style: 'currency', currency: 'USD', maximumFractionDigits: 4 }).format(masRunMetrics.summary.costUsdTotal)} tone="accent" />
+                  <StatCard label="Avg Cost" value={masRunMetrics.summary.costUsdAvg == null ? '—' : new Intl.NumberFormat(undefined, { style: 'currency', currency: 'USD', maximumFractionDigits: 4 }).format(masRunMetrics.summary.costUsdAvg)} tone="accent" />
+                  <StatCard label="LLM Calls (Total)" value={formatInteger(masRunMetrics.summary.llmCallCountTotal)} />
+                  <StatCard label="LLM Calls (Avg)" value={formatInteger(masRunMetrics.summary.llmCallCountAvg)} />
+                  <StatCard label="Tool Calls (Total)" value={formatInteger(masRunMetrics.summary.toolCallCountTotal)} />
+                  <StatCard label="Tool Calls (Avg)" value={formatInteger(masRunMetrics.summary.toolCallCountAvg)} />
+                  <StatCard label="Tokens (Total)" value={formatInteger(masRunMetrics.summary.tokensTotal)} />
+                  <StatCard label="Tokens (Avg)" value={formatInteger(masRunMetrics.summary.tokensAvg)} />
+                  <StatCard label="Input Tokens (Avg)" value={formatInteger(masRunMetrics.summary.inputTokensAvg)} />
+                  <StatCard label="Output Tokens (Avg)" value={formatInteger(masRunMetrics.summary.outputTokensAvg)} />
+                  <StatCard label="Agent Runs (Total)" value={formatInteger(masRunMetrics.summary.agentRunCountTotal)} />
+                  <StatCard label="Agent Runs (Avg)" value={formatInteger(masRunMetrics.summary.agentRunCountAvg)} />
+                  <StatCard label="Handoffs (Total)" value={formatInteger(masRunMetrics.summary.handoffCountTotal)} />
+                  <StatCard label="Handoffs (Avg)" value={formatInteger(masRunMetrics.summary.handoffCountAvg)} />
+                  <StatCard label="Gates (Total)" value={formatInteger(masRunMetrics.summary.gateEvaluationCountTotal)} />
+                  <StatCard label="Gates (Avg)" value={formatInteger(masRunMetrics.summary.gateEvaluationCountAvg)} />
+                  <StatCard label="Tool Errors (Avg)" value={formatInteger(masRunMetrics.summary.toolErrorCountAvg)} />
+                  <StatCard label="Reliability Issues (Avg)" value={formatInteger(masRunMetrics.summary.reliabilityIssueCountAvg)} />
+                  <StatCard label="Reliability Errors (Avg)" value={formatInteger(masRunMetrics.summary.reliabilityErrorCountAvg)} />
+                  <StatCard label="Finalization Failures (Avg)" value={formatInteger(masRunMetrics.summary.finalizationFailureCountAvg)} />
+                </div>
+              </section>
+
+              <section className="rounded-2xl border border-slate-200 bg-white p-4">
+                <div className="flex items-center justify-between gap-3">
+                  <p className="text-sm font-semibold text-slate-900">Per-Case Metrics</p>
+                  <p className="text-xs text-slate-500">{masRunMetrics.cases.length} rows</p>
+                </div>
+                <div className="mt-3 overflow-auto rounded-2xl border border-slate-200">
+                  <table className="min-w-full divide-y divide-slate-200">
+                    <thead className="bg-slate-50">
+                      <tr>
+                        <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Case Name</th>
+                        <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Swarm Run ID</th>
+                        <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Swarm Status</th>
+                        <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Duration</th>
+                        <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Tokens</th>
+                        <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Cost</th>
+                        <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">LLM Calls</th>
+                        <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Tool Calls</th>
+                        <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Agent Runs</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-200 bg-white">
+                      {masRunMetrics.cases.map((item) => (
+                        <tr key={item.testCaseId} className="hover:bg-slate-50/70">
+                          <td className="px-4 py-3 text-sm font-medium text-slate-900">{item.testCaseName}</td>
+                          <td className="px-4 py-3 text-sm text-slate-600">{item.swarmRunId ?? '—'}</td>
+                          <td className="px-4 py-3 text-sm text-slate-600">{item.swarmStatus ?? '—'}</td>
+                          <td className="px-4 py-3 text-sm text-slate-600">{formatLatencyMs(item.durationMs)}</td>
+                          <td className="px-4 py-3 text-sm text-slate-600">{formatInteger(item.tokensTotal)}</td>
+                          <td className="px-4 py-3 text-sm text-slate-600">{item.costUsdTotal == null ? '—' : new Intl.NumberFormat(undefined, { style: 'currency', currency: 'USD', maximumFractionDigits: 4 }).format(item.costUsdTotal)}</td>
+                          <td className="px-4 py-3 text-sm text-slate-600">{formatInteger(item.llmCallCountTotal)}</td>
+                          <td className="px-4 py-3 text-sm text-slate-600">{formatInteger(item.toolCallCountTotal)}</td>
+                          <td className="px-4 py-3 text-sm text-slate-600">{formatInteger(item.agentRunCount)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </section>
+
+              <details className="rounded-2xl border border-slate-200 bg-white p-4">
+                <summary className="cursor-pointer select-none text-sm font-semibold text-slate-800">
+                  Raw Metrics JSON
+                </summary>
+                <div className="mt-3 max-h-[min(24rem,50vh)] overflow-auto rounded-2xl border border-slate-200 bg-slate-50 p-3">
+                  <JsonInspector value={masRunMetrics} />
+                </div>
+              </details>
+            </div>
+          ) : null}
+        </div>
+      ) : (
+      <>
+      <div className="min-w-0 shrink-0 overflow-x-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden border-b border-slate-200">
+        <div className="flex min-w-max flex-row items-start p-0">
+          {visibleTestCases.map((test) => {
+            const active = selectedTestCase?.id === test.id;
+            const runStatus = testCaseRunStatuses[test.id] ?? 'idle';
+            return (
+              <button
+                key={test.id}
+                type="button"
+                onClick={() => setSelectedTestCase(test)}
+                className={[
+                  'flex h-full cursor-pointer min-w-36 py-2 items-center border-r border-t border-slate-200 px-4 text-left transition-colors',
+                  active ? 'bg-slate-50' : 'bg-white hover:bg-slate-50',
+                ].join(' ')}
+              >
+                <span
+                  className={[
+                    'mr-2 inline-block h-2.5 w-2.5 rounded-full',
+                    runStatus === 'passed'
+                      ? 'bg-emerald-500'
+                      : runStatus === 'failed'
+                        ? 'bg-rose-500'
+                        : runStatus === 'running'
+                          ? 'bg-amber-500'
+                          : 'bg-slate-300',
+                  ].join(' ')}
+                />
+                <p
+                  className={[
+                    'text-sm font-semibold',
+                    active ? 'text-slate-900' : 'text-slate-500',
+                  ].join(' ')}
+                >
+                  {'Test ' + splitName(test.name)}
+                </p>
+              </button>
+            );
+          })}
+        </div>
       </div>
       <div className="grid min-h-0 flex-1 grid-cols-6 grid-rows-1 overflow-hidden">
         <div className="relative col-span-4 h-full min-h-0 flex-1 overflow-hidden rounded-none bg-white">
@@ -566,21 +1119,35 @@ export default function MasTestCases({ workflow }: MasTestCasesProps) {
                   </span>
                   <span>•</span>
                   <span>
-                    {Object.values(testCaseRunStatuses).filter((status) => status === 'completed').length} ran
+                    {
+                      Object.values(testCaseRunStatuses).filter(
+                        (status) => status === 'passed' || status === 'failed',
+                      ).length
+                    } ran
                   </span>
                 </div>
                 <div className="mt-2 flex flex-wrap gap-1.5">
                   <div className="rounded-md border border-slate-200 bg-slate-50 px-2 py-1">
                     <p className="text-[9px] font-semibold uppercase tracking-wide text-slate-500">To Run</p>
-                    <p className="text-[11px] font-semibold text-slate-900">{selectedTestCaseIds.length - Object.values(testCaseRunStatuses).filter((status) => status === 'completed').length}</p>
+                    <p className="text-[11px] font-semibold text-slate-900">
+                      {
+                        selectedTestCaseIds.length - Object.values(testCaseRunStatuses).filter(
+                          (status) => status === 'passed' || status === 'failed',
+                        ).length
+                      }
+                    </p>
                   </div>
-                  <div className="rounded-md border border-slate-200 bg-slate-50 px-2 py-1">
+                  <div className={`rounded-md border border-slate-200 px-2 py-1 ${Object.values(testCaseRunStatuses).filter((status) => status === 'passed').length === 0 ? "bg-slate-50" : "bg-green-100" }`}>
                     <p className="text-[9px] font-semibold uppercase tracking-wide text-slate-500">Passed</p>
-                    <p className="text-[11px] font-semibold text-slate-900">—</p>
+                    <p className="text-[11px] font-semibold text-slate-900">
+                      {Object.values(testCaseRunStatuses).filter((status) => status === 'passed').length}
+                    </p>
                   </div>
-                  <div className="rounded-md border border-slate-200 bg-slate-50 px-2 py-1">
+                  <div className={`rounded-md border border-slate-200 px-2 py-1 ${Object.values(testCaseRunStatuses).filter((status) => status === 'passed').length === 0 ? "bg-slate-50" : "bg-red-100" }`}>
                     <p className="text-[9px] font-semibold uppercase tracking-wide text-slate-500">Failed</p>
-                    <p className="text-[11px] font-semibold text-slate-900">—</p>
+                    <p className="text-[11px] font-semibold text-slate-900">
+                      {Object.values(testCaseRunStatuses).filter((status) => status === 'failed').length}
+                    </p>
                   </div>
                 </div>
                 {masTestRunId ? (
@@ -606,7 +1173,8 @@ export default function MasTestCases({ workflow }: MasTestCasesProps) {
           </div>
         </div>
         <div className="col-span-2 flex h-full min-h-0 flex-col border-l border-slate-200 bg-white p-0">
-          <div className="flex shrink-0 flex-row items-start p-0">
+          <div className="min-w-0 shrink-0 overflow-x-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
+            <div className="flex min-w-max flex-row items-start p-0">
             {testCaseTabs.map((tab) => {
               const active = activeTab === tab.key;
 
@@ -631,6 +1199,7 @@ export default function MasTestCases({ workflow }: MasTestCasesProps) {
                 </button>
               );
             })}
+            </div>
           </div>
           <div className="min-h-0 flex-1 overflow-hidden">
             {activeTab === 'test_case' ? (
@@ -773,6 +1342,66 @@ export default function MasTestCases({ workflow }: MasTestCasesProps) {
               <div className="h-full min-h-0 overflow-auto">
                 <MasResultsTab input={selectedTestCase?.inputJson ?? {}} output={selectedTestCaseOutput} />
               </div>
+            ) : activeTab === 'diff' ? (
+              <div className="h-full min-h-0 overflow-auto p-0">
+                {!selectedTestCase ? (
+                  <div className="rounded-none border border-slate-200 bg-white p-4 text-sm text-slate-700">
+                    Select a test case to view its diff.
+                  </div>
+                ) : selectedTestCaseDiffState?.status === 'error' ? (
+                  <div className="rounded-2xl border border-slate-200 bg-white p-4 text-sm text-slate-700">
+                    {selectedTestCaseDiffState.error}
+                  </div>
+                ) : selectedTestCaseDiffState?.status === 'ready' && selectedTestCaseDiffState.diff ? (
+                  <div className=" pb-2">
+                    <section className="rounded-none border border-slate-200 bg-white p-4">
+                      <div className="flex items-center justify-between gap-3">
+                      <p className='text-xl font-semibold text-slate-900 mb-2'>Mas Difference</p>
+                        <span
+                          className={[
+                            'inline-flex rounded-full border px-3 py-1 text-xs font-semibold',
+                            selectedTestCaseDiffState.passed
+                              ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                              : 'border-rose-200 bg-rose-50 text-rose-700',
+                          ].join(' ')}
+                        >
+                          {selectedTestCaseDiffState.passed ? 'Passed' : 'Failed'}
+                        </span>
+                      </div>
+
+                      <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-2">
+                        <StatCard
+                          label="Expected Answer"
+                          value={`Acuity ${expectedAcuity}`}
+                          tone="accent"
+                        />
+                        <StatCard
+                          label="Actual Answer"
+                          value={`Final ESI Level ${actualFinalEsiLevel}`}
+                          tone={selectedTestCaseDiffState.passed ? 'positive' : 'danger'}
+                        />
+                      </div>
+                    </section>
+
+                    <details className="rounded-none border border-t-0 border-slate-200 bg-white p-4" open>
+                      <summary className="cursor-pointer select-none text-sm font-semibold text-slate-800">
+                        Raw Diff JSON
+                      </summary>
+                      <div className="mt-3 max-h-[min(32rem,55vh)] overflow-auto rounded-2xl border border-slate-200 bg-slate-50 p-3">
+                        <JsonInspector value={selectedTestCaseDiffState.diff} />
+                      </div>
+                    </details>
+                  </div>
+                ) : selectedTestCaseStatus === 'passed' || selectedTestCaseStatus === 'failed' ? (
+                  <div className="rounded-2xl border border-slate-200 bg-white p-4 text-sm text-slate-700">
+                    Diff not available for this case.
+                  </div>
+                ) : (
+                  <div className="rounded-2xl border border-slate-200 bg-white p-4 text-sm text-slate-700">
+                    Diff will appear once this case finishes running.
+                  </div>
+                )}
+              </div>
             ) : (
               <div className="h-full min-h-0 overflow-auto ">
                 <MasMetricsTab metrics={selectedTestCaseMetrics} />
@@ -781,6 +1410,8 @@ export default function MasTestCases({ workflow }: MasTestCasesProps) {
           </div>
         </div>
       </div>
+      </>
+      )}
     </div>
   ) : (
     <div className="flex min-h-[560px] h-full flex-1 items-center justify-center bg-white p-6">
