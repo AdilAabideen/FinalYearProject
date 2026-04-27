@@ -61,14 +61,14 @@ export const masTestService: MasTestService = {
         const data = (await response.json()) as MasTestCaseReadDto[];
 
         return data.map((item) => ({
-          id: item.id,
-          workflowId: item.workflow_id,
-          name: item.name,
-          enabled: item.enabled,
-          inputJson: item.input_json,
-          expectedJson: item.expected_json,
-          createdAt: item.created_at,
-          updatedAt: item.updated_at,
+            id: item.id,
+            workflowId: item.workflow_id,
+            name: item.name,
+            enabled: item.enabled,
+            inputJson: item.input_json,
+            expectedJson: item.expected_json,
+            createdAt: item.created_at,
+            updatedAt: item.updated_at,
         }));
 
     },

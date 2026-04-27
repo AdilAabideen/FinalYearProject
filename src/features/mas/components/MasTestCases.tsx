@@ -73,40 +73,6 @@ function formatDateTime(value: string) {
   }).format(date);
 }
 
-function ConfusionCell({
-  label,
-  value,
-  tone,
-  maxValue,
-}: {
-  label: string;
-  value: number;
-  tone: 'correct' | 'error';
-  maxValue: number;
-}) {
-  const ratio = maxValue > 0 ? value / maxValue : 0;
-  const strength = ratio > 0.66 ? 'strong' : ratio > 0.33 ? 'medium' : 'soft';
-  const className =
-    tone === 'correct'
-      ? strength === 'strong'
-        ? 'border-emerald-300 bg-emerald-100 text-emerald-900'
-        : strength === 'medium'
-          ? 'border-emerald-200 bg-emerald-50 text-emerald-900'
-          : 'border-emerald-100 bg-emerald-50/40 text-emerald-900'
-      : strength === 'strong'
-        ? 'border-rose-300 bg-rose-100 text-rose-900'
-        : strength === 'medium'
-          ? 'border-rose-200 bg-rose-50 text-rose-900'
-          : 'border-rose-100 bg-rose-50/40 text-rose-900';
-
-  return (
-    <div className={`rounded-xl border p-3 ${className}`}>
-      <p className="text-[11px] font-semibold uppercase tracking-wide">{label}</p>
-      <p className="mt-1 text-xl font-semibold">{formatInteger(value)}</p>
-    </div>
-  );
-}
-
 type TestCaseTraceRun = {
   swarmRunId: string;
   eventsStreamUrl: string;
@@ -165,7 +131,6 @@ export default function MasTestCases({ workflow }: MasTestCasesProps) {
   const [showCaseWorkspace, setShowCaseWorkspace] = useState(false);
   const [activeTab, setActiveTab] = useState<TestCaseTabKey>('test_case');
   const [activeMasTab, setActiveMasTab] = useState<MasTestTabKey>('test')
-  const [activeConfusionLabel, setActiveConfusionLabel] = useState<string | null>(null);
   const [masTestRunId, setMasTestRunId] = useState<string | null>(null);
   const [startingTests, setStartingTests] = useState(false);
   const [testCaseTraceRuns, setTestCaseTraceRuns] = useState<Record<string, TestCaseTraceRun>>({});
@@ -222,41 +187,6 @@ export default function MasTestCases({ workflow }: MasTestCasesProps) {
       : '—';
   const masRunResults = masRunResultsState.status === 'ready' ? masRunResultsState.data : null;
   const masRunMetrics = masRunMetricsState.status === 'ready' ? masRunMetricsState.data : null;
-  const confusionRecord =
-    masRunResults && isRecord(masRunResults.run.metricsJson) && isRecord(masRunResults.run.metricsJson.confusion)
-      ? masRunResults.run.metricsJson.confusion
-      : null;
-  const confusionPerLabelRecord =
-    confusionRecord && isRecord(confusionRecord.per_label)
-      ? confusionRecord.per_label
-      : null;
-  const confusionLabels =
-    confusionRecord && Array.isArray(confusionRecord.labels)
-      ? confusionRecord.labels.filter((label): label is string => typeof label === 'string')
-      : confusionPerLabelRecord
-        ? Object.keys(confusionPerLabelRecord)
-        : [];
-  const selectedConfusionRecord =
-    activeConfusionLabel && confusionPerLabelRecord && isRecord(confusionPerLabelRecord[activeConfusionLabel])
-      ? confusionPerLabelRecord[activeConfusionLabel]
-      : null;
-  const tp = selectedConfusionRecord && typeof selectedConfusionRecord.tp === 'number' ? selectedConfusionRecord.tp : null;
-  const fp = selectedConfusionRecord && typeof selectedConfusionRecord.fp === 'number' ? selectedConfusionRecord.fp : null;
-  const tn = selectedConfusionRecord && typeof selectedConfusionRecord.tn === 'number' ? selectedConfusionRecord.tn : null;
-  const fn = selectedConfusionRecord && typeof selectedConfusionRecord.fn === 'number' ? selectedConfusionRecord.fn : null;
-  const hasConfusionMetrics = confusionLabels.length > 0 && (tp != null || fp != null || tn != null || fn != null);
-  const confusionMax = Math.max(tp ?? 0, fp ?? 0, tn ?? 0, fn ?? 0, 1);
-
-  useEffect(() => {
-    if (confusionLabels.length === 0) {
-      setActiveConfusionLabel(null);
-      return;
-    }
-
-    setActiveConfusionLabel((prev) =>
-      prev && confusionLabels.includes(prev) ? prev : confusionLabels[0],
-    );
-  }, [confusionLabels]);
 
   const fetchMasRunResults = useCallback(async (runId: string) => {
     resultsAbortRef.current?.abort();
@@ -266,6 +196,7 @@ export default function MasTestCases({ workflow }: MasTestCasesProps) {
 
     try {
       const data = await masTestService.getRunResults(runId, ac.signal);
+      console.log(data)
       if (ac.signal.aborted) return;
       setMasRunResultsState({ status: 'ready', data });
     } catch (error) {
@@ -852,53 +783,6 @@ export default function MasTestCases({ workflow }: MasTestCasesProps) {
                   />
                 </div>
               </section>
-
-              {hasConfusionMetrics ? (
-                <section className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Confusion Matrix</p>
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    {confusionLabels.map((label) => {
-                      const active = activeConfusionLabel === label;
-                      return (
-                        <button
-                          key={label}
-                          type="button"
-                          onClick={() => setActiveConfusionLabel(label)}
-                          className={[
-                            'rounded-lg border px-3 py-1.5 text-xs font-semibold transition-colors',
-                            active
-                              ? 'border-PrimaryBlue/20 bg-PrimaryBlue text-white'
-                              : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50',
-                          ].join(' ')}
-                        >
-                          Acuity {label}
-                        </button>
-                      );
-                    })}
-                  </div>
-                  <div className="mt-2 grid grid-cols-[5.5rem_1fr_1fr] gap-2">
-                    <div />
-                    <div className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-center text-[11px] font-semibold uppercase tracking-wide text-slate-600">
-                      Predicted Positive
-                    </div>
-                    <div className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-center text-[11px] font-semibold uppercase tracking-wide text-slate-600">
-                      Predicted Negative
-                    </div>
-
-                    <div className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-center text-[11px] font-semibold uppercase tracking-wide text-slate-600">
-                      Actual Positive
-                    </div>
-                    <ConfusionCell label="TP" value={tp ?? 0} tone="correct" maxValue={confusionMax} />
-                    <ConfusionCell label="FN" value={fn ?? 0} tone="error" maxValue={confusionMax} />
-
-                    <div className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-center text-[11px] font-semibold uppercase tracking-wide text-slate-600">
-                      Actual Negative
-                    </div>
-                    <ConfusionCell label="FP" value={fp ?? 0} tone="error" maxValue={confusionMax} />
-                    <ConfusionCell label="TN" value={tn ?? 0} tone="correct" maxValue={confusionMax} />
-                  </div>
-                </section>
-              ) : null}
 
               <section className="rounded-2xl border border-slate-200 bg-white p-4">
                 <div className="flex items-center justify-between gap-3">

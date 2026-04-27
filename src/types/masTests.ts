@@ -57,10 +57,18 @@ export type MasTestRunResultsCaseDto = {
     duration_ms: number | null;
 };
 
+
 export type MasTestRunResultsDto = {
     run: MasTestRunResultsRunDto;
     summary: MasTestRunResultsSummaryDto | null;
     cases: MasTestRunResultsCaseDto[] | null;
+};
+
+
+export type MasTestRunResults = {
+    run: MasTestRunResultsRun;
+    summary: MasTestRunResultsSummary;
+    cases: MasTestRunResultsCase[];
 };
 
 export type MasTestRunResultsRun = {
@@ -100,11 +108,6 @@ export type MasTestRunResultsCase = {
     durationMs: number | null;
 };
 
-export type MasTestRunResults = {
-    run: MasTestRunResultsRun;
-    summary: MasTestRunResultsSummary;
-    cases: MasTestRunResultsCase[];
-};
 
 export type MasTestRunMetricsRunDto = {
     id: string;
