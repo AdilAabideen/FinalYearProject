@@ -1,18 +1,17 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
-import type { EventStreamPayload, SwarmEventType } from '../../../types/masRuns';
 import type { ActiveHandoffEdges, AgentRunningStatus, BoundaryEdgeHighlights } from './MasDetailSplitView';
-import { AgentTracesComponent } from '../../agents/components/AgentTracesComponent';
-import JsonRenderer from './JsonRenderer';
-import type { AgentRunMetrics } from '../../../types/agentRuns';
 import { agentRunService } from '../../../services/agentRunService';
-import { Badge } from '../../../shared/ui/Badge';
-import { AgentStatCard as StatCard } from '../../agents/components/shared/AgentStatCard';
-import { AgentRawJsonDetails } from '../../agents/components/shared/AgentRawJsonDetails';
-import { AgentReliabilitySummaryPanel } from '../../agents/components/shared/AgentReliabilitySummaryPanel';
-import { formatCurrency, formatDuration, formatInteger } from '../../agents/utils/format';
-import { asNumber } from '../../agents/utils/runResult';
-import { getReliabilitySummaryView } from '../../agents/utils/reliability';
+import { formatMasAgentName } from '../utils/format';
+import {
+  appendGeneralEvent,
+  buildInitialAgentRunIds,
+  parseEventStreamPayload,
+  type MasGeneralEvent,
+} from '../utils/masTraces';
+import { MasTracesAgentPanel, type TraceTab } from './MasTracesAgentPanel';
+import { type MetricsState } from './MasTracesMetricsPanel';
+import { MasTracesGeneralPanel } from './MasTracesGeneralPanel';
 
 type MasTracesTabProps = {
   agentNames: string[];
@@ -23,134 +22,6 @@ type MasTracesTabProps = {
   setBoundaryEdgeHighlights: Dispatch<SetStateAction<BoundaryEdgeHighlights>>;
   onMasDone: () => Promise<void>;
 };
-
-type MasEventTypes =
-  | 'Swarm Started'
-  | 'Swarm Ended'
-  | 'Agent Execution Started'
-  | 'Agent Execution Finished'
-  | 'Swarm Error'
-  | 'Handoff'
-  | 'Gate Evaluated'
-  | 'Final Output Created';
-type ArchType = 'MAS' | 'Agent';
-
-type MasGeneralEvents = {
-  event_type: MasEventTypes;
-  arch_type: ArchType;
-  description: string;
-  created_at: string;
-};
-
-type AgentPanelProps = {
-  activeAgentName: string;
-  activeAgentRunId: string | null;
-  activeAgentOutput: unknown;
-  activeMetricsState: MetricsState;
-  selectedTab: Tabs;
-  setSelectedTab: Dispatch<SetStateAction<Tabs>>;
-};
-
-type MetricsState =
-  | { status: 'idle' }
-  | { status: 'loading' }
-  | { status: 'error'; error: string }
-  | { status: 'ready'; metrics: AgentRunMetrics };
-
-type GeneralPanelProps = {
-  swarmRunId: string;
-  streamState: string;
-  generalEvents: MasGeneralEvents[];
-  agentCount: number;
-};
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
-function asNullableString(value: unknown): string | null {
-  return typeof value === 'string' ? value : value === null ? null : null;
-}
-
-function asEventType(value: unknown): SwarmEventType | null {
-  if (
-    value === 'swarm_started' ||
-    value === 'swarm_failed' ||
-    value === 'agent_started' ||
-    value === 'handoff_created' ||
-    value === 'agent_completed' ||
-    value === 'gate_evaluated' ||
-    value === 'final_output_created' ||
-    value === 'swarm_completed'
-  ) {
-    return value;
-  }
-  return null;
-}
-
-function parseEventStreamPayload(value: unknown): EventStreamPayload | null {
-  if (!isRecord(value)) return null;
-
-  const eventType = asEventType(value.event_type);
-  if (!eventType) return null;
-  if (typeof value.id !== 'number') return null;
-  if (typeof value.swarm_run_id !== 'string') return null;
-  if (typeof value.seq !== 'number') return null;
-  if (typeof value.workflow_id !== 'string') return null;
-  if (typeof value.created_at !== 'string') return null;
-
-  return {
-    id: value.id,
-    swarm_run_id: value.swarm_run_id,
-    seq: value.seq,
-    event_type: eventType,
-    workflow_id: value.workflow_id,
-    agent_run_id: asNullableString(value.agent_run_id),
-    agent_name: asNullableString(value.agent_name),
-    handoff_id: asNullableString(value.handoff_id),
-    gate_evaluation_id: asNullableString(value.gate_evaluation_id),
-    final_output_id: asNullableString(value.final_output_id),
-    status: typeof value.status === 'string' ? value.status : '',
-    payload_json: isRecord(value.payload_json) ? value.payload_json : null,
-    payload_text: asNullableString(value.payload_text),
-    created_at: value.created_at,
-  };
-}
-
-function buildInitialAgentRunIds(agentNames: string[]) {
-  const next: Record<string, string | null> = {};
-  for (const agentName of agentNames) next[agentName] = null;
-  return next;
-}
-
-function appendGeneralEvent(
-  setGeneralEvents: Dispatch<SetStateAction<MasGeneralEvents[]>>,
-  event: MasGeneralEvents,
-) {
-  setGeneralEvents((prev) => [...prev, event]);
-}
-
-function formatAgentName(agentName: string) {
-  return agentName
-    .replace(/_agent$/, '')
-    .replace('general', 'General')
-    .replace('esi345', 'ESI3,4,5')
-    .replace('esi2', 'ESI2')
-    .replace('esi1', 'ESI1')
-    .replace('vitals', 'Vitals')
-    .replace('doctor', 'Doctor');
-}
-
-function formatTraceTimestamp(value: string) {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-
-  return new Intl.DateTimeFormat('en-GB', {
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-  }).format(date);
-}
 
 function normalizeOutputValue(value: unknown) {
   if (value == null) return null;
@@ -165,280 +36,22 @@ function normalizeOutputValue(value: unknown) {
   return value;
 }
 
-type tabKey = 'traces' | 'output' | "metrics"
-
-type Tabs = {
-  key: tabKey,
-  name: string
-}
-
-const tabs: Tabs[] = [
+const tabs: TraceTab[] = [
   {
-    key: "traces",
-    name: "Traces"
+    key: 'traces',
+    label: 'Traces',
   },
   {
-    key: "output",
-    name: "Output"
+    key: 'output',
+    label: 'Output',
   },
   {
-    key: "metrics",
-    name: "Metrics"
-  }
-]
+    key: 'metrics',
+    label: 'Metrics',
+  },
+];
 
 const IDLE_METRICS_STATE: MetricsState = { status: 'idle' };
-
-function AgentPanel({
-  activeAgentName,
-  activeAgentRunId,
-  activeAgentOutput,
-  activeMetricsState,
-  selectedTab,
-  setSelectedTab,
-}: AgentPanelProps) {
-  const normalizedOutput = normalizeOutputValue(activeAgentOutput);
-
-  function viewerTabId(key: tabKey) {
-    return `${activeAgentName}-${key}-tab`;
-  }
-
-  function viewerPanelId(key: tabKey) {
-    return `${activeAgentName}-${key}-panel`;
-  }
-
-  const activeMetricsRecord = activeMetricsState.status === 'ready' ? activeMetricsState.metrics : null;
-  const activeReliabilitySummaryView = getReliabilitySummaryView(activeMetricsRecord, {
-    fallbackCountsToZero: true,
-  });
-  const activeCaseStatus = activeMetricsRecord?.status ?? null;
-
-  return (
-    <div className="flex h-full min-h-0 w-full flex-col bg-white">
-      <div className="shrink-0 border-b border-slate-200 px-4 py-3">
-        <p className="text-base font-semibold text-slate-900">{formatAgentName(activeAgentName)}</p>
-        <p className="mt-1 text-xs font-medium text-slate-500">{activeAgentName}</p>
-      </div>
-
-      <div className="flex w-full border-b border-slate-200">
-        {tabs.map((tab) => {
-          const active = selectedTab.key === tab.key;
-
-          return (
-            <button
-              key={tab.key}
-              type="button"
-              onClick={() => setSelectedTab(tab)}
-              id={viewerTabId(tab.key)}
-              role="tab"
-              aria-selected={active}
-              aria-controls={viewerPanelId(tab.key)}
-              className={[
-                'border-r cursor-pointer border-slate-200 px-3 py-2 text-sm font-medium transition-colors',
-                active
-                  ? 'bg-slate-100 text-slate-900'
-                  : 'bg-white text-slate-600 hover:bg-slate-50 hover:text-slate-900',
-              ].join(' ')}
-            >
-              {tab.name}
-            </button>
-          );
-        })}
-      </div>
-
-      <div className="min-h-0 flex-1 overflow-hidden">
-        {selectedTab.key === 'traces' ? (
-          activeAgentRunId ? (
-            <div
-              id={viewerPanelId('traces')}
-              role="tabpanel"
-              aria-labelledby={viewerTabId('traces')}
-              className="h-full min-h-0 overflow-hidden p-3 pb-20"
-            >
-              <AgentTracesComponent runId={activeAgentRunId} />
-            </div>
-          ) : (
-            <div className="flex h-full items-start justify-start p-6">
-              <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-6 py-8 text-center">
-                <p className="text-sm font-semibold text-slate-900">Waiting for agent run</p>
-                <p className="mt-2 text-sm text-slate-500">
-                  Trace output will appear here once this agent starts running.
-                </p>
-              </div>
-            </div>
-          )
-        ) : selectedTab.key === 'metrics' ? (
-          <div
-            id={viewerPanelId('metrics')}
-            role="tabpanel"
-            aria-labelledby={viewerTabId('metrics')}
-            className="h-full min-h-0 overflow-auto p-3 pb-20"
-          >
-            {activeMetricsState.status === 'loading' ? (
-              <div className="rounded-2xl border border-slate-200 bg-white p-4 text-sm text-slate-700">
-                Loading metrics…
-              </div>
-            ) : activeMetricsState.status === 'error' ? (
-              <div className="rounded-2xl border border-slate-200 bg-white p-4 text-sm text-slate-700">
-                {activeMetricsState.error}
-              </div>
-            ) : activeMetricsState.status === 'ready' ? (
-              <div className="space-y-4 pb-2">
-                <div className="rounded-2xl border border-slate-200 bg-white p-4">
-                  <div className="flex items-center justify-between gap-3">
-                    <h4 className="text-sm font-semibold text-slate-900">Metrics</h4>
-                    <Badge className="bg-white text-slate-700 ring-slate-200">
-                      {activeCaseStatus ? `Case: ${activeCaseStatus}` : 'Case status unavailable'}
-                    </Badge>
-                  </div>
-
-                  <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                    <StatCard
-                      label="LLM Calls"
-                      value={formatInteger(asNumber(activeMetricsRecord?.llm_call_count))}
-                      tone="accent"
-                    />
-                    <StatCard
-                      label="Tool Calls"
-                      value={formatInteger(asNumber(activeMetricsRecord?.tool_call_count))}
-                    />
-                    <StatCard
-                      label="Input Tokens"
-                      value={formatInteger(asNumber(activeMetricsRecord?.input_tokens_total))}
-                    />
-                    <StatCard
-                      label="Output Tokens"
-                      value={formatInteger(asNumber(activeMetricsRecord?.output_tokens_total))}
-                    />
-                    <StatCard
-                      label="Total Tokens"
-                      value={formatInteger(asNumber(activeMetricsRecord?.tokens_total))}
-                    />
-                    <StatCard
-                      label="Duration"
-                      value={formatDuration(asNumber(activeMetricsRecord?.duration_seconds))}
-                    />
-                    <StatCard
-                      label="Cost"
-                      value={formatCurrency(asNumber(activeMetricsRecord?.cost_usd_total))}
-                    />
-                    <StatCard
-                      label="Failure Reason"
-                      value={
-                        typeof activeMetricsRecord?.failure_reason === 'string' &&
-                        activeMetricsRecord.failure_reason.trim().length > 0
-                          ? activeMetricsRecord.failure_reason
-                          : 'None'
-                      }
-                      tone={
-                        typeof activeMetricsRecord?.failure_reason === 'string' &&
-                        activeMetricsRecord.failure_reason.trim().length > 0
-                          ? 'danger'
-                          : 'positive'
-                      }
-                      small={true}
-                    />
-                  </div>
-
-                  <AgentReliabilitySummaryPanel
-                    summaryView={activeReliabilitySummaryView}
-                    statusSmall={true}
-                  />
-
-                  <AgentRawJsonDetails
-                    summary="Raw Metrics JSON"
-                    value={activeMetricsState.metrics}
-                    className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-3"
-                    contentClassName="mt-3 max-h-[min(24rem,50vh)] overflow-auto rounded-2xl border border-slate-200 bg-white p-3"
-                  />
-                </div>
-              </div>
-            ) : (
-              <div className="rounded-2xl border border-slate-200 bg-white p-4 text-sm text-slate-700">
-                Metrics will appear once this agent finishes running.
-              </div>
-            )}
-          </div>
-        ) : normalizedOutput ? (
-          <div className="h-full min-h-0 overflow-y-auto pb-20">
-            <div className="space-y-2">
-              <JsonRenderer title="Agent Communication Output" value={normalizedOutput} />
-            </div>
-          </div>
-        ) : (
-          <div className="flex h-full items-start justify-start p-6">
-            <div className="w-full rounded-xl border border-dashed border-slate-300 bg-slate-50 px-6 py-8 text-center">
-              <p className="text-sm font-semibold text-slate-900">No Agent Communication</p>
-            </div>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function GeneralPanel({
-  swarmRunId,
-  streamState,
-  generalEvents,
-  agentCount,
-}: GeneralPanelProps) {
-  return (
-    <div className="flex h-full min-h-0 w-full flex-col bg-white">
-      <div className="flex w-full shrink-0 flex-col gap-3 border-b border-slate-200 px-5 py-4">
-        <div className="flex flex-wrap items-end justify-between gap-4">
-          <div className="space-y-1">
-            <p className="text-xl font-semibold text-slate-900">General Traces</p>
-            <p className="text-xs font-semibold text-slate-600">
-              Run ID : <span className="font-mono text-slate-700">{swarmRunId}</span>
-            </p>
-          </div>
-        </div>
-
-        <div className="flex flex-wrap gap-3">
-          <div className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">
-            Stream: {streamState}
-          </div>
-          <div className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-700">
-            Events: {generalEvents.length}
-          </div>
-          <div className="rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700">
-            Agents: {agentCount}
-          </div>
-        </div>
-      </div>
-
-      <div className="min-h-0 flex-1 w-full overflow-y-auto px-5 py-4 pb-20">
-        <div className="mx-auto flex w-full max-w-4xl flex-col gap-8 py-1">
-          {generalEvents.length ? (
-            generalEvents.map((event, index) => (
-              <div key={`${event.created_at}-${event.event_type}-${index}`} className="space-y-1">
-                <div className="flex flex-wrap items-center gap-3">
-                  <p className="text-xs font-semibold tracking-wide text-PrimaryBlue">SWARM EVENT</p>
-                  <p className="text-[11px] font-mono text-slate-400">
-                    {formatTraceTimestamp(event.created_at)}
-                  </p>
-                </div>
-                <div className="flex flex-wrap items-center gap-2">
-                  <p className="text-sm font-semibold text-slate-900">{event.event_type}</p>
-                  <span className="text-xs text-slate-400">•</span>
-                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                    {event.arch_type}
-                  </p>
-                </div>
-                <p className="max-w-3xl text-sm text-slate-700">{event.description}</p>
-              </div>
-            ))
-          ) : (
-            <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-6 py-10 text-center">
-              <p className="text-sm font-semibold text-slate-900">Waiting for swarm events</p>
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
 
 export default function MasTracesTab({
   agentNames,
@@ -474,7 +87,7 @@ export default function MasTracesTab({
   const [agentMetricsStates, setAgentMetricsStates] = useState<Record<string, MetricsState>>({});
   const [streamState, setStreamState] = useState<string>('waiting');
   const [errorText, setErrorText] = useState<string | null>(null);
-  const [generalEvents, setGeneralEvents] = useState<MasGeneralEvents[]>([]);
+  const [generalEvents, setGeneralEvents] = useState<MasGeneralEvent[]>([]);
   const activeAgentRunId =
     activeAgentName && activeAgentName !== 'general' ? agentRunIds[activeAgentName] ?? null : null;
   const activeAgentOutput =
@@ -496,7 +109,7 @@ export default function MasTracesTab({
     }, 10000);
   }, []);
 
-  const [selectedTab, setSelectedTab] = useState<Tabs>(tabs[0]);
+  const [selectedTab, setSelectedTab] = useState<TraceTab>(tabs[0]);
 
   useEffect(() => {
     onMasDoneRef.current = onMasDone;
@@ -883,7 +496,7 @@ export default function MasTracesTab({
                   : 'text-slate-700 hover:bg-slate-50 hover:pl-4 hover:text-slate-900',
               ].join(' ')}
             >
-              {formatAgentName(agentName)}
+              {formatMasAgentName(agentName)}
             </button>
           );
         })}
@@ -896,20 +509,22 @@ export default function MasTracesTab({
           </div>
         ) : null}
         {activeAgentName === 'general' ? (
-          <GeneralPanel
+          <MasTracesGeneralPanel
             swarmRunId={swarm_run_id}
             streamState={streamState}
             generalEvents={generalEvents}
             agentCount={normalizedAgentNames.length}
           />
         ) :
-          <AgentPanel
+          <MasTracesAgentPanel
             activeAgentName={activeAgentName}
             activeAgentRunId={activeAgentRunId}
             activeAgentOutput={activeAgentOutput}
             activeMetricsState={activeMetricsState}
             selectedTab={selectedTab}
             setSelectedTab={setSelectedTab}
+            tabs={tabs}
+            normalizeOutputValue={normalizeOutputValue}
           />
         }
       </div>

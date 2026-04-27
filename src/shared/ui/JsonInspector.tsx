@@ -38,7 +38,7 @@ function isContainer(value: unknown): value is Record<string, unknown> | unknown
 
 function formatLabel(label: string) {
   if (!label) return label;
-  if (label.startsWith('[')) return label;
+  if (label.startsWith('[')) return "-"
   return label.charAt(0).toUpperCase() + label.slice(1);
 }
 
@@ -53,8 +53,17 @@ function PrimitiveRow({ label, value }: { label: string; value: string }) {
   const formattedLabel = formatLabel(label);
   return (
     <p className="whitespace-pre-wrap break-words leading-snug">
-      <span className="font-semibold text-slate-700">{formattedLabel}</span>{' '}
-      <span className="text-slate-500">{value}</span>
+      {
+        formattedLabel === "-" ? (
+          <li className="text-slate-500 text-md">{formatLabel(value)}</li>
+        ) : (
+          <>
+            <span className="font-semibold text-sm text-slate-700">{formattedLabel}{' : '}</span>
+            <span className="text-slate-500 text-md">{formatLabel(value)}</span>
+          </>
+        )
+      }
+
     </p>
   );
 }
@@ -86,8 +95,8 @@ function ContainerBlock({
 
   return (
     <div className="space-y-1">
-      <p className="break-words font-semibold leading-snug text-slate-700">{formatLabel(label)}</p>
-      <div className={cn('border-l border-slate-200', indentClass(opts.depth + 1))}>
+      <p className="break-words font-semibold leading-snug text-slate-700 text-sm">{formatLabel(label)}{" : "}</p>
+      <div className={cn('border-l text-sm border-slate-200', indentClass(opts.depth + 1))}>
         <div className="mt-1 space-y-1">{children}</div>
       </div>
     </div>

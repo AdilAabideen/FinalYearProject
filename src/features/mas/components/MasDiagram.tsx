@@ -1,6 +1,7 @@
 import { cn } from '../../../shared/lib/cn';
 import type { MasCatalogDetail } from '../../../types/mas';
 import type { ActiveHandoffEdges, AgentRunningStatus, BoundaryEdgeHighlights } from './MasDetailSplitView';
+import { formatMasAgentName } from '../utils/format';
 
 type MasDiagramProps = {
   workflow: MasCatalogDetail;
@@ -10,6 +11,24 @@ type MasDiagramProps = {
 };
 
 type Point = { x: number; y: number };
+type BoundaryEdgeState = BoundaryEdgeHighlights['start'];
+type HandoffEdgeState = ActiveHandoffEdges[string];
+type PositionedAgent = {
+  name: string;
+  title: string;
+  position: Point;
+};
+type BoundaryNode = {
+  key: string;
+  label: string;
+  position: Point;
+};
+type StartNode = BoundaryNode & {
+  target: Point;
+};
+type EndNode = BoundaryNode & {
+  source: Point;
+};
 
 const LINK_STROKE_WIDTH = 3;
 const INPUT_OUTPUT_STROKE_WIDTH = 3;
@@ -23,14 +42,137 @@ function getBoundaryNodeKey(type: 'start' | 'end', index: number, total: number)
   return `${type}_v${index + 1}`;
 }
 
-function formatAgentTitle(agentName: string) {
-  return agentName
-    .replace(/_agent$/, '')
-    .replace('esi345', 'ESI3,4,5')
-    .replace('esi2', 'ESI2')
-    .replace('esi1', 'ESI1')
-    .replace('vitals', 'Vitals')
-    .replace('doctor', 'Doctor');
+function getBoundaryStrokeClass(state: BoundaryEdgeState) {
+  if (state === 'active') return 'stroke-green-500';
+  if (state === 'visited') return 'stroke-slate-400';
+  return 'stroke-slate-200';
+}
+
+function getHandoffStrokeClass(state: HandoffEdgeState) {
+  if (state === 'active') return 'stroke-green-500';
+  if (state === 'visited') return 'stroke-slate-400';
+  return 'stroke-slate-200';
+}
+
+function BoundaryArrowMarker() {
+  return (
+    <marker
+      id="mas-boundary-arrow"
+      markerWidth="6"
+      markerHeight="6"
+      refX="5"
+      refY="3"
+      orient="auto"
+      markerUnits="strokeWidth"
+    >
+      <path d="M 0 0 L 6 3 L 0 6 z" className="fill-slate-200" />
+    </marker>
+  );
+}
+
+function HandoffLinks({
+  links,
+  agentPositions,
+  activeHandoffEdges,
+}: {
+  links: Array<{ from: string; to: string }>;
+  agentPositions: Record<string, Point>;
+  activeHandoffEdges: ActiveHandoffEdges;
+}) {
+  return (
+    <>
+      {links.map(({ from, to }) => {
+        const fromPosition = agentPositions[from];
+        const toPosition = agentPositions[to];
+        if (!fromPosition || !toPosition) return null;
+
+        const edgeKey = `${from}->${to}`;
+        const edgeStatus = activeHandoffEdges[edgeKey];
+
+        return (
+          <path
+            key={`${from}-${to}`}
+            d={connectorPath(fromPosition, toPosition)}
+            fill="none"
+            strokeLinecap="round"
+            className={cn('transition-colors', getHandoffStrokeClass(edgeStatus))}
+            strokeWidth={edgeStatus === 'active' ? LINK_STROKE_WIDTH + 1 : LINK_STROKE_WIDTH}
+            vectorEffect="non-scaling-stroke"
+          />
+        );
+      })}
+    </>
+  );
+}
+
+function BoundaryLinks({
+  nodes,
+  type,
+  state,
+}: {
+  nodes: StartNode[] | EndNode[];
+  type: 'start' | 'end';
+  state: BoundaryEdgeState;
+}) {
+  return (
+    <>
+      {nodes.map((node) => (
+        <path
+          key={node.key}
+          d={
+            type === 'start'
+              ? connectorPath(node.position, (node as StartNode).target)
+              : connectorPath((node as EndNode).source, node.position)
+          }
+          fill="none"
+          strokeLinecap="round"
+          className={cn('transition-colors', getBoundaryStrokeClass(state))}
+          strokeWidth={state === 'active' ? INPUT_OUTPUT_STROKE_WIDTH + 1 : INPUT_OUTPUT_STROKE_WIDTH}
+          vectorEffect="non-scaling-stroke"
+          markerEnd="url(#mas-boundary-arrow)"
+        />
+      ))}
+    </>
+  );
+}
+
+function BoundaryNodeBadge({ node }: { node: BoundaryNode }) {
+  return (
+    <div
+      className="absolute flex h-12 w-28 -translate-x-1/2 -translate-y-1/2 flex-col items-center justify-center rounded-xl bg-PrimaryBlue/90 p-6 text-center text-white shadow-sm"
+      style={{ left: `${node.position.x}%`, top: `${node.position.y}%` }}
+    >
+      <div className="flex items-center justify-center gap-2">
+        <p className="truncate text-sm font-semibold text-white">{node.label}</p>
+      </div>
+    </div>
+  );
+}
+
+function AgentNode({
+  agent,
+  status,
+}: {
+  agent: PositionedAgent;
+  status: AgentRunningStatus[string];
+}) {
+  return (
+    <div
+      className={`absolute flex h-36 w-36 -translate-x-1/2 -translate-y-1/2 flex-col items-center justify-center gap-2 rounded-full border-3 ${status === 'running' ? 'border-green-500' : 'border-PrimaryBlue'} bg-white p-6 text-center shadow-sm`}
+      style={{ left: `${agent.position.x}%`, top: `${agent.position.y}%` }}
+    >
+      <div className="flex items-center justify-center gap-2">
+        <span className="h-2 w-2 rounded-full bg-PrimaryBlue" />
+        <p className="truncate text-sm font-semibold text-slate-900">{agent.title}</p>
+      </div>
+      <button
+        type="button"
+        className="cursor-pointer rounded-[8px] border border-slate-400 px-2 py-1 text-xs font-medium text-slate-600 transition-all ease-in-out hover:bg-slate-200 hover:text-slate-800"
+      >
+        View Agent
+      </button>
+    </div>
+  );
 }
 
 export function MasDiagram({
@@ -42,15 +184,15 @@ export function MasDiagram({
   const data = workflow;
   const agentPositions = data.agent_positions;
 
-  const agents = data.participating_agents
+  const agents: PositionedAgent[] = data.participating_agents
     .map((agentName) => ({
       name: agentName,
-      title: formatAgentTitle(agentName),
+      title: formatMasAgentName(agentName),
       position: agentPositions[agentName],
     }))
     .filter((agent) => agent.position);
 
-  const startNodes = data.start_agents
+  const startNodes: StartNode[] = data.start_agents
     .map((agentName, index) => {
       const key = getBoundaryNodeKey('start', index, data.start_agents.length);
       const position = agentPositions[key];
@@ -69,7 +211,7 @@ export function MasDiagram({
         Boolean(node),
     );
 
-  const endNodes = data.finalizing_agents
+  const endNodes: EndNode[] = data.finalizing_agents
     .map((agentName, index) => {
       const key = getBoundaryNodeKey('end', index, data.finalizing_agents.length);
       const position = agentPositions[key];
@@ -106,128 +248,41 @@ export function MasDiagram({
         aria-hidden="true"
       >
         <defs>
-          <marker
-            id="mas-boundary-arrow"
-            markerWidth="6"
-            markerHeight="6"
-            refX="5"
-            refY="3"
-            orient="auto"
-            markerUnits="strokeWidth"
-          >
-            <path d="M 0 0 L 6 3 L 0 6 z" className="fill-slate-200" />
-          </marker>
+          <BoundaryArrowMarker />
         </defs>
 
-        {links.map(({ from, to }) => {
-          const fromPosition = agentPositions[from];
-          const toPosition = agentPositions[to];
-          if (!fromPosition || !toPosition) return null;
-          const edgeKey = `${from}->${to}`;
-          const edgeStatus = activeHandoffEdges[edgeKey];
-          const strokeClass =
-            edgeStatus === 'active'
-              ? 'stroke-green-500'
-              : edgeStatus === 'visited'
-                ? 'stroke-slate-400'
-                : 'stroke-slate-200';
-
-          return (
-            <path
-              key={`${from}-${to}`}
-              d={connectorPath(fromPosition, toPosition)}
-              fill="none"
-              strokeLinecap="round"
-              className={cn('transition-colors', strokeClass)}
-              strokeWidth={edgeStatus === 'active' ? LINK_STROKE_WIDTH + 1 : LINK_STROKE_WIDTH}
-              vectorEffect="non-scaling-stroke"
-            />
-          );
-        })}
-
-        {startNodes.map((node) => (
-          <path
-            key={node.key}
-            d={connectorPath(node.position, node.target)}
-            fill="none"
-            strokeLinecap="round"
-            className={cn(
-              'transition-colors',
-              boundaryEdgeHighlights.start === 'active'
-                ? 'stroke-green-500'
-                : boundaryEdgeHighlights.start === 'visited'
-                  ? 'stroke-slate-400'
-                  : 'stroke-slate-200',
-            )}
-            strokeWidth={boundaryEdgeHighlights.start === 'active' ? INPUT_OUTPUT_STROKE_WIDTH + 1 : INPUT_OUTPUT_STROKE_WIDTH}
-            vectorEffect="non-scaling-stroke"
-            markerEnd="url(#mas-boundary-arrow)"
-          />
-        ))}
-
-        {endNodes.map((node) => (
-          <path
-            key={node.key}
-            d={connectorPath(node.source, node.position)}
-            fill="none"
-            strokeLinecap="round"
-            className={cn(
-              'transition-colors',
-              boundaryEdgeHighlights.end === 'active'
-                ? 'stroke-green-500'
-                : boundaryEdgeHighlights.end === 'visited'
-                  ? 'stroke-slate-400'
-                  : 'stroke-slate-200',
-            )}
-            strokeWidth={boundaryEdgeHighlights.end === 'active' ? INPUT_OUTPUT_STROKE_WIDTH + 1 : INPUT_OUTPUT_STROKE_WIDTH}
-            vectorEffect="non-scaling-stroke"
-            markerEnd="url(#mas-boundary-arrow)"
-          />
-        ))}
+        <HandoffLinks
+          links={links}
+          agentPositions={agentPositions}
+          activeHandoffEdges={activeHandoffEdges}
+        />
+        <BoundaryLinks
+          nodes={startNodes}
+          type="start"
+          state={boundaryEdgeHighlights.start}
+        />
+        <BoundaryLinks
+          nodes={endNodes}
+          type="end"
+          state={boundaryEdgeHighlights.end}
+        />
       </svg>
 
 
       {startNodes.map((node) => (
-        <div
-          key={node.key}
-          className="absolute flex h-12 w-28 -translate-x-1/2 -translate-y-1/2 flex-col items-center justify-center rounded-xl bg-PrimaryBlue/90 p-6 text-center text-white shadow-sm"
-          style={{ left: `${node.position.x}%`, top: `${node.position.y}%` }}
-        >
-          <div className="flex items-center justify-center gap-2">
-            <p className="truncate text-sm font-semibold text-white">{node.label}</p>
-          </div>
-        </div>
+        <BoundaryNodeBadge key={node.key} node={node} />
       ))}
 
       {endNodes.map((node) => (
-        <div
-          key={node.key}
-          className="absolute flex h-12 w-28 -translate-x-1/2 -translate-y-1/2 flex-col items-center justify-center rounded-xl bg-PrimaryBlue/90 p-6 text-center text-white shadow-sm"
-          style={{ left: `${node.position.x}%`, top: `${node.position.y}%` }}
-        >
-          <div className="flex items-center justify-center gap-2">
-            <p className="truncate text-sm font-semibold text-white">{node.label}</p>
-          </div>
-        </div>
+        <BoundaryNodeBadge key={node.key} node={node} />
       ))}
 
       {agents.map((agent) => (
-        <div
+        <AgentNode
           key={agent.name}
-          className={`absolute flex h-36 w-36 -translate-x-1/2 -translate-y-1/2 flex-col items-center justify-center gap-2 rounded-full border-3 ${agentStatus[agent.name] === 'running' ? 'border-green-500' : "border-PrimaryBlue"} bg-white p-6 text-center shadow-sm`}
-          style={{ left: `${agent.position.x}%`, top: `${agent.position.y}%` }}
-        >
-          <div className="flex items-center justify-center gap-2">
-            <span className="h-2 w-2 rounded-full bg-PrimaryBlue" />
-            <p className="truncate text-sm font-semibold text-slate-900">{agent.title}</p>
-          </div>
-          <button
-            type="button"
-            className="rounded-[8px] border cursor-pointer border-slate-400  px-2 py-1 text-xs font-medium text-slate-600 transition-all ease-in-out hover:bg-slate-200 hover:text-slate-800"
-          >
-            View Agent
-          </button>
-        </div>
+          agent={agent}
+          status={agentStatus[agent.name]}
+        />
       ))}
     </div>
   );

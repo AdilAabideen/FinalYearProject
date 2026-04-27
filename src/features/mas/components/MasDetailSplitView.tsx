@@ -11,6 +11,7 @@ import type { SwarmExecutionStartResponse, SwarmRunMetricsRead } from '../../../
 import { API_BASE_URL } from '../../../config/env';
 import MasMetricsTab from './MasMetricsTab';
 import MasTestCases from './MasTestCases';
+import { MasTabs } from './MasTabs';
 
 type MasDetailSplitViewProps = {
   workflow: MasCatalogDetail;
@@ -137,32 +138,14 @@ export function MasDetailSplitView({ workflow }: MasDetailSplitViewProps) {
   return (
     <div className="grid h-full min-h-0 p-0 lg:grid-cols-1">
       <section className="flex min-h-0 flex-col border-r border-slate-200 p-0 h-full">
-        <div className="flex  items-stretch border-b border-slate-200 bg-white">
-          {tabs.map((tab) => {
-            const active = activeTab === tab.key;
-
-            return (
-              <button
-                key={tab.key}
-                type="button"
-                onClick={() => setActiveTab(tab.key)}
-                className={[
-                  'flex h-full min-w-36 py-2 items-center border-r border-slate-200 px-4 text-left transition-colors',
-                  active ? 'bg-slate-50' : 'bg-white hover:bg-slate-50',
-                ].join(' ')}
-              >
-                <p
-                  className={[
-                    'text-sm font-semibold',
-                    active ? 'text-slate-900' : 'text-slate-500',
-                  ].join(' ')}
-                >
-                  {tab.label}
-                </p>
-              </button>
-            );
-          })}
-        </div>
+        <MasTabs
+          tabs={tabs}
+          activeKey={activeTab}
+          onChange={setActiveTab}
+          wrapperClassName="border-b border-slate-200 bg-white"
+          buttonClassName="flex h-full items-center border-r border-slate-200 px-4 py-2 text-left transition-colors"
+          minTabWidthClassName="min-w-36"
+        />
 
         {activeTab === 'diagram' ? (
           <div className="grid h-full min-h-[560px] grid-cols-6 grid-rows-1">
@@ -197,32 +180,14 @@ export function MasDetailSplitView({ workflow }: MasDetailSplitViewProps) {
                         </>
                       ) : (
                         <>
-                          <div className=" border-b border-slate-300 flex flex-row">
-                            {resultTabs.map((tab) => {
-                              const active = activeResultTab === tab.key;
-
-                              return (
-                                <button
-                                  key={tab.key}
-                                  type="button"
-                                  onClick={() => setActiveResultTab(tab.key)}
-                                  className={[
-                                    'flex h-full min-w-3 py-2 items-center border-r border-slate-200 px-4 text-left transition-colors',
-                                    active ? 'bg-slate-50' : 'bg-white hover:bg-slate-50',
-                                  ].join(' ')}
-                                >
-                                  <p
-                                    className={[
-                                      'text-sm font-semibold',
-                                      active ? 'text-slate-900' : 'text-slate-500',
-                                    ].join(' ')}
-                                  >
-                                    {tab.label}
-                                  </p>
-                                </button>
-                              );
-                            })}
-                          </div>
+                          <MasTabs
+                            tabs={resultTabs}
+                            activeKey={activeResultTab}
+                            onChange={setActiveResultTab}
+                            wrapperClassName="border-b border-slate-300"
+                            buttonClassName="flex h-full items-center border-r border-slate-200 px-4 py-2 text-left transition-colors"
+                            minTabWidthClassName="min-w-3"
+                          />
                           {
                             activeResultTab == 'traces' ? (
                               <div className="min-h-0 flex-1 overflow-hidden">

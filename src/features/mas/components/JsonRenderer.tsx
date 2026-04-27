@@ -111,16 +111,16 @@ function JsonNode({ value, label }: { value: JsonValue; label?: string }) {
 
     return (
       <div className="flex flex-col gap-3">
-        {label ? <p className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">{label}</p> : null}
+        {label ? <p className="text-xs font-semibold uppercase text-slate-500">{label}</p> : null}
         {entries.length === 0 ? (
-          <div className="rounded-2xl border border-slate-200 bg-slate-50 p-2 text-sm text-slate-500">
+          <div className=" border-slate-200 bg-slate-50 p-2 text-sm text-slate-500">
             Empty object
           </div>
         ) : (
           entries.map(([key, itemValue]) => (
-            <div key={key} className="rounded-xl border border-slate-300 bg-white p-3">
+            <div key={key} className="rounded-lg border border-slate-300 bg-white p-3">
               <div className="flex flex-col gap-2">
-                <p className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">
+                <p className="text-sm font-semibold uppercase  text-slate-500">
                   {humanizeKey(key)}
                 </p>
                 <JsonNode value={itemValue} />
