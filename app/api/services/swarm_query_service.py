@@ -9,13 +9,16 @@ from app.api.repository import (
     swarm_final_outputs_repository,
     swarm_gate_evaluations_repository,
     swarm_handoffs_repository,
+    swarm_run_metrics_repository,
     swarm_runs_repository,
 )
+from app.api.services import swarm_run_metrics_service
 from app.schemas.swarm_read import (
     SwarmAgentRunRead,
     SwarmFinalOutputRead,
     SwarmGateEvaluationRead,
     SwarmHandoffRead,
+    SwarmRunMetricsRead,
     SwarmSummaryCounts,
     SwarmSummaryRead,
 )
@@ -58,11 +61,21 @@ def get_swarm_summary(swarm_run_id: str, db: Session) -> SwarmSummaryRead:
         event_count=swarm_events_repository.count_events_for_swarm(db, swarm_run_id=swarm_run_id),
     )
 
+    metrics_row = swarm_run_metrics_repository.get_swarm_run_metrics(db, swarm_run_id)
+    if metrics_row is None and swarm_run.status in swarm_run_metrics_service.TERMINAL_SWARM_STATUSES:
+        swarm_run_metrics_service.persist_swarm_run_metrics(swarm_run_id)
+        metrics_row = swarm_run_metrics_repository.get_swarm_run_metrics(db, swarm_run_id)
+
     return SwarmSummaryRead(
         swarm_run=SwarmRunRead.model_validate(swarm_run, from_attributes=True),
         current_agent=current_agent,
         final_output=final_output,
         counts=counts,
+        metrics=(
+            SwarmRunMetricsRead.model_validate(metrics_row, from_attributes=True)
+            if metrics_row is not None
+            else None
+        ),
     )
 
 
@@ -126,3 +139,14 @@ def get_swarm_final_output(swarm_run_id: str, db: Session) -> SwarmFinalOutputRe
     if row is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Final output not found")
     return SwarmFinalOutputRead.model_validate(row, from_attributes=True)
+
+
+def get_swarm_metrics(swarm_run_id: str, db: Session) -> SwarmRunMetricsRead:
+    swarm_run = _require_swarm_run(swarm_run_id, db)
+    row = swarm_run_metrics_repository.get_swarm_run_metrics(db, swarm_run_id)
+    if row is None and swarm_run.status in swarm_run_metrics_service.TERMINAL_SWARM_STATUSES:
+        swarm_run_metrics_service.persist_swarm_run_metrics(swarm_run_id)
+        row = swarm_run_metrics_repository.get_swarm_run_metrics(db, swarm_run_id)
+    if row is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Swarm metrics not found")
+    return SwarmRunMetricsRead.model_validate(row, from_attributes=True)

@@ -517,6 +517,77 @@ def ensure_runtime_schema_upgrades() -> None:
                 )
             )
 
+        if "swarm_run_metrics" not in table_names:
+            conn.execute(
+                text(
+                    """
+                    CREATE TABLE swarm_run_metrics (
+                        swarm_run_id VARCHAR NOT NULL PRIMARY KEY,
+                        status VARCHAR NOT NULL,
+                        duration_ms INTEGER,
+                        agent_run_count INTEGER NOT NULL DEFAULT 0,
+                        handoff_count INTEGER NOT NULL DEFAULT 0,
+                        gate_evaluation_count INTEGER NOT NULL DEFAULT 0,
+                        completed_agent_count INTEGER NOT NULL DEFAULT 0,
+                        failed_agent_count INTEGER NOT NULL DEFAULT 0,
+                        input_tokens_total INTEGER NOT NULL DEFAULT 0,
+                        output_tokens_total INTEGER NOT NULL DEFAULT 0,
+                        tokens_total INTEGER NOT NULL DEFAULT 0,
+                        llm_call_count_total INTEGER NOT NULL DEFAULT 0,
+                        tool_call_count_total INTEGER NOT NULL DEFAULT 0,
+                        tool_error_count_total INTEGER NOT NULL DEFAULT 0,
+                        cost_usd_total FLOAT,
+                        cost_usd_per_agent_run FLOAT,
+                        agent_failure_count INTEGER NOT NULL DEFAULT 0,
+                        reliability_issue_count INTEGER NOT NULL DEFAULT 0,
+                        reliability_error_count INTEGER NOT NULL DEFAULT 0,
+                        finalization_failure_count INTEGER NOT NULL DEFAULT 0,
+                        created_at DATETIME NOT NULL,
+                        updated_at DATETIME,
+                        FOREIGN KEY(swarm_run_id) REFERENCES swarm_runs(id) ON DELETE CASCADE
+                    )
+                    """
+                )
+            )
+            conn.execute(
+                text(
+                    "CREATE INDEX idx_swarm_run_metrics_status_created "
+                    "ON swarm_run_metrics (status, created_at)"
+                )
+            )
+        else:
+            swarm_run_metrics_existing = {col["name"] for col in inspector.get_columns("swarm_run_metrics")}
+            swarm_run_metrics_required: dict[str, str] = {
+                "status": "VARCHAR NOT NULL DEFAULT 'created'",
+                "duration_ms": "INTEGER",
+                "agent_run_count": "INTEGER NOT NULL DEFAULT 0",
+                "handoff_count": "INTEGER NOT NULL DEFAULT 0",
+                "gate_evaluation_count": "INTEGER NOT NULL DEFAULT 0",
+                "completed_agent_count": "INTEGER NOT NULL DEFAULT 0",
+                "failed_agent_count": "INTEGER NOT NULL DEFAULT 0",
+                "input_tokens_total": "INTEGER NOT NULL DEFAULT 0",
+                "output_tokens_total": "INTEGER NOT NULL DEFAULT 0",
+                "tokens_total": "INTEGER NOT NULL DEFAULT 0",
+                "llm_call_count_total": "INTEGER NOT NULL DEFAULT 0",
+                "tool_call_count_total": "INTEGER NOT NULL DEFAULT 0",
+                "tool_error_count_total": "INTEGER NOT NULL DEFAULT 0",
+                "cost_usd_total": "FLOAT",
+                "cost_usd_per_agent_run": "FLOAT",
+                "agent_failure_count": "INTEGER NOT NULL DEFAULT 0",
+                "reliability_issue_count": "INTEGER NOT NULL DEFAULT 0",
+                "reliability_error_count": "INTEGER NOT NULL DEFAULT 0",
+                "finalization_failure_count": "INTEGER NOT NULL DEFAULT 0",
+            }
+            for name, sql_type in swarm_run_metrics_required.items():
+                if name not in swarm_run_metrics_existing:
+                    conn.execute(text(f"ALTER TABLE swarm_run_metrics ADD COLUMN {name} {sql_type}"))
+            conn.execute(
+                text(
+                    "CREATE INDEX IF NOT EXISTS idx_swarm_run_metrics_status_created "
+                    "ON swarm_run_metrics (status, created_at)"
+                )
+            )
+
 def get_db():
     """
     FastAPI dependency that provides a database session.

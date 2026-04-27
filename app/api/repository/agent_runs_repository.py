@@ -64,6 +64,19 @@ def list_runs_for_swarm(
     return db.execute(stmt).scalars().all()
 
 
+def list_all_runs_for_swarm(
+    db: Session,
+    *,
+    swarm_run_id: str,
+) -> list[AgentRun]:
+    stmt = (
+        select(AgentRun)
+        .where(AgentRun.swarm_run_id == swarm_run_id)
+        .order_by(AgentRun.sequence_index.asc(), AgentRun.created_at.asc(), AgentRun.id.asc())
+    )
+    return db.execute(stmt).scalars().all()
+
+
 def count_runs_for_swarm(db: Session, *, swarm_run_id: str) -> int:
     stmt = select(func.count()).select_from(AgentRun).where(AgentRun.swarm_run_id == swarm_run_id)
     return int(db.execute(stmt).scalar_one())

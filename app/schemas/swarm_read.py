@@ -81,6 +81,33 @@ class SwarmFinalOutputRead(BaseModel):
     updated_at: datetime
 
 
+class SwarmRunMetricsRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    swarm_run_id: str
+    status: str
+    duration_ms: Optional[int] = None
+    agent_run_count: int
+    handoff_count: int
+    gate_evaluation_count: int
+    completed_agent_count: int
+    failed_agent_count: int
+    input_tokens_total: int
+    output_tokens_total: int
+    tokens_total: int
+    llm_call_count_total: int
+    tool_call_count_total: int
+    tool_error_count_total: int
+    cost_usd_total: Optional[float] = None
+    cost_usd_per_agent_run: Optional[float] = None
+    agent_failure_count: int
+    reliability_issue_count: int
+    reliability_error_count: int
+    finalization_failure_count: int
+    created_at: datetime
+    updated_at: datetime
+
+
 class SwarmSummaryCounts(BaseModel):
     agent_run_count: int
     handoff_count: int
@@ -93,3 +120,4 @@ class SwarmSummaryRead(BaseModel):
     current_agent: Optional[SwarmAgentRunRead] = None
     final_output: Optional[SwarmFinalOutputRead] = None
     counts: SwarmSummaryCounts
+    metrics: Optional[SwarmRunMetricsRead] = None

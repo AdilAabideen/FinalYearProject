@@ -14,5 +14,6 @@ from app.models.swarm_final_output import SwarmFinalOutput
 from app.models.swarm_gate_evaluation import SwarmGateEvaluation
 from app.models.swarm_handoff import SwarmHandoff
 from app.models.swarm_run import SwarmRun
+from app.models.swarm_run_metrics import SwarmRunMetrics
 
 # Import all models here so Alembic can detect them

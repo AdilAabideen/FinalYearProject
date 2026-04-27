@@ -8,6 +8,7 @@ from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.api.repository import swarm_runs_repository
+from app.api.services import swarm_run_metrics_service
 from app.models.swarm_run import SwarmRun
 from app.schemas.swarm_runs import (
     SwarmRunCreateRequest,
@@ -119,7 +120,7 @@ def finalize_swarm_run(
     current_gate_id: Optional[str] = None,
 ) -> SwarmRunRead:
     finished_at = _utcnow()
-    return update_swarm_run(
+    row = update_swarm_run(
         swarm_run_id,
         db,
         status=status,
@@ -129,6 +130,12 @@ def finalize_swarm_run(
         error_text=error_text,
         finished_at=finished_at,
     )
+    if status in swarm_run_metrics_service.TERMINAL_SWARM_STATUSES:
+        try:
+            swarm_run_metrics_service.persist_swarm_run_metrics(swarm_run_id)
+        except Exception:
+            pass
+    return row
 
 
 def get_swarm_run(swarm_run_id: str, db: Session) -> SwarmRunRead:

@@ -17,6 +17,7 @@ from app.api.repository import (
     swarm_runs_repository,
 )
 from app.agentic.swarm.swarm_event_emitter import SwarmEventEmitter
+from app.agentic.telemetry.agent_trace_persistence import persist_agent_run_metrics
 from app.agentic.swarm.gate_evaluator import GateEvaluationOutcome
 from app.agentic.swarm_contract import AgentExecutionResult, AgentName, HandoffEnvelope, SwarmState
 from app.models.agent_run import AgentRun
@@ -63,6 +64,7 @@ class SwarmExecutionTracker:
         self.workflow_id = workflow_id
         self.workflow_version = workflow_version
         self.event_emitter = event_emitter
+        self.agent_system = "handrolled_callback"
 
     def begin_agent_execution(
         self,
@@ -161,6 +163,7 @@ class SwarmExecutionTracker:
                 run.status = "failed"
                 run.error_text = self._error_text(result.output)
                 agent_runs_repository.save_run(db, run)
+                self._persist_agent_metrics(run.id)
                 self._emit_event(
                     swarm_run_id=tracked.swarm_run_id,
                     event_type="agent_completed",
@@ -208,6 +211,7 @@ class SwarmExecutionTracker:
                 run.outgoing_handoff_id = handoff_id
 
             agent_runs_repository.save_run(db, run)
+        self._persist_agent_metrics(tracked.agent_run_id)
         self._emit_event(
             swarm_run_id=tracked.swarm_run_id,
             event_type="agent_completed",
@@ -483,6 +487,15 @@ class SwarmExecutionTracker:
             status=status,
             payload_json=payload_json,
             payload_text=payload_text,
+        )
+
+    def _persist_agent_metrics(self, run_id: str) -> None:
+        if self.session_factory is None:
+            return
+        persist_agent_run_metrics(
+            session_factory=self.session_factory,
+            run_id=run_id,
+            agent_system=self.agent_system,
         )
 
     @contextmanager
