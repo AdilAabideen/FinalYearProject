@@ -119,10 +119,28 @@ export default function MasTestCases({ workflow }: MasTestCasesProps) {
         })}
       </div>
       <div className="grid h-full min-h-[560px] grid-cols-6 grid-rows-1">
-        <div className="col-span-4 h-full min-h-0 flex-1 overflow-hidden rounded-none bg-white">
+        <div className="relative col-span-4 h-full min-h-0 flex-1 overflow-hidden rounded-none bg-white">
           <MasDiagram
             workflow={workflow}
           />
+          <div className="absolute bottom-3 left-3 z-10 ">
+            <div className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white/95 px-3 py-2 shadow-sm backdrop-blur">
+              <div className="min-w-0">
+                <p className="text-[15px] font-semibold uppercase tracking-wide text-slate-500">
+                  Start Test Cases
+                </p>
+                <p className="text-md font-medium text-slate-900">
+                  {testCases.length} {testCases.length === 1 ? 'test' : 'tests'}
+                </p>
+              </div>
+              <button
+                type="button"
+                className="inline-flex  items-center justify-center rounded-lg border border-PrimaryBlue/20 bg-PrimaryBlue px-3 py-1.5 cursor-pointer text-md font-semibold text-white transition hover:bg-PrimaryBlue/90"
+              >
+                Start Tests
+              </button>
+            </div>
+          </div>
         </div>
         <div className="col-span-2 min-h-0 border-l border-slate-200 bg-white">
           <div className="flex flex-row p-0 items-start">
