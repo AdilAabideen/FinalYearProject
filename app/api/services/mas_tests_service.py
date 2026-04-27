@@ -28,8 +28,6 @@ from app.schemas.mas_tests import (
     MasTestCaseAnalyticsRead,
     MasTestCaseCreateRequest,
     MasTestCaseRead,
-    MasTestRunConfusionCountsRead,
-    MasTestRunConfusionRead,
     MasTestCaseRunMetricRead,
     MasTestCaseRunRead,
     MasTestCaseUpdateRequest,
@@ -119,32 +117,6 @@ def _avg_or_none(total: float, count: int, ndigits: int = 4) -> Optional[float]:
     if count <= 0:
         return None
     return round(total / count, ndigits)
-
-
-def _coerce_esi_acuity(value: Any) -> Optional[str]:
-    if value is None:
-        return None
-    as_str = str(value).strip()
-    return as_str if as_str in {"1", "2", "3", "4", "5"} else None
-
-
-def _extract_actual_acuity_from_case_run(case_run: MasTestCaseRun) -> Optional[str]:
-    diff_json = dict(case_run.diff_json or {})
-    actual_answer = diff_json.get("actual_answer")
-    if isinstance(actual_answer, dict):
-        if "acuity" in actual_answer:
-            acuity = _coerce_esi_acuity(actual_answer.get("acuity"))
-            if acuity is not None:
-                return acuity
-        if "final_esi_level" in actual_answer:
-            acuity = _coerce_esi_acuity(actual_answer.get("final_esi_level"))
-            if acuity is not None:
-                return acuity
-
-    actual = diff_json.get("actual")
-    if isinstance(actual, dict):
-        return _coerce_esi_acuity(actual.get("acuity"))
-    return None
 
 
 def list_cases(
@@ -352,10 +324,6 @@ def get_run_metrics(run_id: str, db: Session) -> MasTestRunBatchMetricsRead:
     duration_ms_total = 0
     duration_count = 0
     case_metrics: list[MasTestCaseRunMetricRead] = []
-    confusion_labels = ["1", "2", "3", "4", "5"] if run.workflow_id == "esi_swarm_v1" else []
-    confusion_pairs: list[tuple[str, str]] = []
-    classified_count = 0
-    unclassified_count = 0
 
     for case_run in ordered:
         metrics = dict(case_run.metrics_json or {})
@@ -386,18 +354,6 @@ def get_run_metrics(run_id: str, db: Session) -> MasTestRunBatchMetricsRead:
             )
         )
 
-        if confusion_labels:
-            case_row = next((row for row in case_rows if row.id == case_run.test_case_id), None)
-            expected_acuity = _coerce_esi_acuity(
-                case_row.expected_json.get("acuity") if case_row is not None and isinstance(case_row.expected_json, dict) else None
-            )
-            actual_acuity = _extract_actual_acuity_from_case_run(case_run)
-            if expected_acuity is None or actual_acuity is None:
-                unclassified_count += 1
-            else:
-                confusion_pairs.append((expected_acuity, actual_acuity))
-                classified_count += 1
-
     total_runs = len(ordered)
     runs_with_swarm_run = len([case_run for case_run in ordered if case_run.swarm_run_id])
     success_rate = round((successful_runs / total_runs), 4) if total_runs else 0.0
@@ -414,34 +370,10 @@ def get_run_metrics(run_id: str, db: Session) -> MasTestRunBatchMetricsRead:
         duration_ms_avg=_avg_or_none(duration_ms_total, duration_count),
     )
 
-    confusion = None
-    if confusion_labels:
-        per_label: dict[str, MasTestRunConfusionCountsRead] = {}
-        for label in confusion_labels:
-            tp = sum(1 for expected, actual in confusion_pairs if expected == label and actual == label)
-            fp = sum(1 for expected, actual in confusion_pairs if expected != label and actual == label)
-            tn = sum(1 for expected, actual in confusion_pairs if expected != label and actual != label)
-            fn = sum(1 for expected, actual in confusion_pairs if expected == label and actual != label)
-            per_label[label] = MasTestRunConfusionCountsRead(
-                tp=tp,
-                fp=fp,
-                tn=tn,
-                fn=fn,
-            )
-
-        confusion = MasTestRunConfusionRead(
-            mode="one_vs_rest",
-            labels=confusion_labels,
-            per_label=per_label,
-            total_classified=classified_count,
-            unclassified_count=unclassified_count,
-        )
-
     return MasTestRunBatchMetricsRead(
         run=MasTestRunRead.model_validate(run.__dict__),
         summary=summary,
         cases=case_metrics,
-        confusion=confusion,
     )
 
 

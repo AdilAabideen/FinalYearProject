@@ -102,26 +102,10 @@ class MasTestRunMetricsSummaryRead(BaseModel):
     duration_ms_avg: Optional[float] = None
 
 
-class MasTestRunConfusionCountsRead(BaseModel):
-    tp: int
-    fp: int
-    tn: int
-    fn: int
-
-
-class MasTestRunConfusionRead(BaseModel):
-    mode: str
-    labels: list[str]
-    per_label: dict[str, MasTestRunConfusionCountsRead]
-    total_classified: int
-    unclassified_count: int
-
-
 class MasTestRunBatchMetricsRead(BaseModel):
     run: MasTestRunRead
     summary: MasTestRunMetricsSummaryRead
     cases: list[MasTestCaseRunMetricRead]
-    confusion: Optional[MasTestRunConfusionRead] = None
 
 
 class MasTestCaseAnalyticsRead(BaseModel):
