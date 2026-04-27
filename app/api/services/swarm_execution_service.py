@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import asyncio
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 from fastapi import BackgroundTasks, HTTPException, status
 from pydantic import ValidationError
@@ -95,9 +95,9 @@ def _build_graph(
     ).build()
 
 
-def _normalize_workflow_input(
+def normalize_workflow_input(
     workflow_id: str,
-    payload: SwarmExecutionStartRequest,
+    input_payload: dict[str, Any],
 ) -> tuple[dict[str, Any], str, str | None]:
     try:
         workflow_spec = get_workflow_spec(workflow_id)
@@ -105,7 +105,7 @@ def _normalize_workflow_input(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 
     try:
-        validated = workflow_spec.input_schema.model.model_validate(payload.input)
+        validated = workflow_spec.input_schema.model.model_validate(input_payload)
     except ValidationError as exc:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -117,6 +117,41 @@ def _normalize_workflow_input(
         normalized_input,
         workflow_spec.input_schema.schema_name,
         workflow_spec.version,
+    )
+
+
+def create_and_start_swarm_run(
+    *,
+    workflow_id: str,
+    input_payload: dict[str, Any],
+    metadata: Optional[dict[str, Any]] = None,
+) -> tuple[str, dict[str, Any], str, str | None]:
+    normalized_input, input_schema_name, workflow_version = normalize_workflow_input(
+        workflow_id,
+        input_payload,
+    )
+
+    db = SessionLocal()
+    try:
+        create_response = swarm_runs_service.create_swarm_run(
+            SwarmRunCreateRequest(
+                workflow_id=workflow_id,
+                workflow_version=workflow_version,
+                input_schema_name=input_schema_name,
+                input=normalized_input,
+                metadata=metadata,
+            ),
+            db,
+        )
+        swarm_runs_service.start_swarm_run(create_response.swarm_run_id, db)
+    finally:
+        db.close()
+
+    return (
+        create_response.swarm_run_id,
+        normalized_input,
+        input_schema_name,
+        workflow_version,
     )
 
 
@@ -139,41 +174,26 @@ def start_swarm_execution(
     payload: SwarmExecutionStartRequest,
     background_tasks: BackgroundTasks,
 ) -> SwarmExecutionStartResponse:
-    normalized_input, input_schema_name, workflow_version = _normalize_workflow_input(
-        workflow_id,
-        payload,
+    swarm_run_id, normalized_input, input_schema_name, workflow_version = create_and_start_swarm_run(
+        workflow_id=workflow_id,
+        input_payload=payload.input,
+        metadata={
+            "source": "mas_execution_api",
+            **dict(payload.metadata or {}),
+        },
     )
-
-    db = SessionLocal()
-    try:
-        create_response = swarm_runs_service.create_swarm_run(
-            SwarmRunCreateRequest(
-                workflow_id=workflow_id,
-                workflow_version=workflow_version,
-                input_schema_name=input_schema_name,
-                input=normalized_input,
-                metadata={
-                    "source": "mas_execution_api",
-                    **dict(payload.metadata or {}),
-                },
-            ),
-            db,
-        )
-        swarm_runs_service.start_swarm_run(create_response.swarm_run_id, db)
-    finally:
-        db.close()
 
     background_tasks.add_task(
         _execute_swarm_run_in_background,
         workflow_id,
         workflow_version,
-        create_response.swarm_run_id,
+        swarm_run_id,
         normalized_input,
     )
 
-    urls = _run_urls(create_response.swarm_run_id)
+    urls = _run_urls(swarm_run_id)
     return SwarmExecutionStartResponse(
-        swarm_run_id=create_response.swarm_run_id,
+        swarm_run_id=swarm_run_id,
         workflow_id=workflow_id,
         workflow_version=workflow_version,
         input_schema_name=input_schema_name,

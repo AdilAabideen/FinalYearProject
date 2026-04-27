@@ -12,6 +12,7 @@ from app.schemas.swarm_read import (
     SwarmFinalOutputRead,
     SwarmGateEvaluationRead,
     SwarmHandoffRead,
+    SwarmRunMetricsRead,
     SwarmSummaryRead,
 )
 from app.schemas.swarm_events import SwarmEventsPage
@@ -96,6 +97,11 @@ def stream_swarm_events(
 @router.get("/{swarm_run_id}/summary", response_model=SwarmSummaryRead)
 def get_swarm_summary(swarm_run_id: str, db: Session = Depends(get_db)):
     return swarm_query_service.get_swarm_summary(swarm_run_id, db)
+
+
+@router.get("/{swarm_run_id}/metrics", response_model=SwarmRunMetricsRead)
+def get_swarm_metrics(swarm_run_id: str, db: Session = Depends(get_db)):
+    return swarm_query_service.get_swarm_metrics(swarm_run_id, db)
 
 
 @router.get("/{swarm_run_id}/agents", response_model=list[SwarmAgentRunRead])

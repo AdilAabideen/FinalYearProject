@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from app.agentic.workflows.definitions.esi_swarm_v1.evaluator import ESISwarmV1Evaluator
 from app.agentic.workflows.definitions.esi_swarm_v1.agent_positions import AGENT_POSITIONS_MAP
 from app.agentic.workflows.definitions.esi_swarm_v1.input_schema import SwarmV1Input
 from app.agentic.workflows.definitions.esi_swarm_v1.workflow_definition import ESI_SWARM_V1
@@ -17,6 +18,7 @@ ESI_SWARM_V1_SPEC = WorkflowSpec(
             "rendering_hint": "form",
         },
     ),
+    test_evaluator=ESISwarmV1Evaluator(),
     metadata={
         "definition_package": "app.agentic.workflows.definitions.esi_swarm_v1",
         "agent_positions": dict(AGENT_POSITIONS_MAP),

@@ -30,10 +30,12 @@ app.include_router(api_router, prefix="/api")
 @app.on_event("startup")
 def _seed_test_data() -> None:
     from app.seed_agent_tests import ensure_seed_vitals_agent_test_cases
+    from app.seed_mas_tests import ensure_seed_esi_swarm_v1_mas_test_cases
 
     db = SessionLocal()
     try:
         ensure_seed_vitals_agent_test_cases(db)
+        ensure_seed_esi_swarm_v1_mas_test_cases(db)
     finally:
         db.close()
 

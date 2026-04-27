@@ -7,6 +7,9 @@ from typing import Any, Callable
 from sqlalchemy.orm import Session
 
 from app.api.repository import agent_metrics_repository, agent_runs_repository
+from app.agentic.agents.agents import get_agent_spec
+from app.agentic.runtime.failure_taxonomy import FailureCategory
+from app.models.agent_run import AgentRun
 
 MAX_EVENT_TEXT_LEN = 50_000
 
@@ -168,3 +171,84 @@ def _string_or_none(value: Any) -> str | None:
         return None
     text = str(value).strip()
     return text or None
+
+
+def persist_agent_run_metrics(
+    *,
+    session_factory: Callable[[], Session],
+    run_id: str,
+    agent_system: str,
+) -> None:
+    db = session_factory()
+    try:
+        run = agent_runs_repository.get_run(db, run_id)
+        if run is None:
+            return
+        llm_calls = agent_metrics_repository.list_llm_calls(db, run.id)
+        input_tokens_total = sum(int(c.input_tokens or 0) for c in llm_calls)
+        output_tokens_total = sum(int(c.output_tokens or 0) for c in llm_calls)
+        tokens_total = sum(int(c.tokens_total or 0) for c in llm_calls)
+        cost_values = [c.cost_usd for c in llm_calls if c.cost_usd is not None]
+        cost_usd_total = sum(cost_values) if cost_values else None
+        llm_call_count = len(llm_calls)
+        tool_call_count, tool_error_count = agent_metrics_repository.count_tool_events(db, run.id)
+        (
+            reliability_issue_count,
+            reliability_error_count,
+            finalization_failure_count,
+            tool_recovery_failure_count,
+        ) = agent_metrics_repository.count_reliability_issues(db, run.id)
+
+        duration_ms: int | None = None
+        if run.started_at and run.finished_at:
+            duration_ms = int((run.finished_at - run.started_at).total_seconds() * 1000)
+
+        failure_reason: str | None = None
+        if run.status == "failed":
+            err = (run.error_text or "").lower()
+            failure_reason = (
+                FailureCategory.TIMEOUT_ERROR.value
+                if "timeout" in err
+                else FailureCategory.PROVIDER_ERROR.value
+            )
+
+        agent_metrics_repository.upsert_run_metrics(
+            db,
+            run_id=run.id,
+            agent_system=agent_system,
+            agent_name=run.agent_name,
+            model_name=run.model_name,
+            status=run.status,
+            failure_reason=failure_reason,
+            duration_ms=duration_ms,
+            llm_call_count=llm_call_count,
+            tool_call_count=tool_call_count,
+            tool_error_count=tool_error_count,
+            reliability_issue_count=reliability_issue_count,
+            reliability_error_count=reliability_error_count,
+            finalization_failure_count=finalization_failure_count,
+            tool_recovery_failure_count=tool_recovery_failure_count,
+            input_tokens_total=input_tokens_total,
+            output_tokens_total=output_tokens_total,
+            tokens_total=tokens_total,
+            cost_usd_total=cost_usd_total,
+            schema_valid=_schema_valid_for_run(run),
+        )
+    finally:
+        db.close()
+
+
+def _schema_valid_for_run(run: AgentRun) -> bool | None:
+    if run.output_json is None:
+        return None
+    try:
+        spec = get_agent_spec(run.agent_name)
+    except Exception:
+        return None
+    if spec.output_model is None:
+        return None
+    try:
+        spec.output_model.model_validate(run.output_json)
+        return True
+    except Exception:
+        return False

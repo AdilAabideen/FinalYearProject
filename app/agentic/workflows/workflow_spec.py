@@ -5,6 +5,7 @@ from typing import Any, Dict, Optional, Type
 
 from pydantic import BaseModel
 
+from app.agentic.mas_eval_types import WorkflowEvaluator
 from app.agentic.workflows.workflow_definition import WorkflowDefinition
 
 
@@ -27,6 +28,7 @@ class WorkflowSpec:
 
     workflow_definition: WorkflowDefinition
     input_schema: WorkflowInputSchemaSpec
+    test_evaluator: Optional[WorkflowEvaluator] = None
     metadata: Dict[str, Any] = field(default_factory=dict)
 
     @property

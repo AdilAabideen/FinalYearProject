@@ -215,6 +215,17 @@ def get_run_metrics(db: Session, run_id: str) -> Optional[AgentRunMetrics]:
     return db.get(AgentRunMetrics, run_id)
 
 
+def list_run_metrics_for_run_ids(db: Session, run_ids: list[str]) -> list[AgentRunMetrics]:
+    if not run_ids:
+        return []
+    stmt = (
+        select(AgentRunMetrics)
+        .where(AgentRunMetrics.run_id.in_(run_ids))
+        .order_by(AgentRunMetrics.created_at.asc(), AgentRunMetrics.run_id.asc())
+    )
+    return db.execute(stmt).scalars().all()
+
+
 def list_llm_calls(db: Session, run_id: str) -> list[AgentLLMCall]:
     stmt = (
         select(AgentLLMCall)
