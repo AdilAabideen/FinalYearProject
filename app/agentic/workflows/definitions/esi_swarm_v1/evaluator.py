@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Any, Dict, Optional, Sequence
 
 from app.agentic.eval_types import EvalResult
-
+from app.agentic.mas_eval_types import WorkflowEvaluator
 
 def _evaluate_expected_subset(
     expected: Dict[str, Any],
@@ -40,12 +40,18 @@ def _evaluate_expected_subset(
     return passed, (1.0 if passed else 0.0), {"diffs": diffs}
 
 
-class ESISwarmV1Evaluator:
+class ESISwarmV1Evaluator(WorkflowEvaluator):
     label_name = "esi_swarm_v1_final_output_subset"
 
     def validate_expected(self, expected_json: Dict[str, Any]) -> None:
         if not isinstance(expected_json, dict):
             raise ValueError("expected_json must be an object")
+        if "acuity" in expected_json:
+            if set(expected_json.keys()) != {"acuity"}:
+                raise ValueError("expected_json with acuity must only contain the acuity field")
+            acuity = expected_json.get("acuity")
+            if not isinstance(acuity, str) or acuity.strip() not in {"1", "2", "3", "4", "5"}:
+                raise ValueError("expected_json.acuity must be a string between '1' and '5'")
 
     def evaluate(
         self,
@@ -65,6 +71,33 @@ class ESISwarmV1Evaluator:
                     "label": self.label_name,
                     "swarm_status": swarm_status,
                     "exec_failed": True,
+                    "missing_final_output": actual_json is None,
+                },
+            )
+
+        if "acuity" in expected_json:
+            actual_acuity = None
+            if actual_json is not None:
+                if "acuity" in actual_json:
+                    actual_acuity = str(actual_json.get("acuity"))
+                elif actual_json.get("final_esi_level") is not None:
+                    actual_acuity = str(actual_json.get("final_esi_level"))
+            passed = actual_acuity == str(expected_json.get("acuity"))
+            return EvalResult(
+                passed=passed,
+                score=1.0 if passed else 0.0,
+                diff_json=(
+                    {}
+                    if passed
+                    else {
+                        "expected": {"acuity": expected_json.get("acuity")},
+                        "actual": {"acuity": actual_acuity},
+                    }
+                ),
+                metrics_json={
+                    "label": self.label_name,
+                    "swarm_status": swarm_status,
+                    "exec_failed": False,
                     "missing_final_output": actual_json is None,
                 },
             )

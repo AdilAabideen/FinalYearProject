@@ -11,6 +11,7 @@ from app.schemas.mas_tests import (
     MasTestCaseCreateRequest,
     MasTestCaseRead,
     MasTestCaseUpdateRequest,
+    MasTestRunAnalyticsRead,
     MasTestRunBatchMetricsRead,
     MasTestRunDetailRead,
     MasTestRunRead,
@@ -82,9 +83,14 @@ def get_test_run(run_id: str, db: Session = Depends(get_db)):
     return mas_tests_service.get_run(run_id, db)
 
 
-@router.get("/runs/{run_id}/metrics", response_model=MasTestRunBatchMetricsRead)
-def get_test_run_metrics(run_id: str, db: Session = Depends(get_db)):
+@router.get("/runs/{run_id}/results", response_model=MasTestRunBatchMetricsRead)
+def get_test_run_results(run_id: str, db: Session = Depends(get_db)):
     return mas_tests_service.get_run_metrics(run_id, db)
+
+
+@router.get("/runs/{run_id}/metrics", response_model=MasTestRunAnalyticsRead)
+def get_test_run_metrics(run_id: str, db: Session = Depends(get_db)):
+    return mas_tests_service.get_run_analytics(run_id, db)
 
 
 @router.get("/runs/{run_id}/stream")

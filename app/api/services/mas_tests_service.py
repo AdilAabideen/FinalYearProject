@@ -12,18 +12,29 @@ from sqlalchemy.orm import Session
 
 from app.agentic.eval_types import EvalResult
 from app.agentic.workflows.registry import get_workflow_spec, list_workflow_specs
-from app.api.repository import mas_tests_repository, swarm_final_outputs_repository, swarm_runs_repository
+from app.api.repository import (
+    mas_tests_repository,
+    swarm_final_outputs_repository,
+    swarm_run_metrics_repository,
+    swarm_runs_repository,
+)
 from app.api.services import swarm_execution_service
+from app.api.services.swarm_run_metrics_service import TERMINAL_SWARM_STATUSES, persist_swarm_run_metrics
 from app.database import SessionLocal
 from app.models.mas_test_case import MasTestCase
 from app.models.mas_test_case_run import MasTestCaseRun
 from app.models.mas_test_run import MasTestRun
 from app.schemas.mas_tests import (
+    MasTestCaseAnalyticsRead,
     MasTestCaseCreateRequest,
     MasTestCaseRead,
+    MasTestRunConfusionCountsRead,
+    MasTestRunConfusionRead,
     MasTestCaseRunMetricRead,
     MasTestCaseRunRead,
     MasTestCaseUpdateRequest,
+    MasTestRunAnalyticsRead,
+    MasTestRunAnalyticsSummaryRead,
     MasTestRunBatchMetricsRead,
     MasTestRunDetailRead,
     MasTestRunMetricsSummaryRead,
@@ -58,13 +69,27 @@ def _validate_case_payload_or_400(
     workflow_id: str,
     input_json: dict[str, Any],
     expected_json: dict[str, Any],
-) -> dict[str, Any]:
-    normalized_input, _, _ = swarm_execution_service.normalize_workflow_input(workflow_id, input_json)
+) -> None:
     evaluator = _workflow_evaluator_or_400(workflow_id)
     try:
         evaluator.validate_expected(expected_json)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+def _normalize_runtime_input_or_400(
+    *,
+    workflow_id: str,
+    input_json: dict[str, Any],
+) -> dict[str, Any]:
+    candidate = dict(input_json)
+    if "gender" not in candidate and "der" in candidate:
+        candidate["gender"] = candidate["der"]
+    if "heartrate" not in candidate and "heartte" in candidate:
+        candidate["heartrate"] = candidate["heartte"]
+    if "arrival_transport" not in candidate and "rival_transport" in candidate:
+        candidate["arrival_transport"] = candidate["rival_transport"]
+    normalized_input, _, _ = swarm_execution_service.normalize_workflow_input(workflow_id, candidate)
     return normalized_input
 
 
@@ -96,6 +121,32 @@ def _avg_or_none(total: float, count: int, ndigits: int = 4) -> Optional[float]:
     return round(total / count, ndigits)
 
 
+def _coerce_esi_acuity(value: Any) -> Optional[str]:
+    if value is None:
+        return None
+    as_str = str(value).strip()
+    return as_str if as_str in {"1", "2", "3", "4", "5"} else None
+
+
+def _extract_actual_acuity_from_case_run(case_run: MasTestCaseRun) -> Optional[str]:
+    diff_json = dict(case_run.diff_json or {})
+    actual_answer = diff_json.get("actual_answer")
+    if isinstance(actual_answer, dict):
+        if "acuity" in actual_answer:
+            acuity = _coerce_esi_acuity(actual_answer.get("acuity"))
+            if acuity is not None:
+                return acuity
+        if "final_esi_level" in actual_answer:
+            acuity = _coerce_esi_acuity(actual_answer.get("final_esi_level"))
+            if acuity is not None:
+                return acuity
+
+    actual = diff_json.get("actual")
+    if isinstance(actual, dict):
+        return _coerce_esi_acuity(actual.get("acuity"))
+    return None
+
+
 def list_cases(
     *,
     workflow_id: Optional[str],
@@ -117,10 +168,14 @@ def list_cases(
 
 
 def create_case(payload: MasTestCaseCreateRequest, db: Session) -> MasTestCaseRead:
-    normalized_input = _validate_case_payload_or_400(
+    _validate_case_payload_or_400(
         workflow_id=payload.workflow_id,
         input_json=payload.input_json,
         expected_json=payload.expected_json,
+    )
+    _normalize_runtime_input_or_400(
+        workflow_id=payload.workflow_id,
+        input_json=payload.input_json,
     )
 
     now = datetime.utcnow()
@@ -129,7 +184,7 @@ def create_case(payload: MasTestCaseCreateRequest, db: Session) -> MasTestCaseRe
         workflow_id=payload.workflow_id,
         name=payload.name,
         enabled=payload.enabled,
-        input_json=normalized_input,
+        input_json=payload.input_json,
         expected_json=payload.expected_json,
         created_at=now,
         updated_at=now,
@@ -151,14 +206,18 @@ def update_case(
     input_json = payload.input_json if payload.input_json is not None else row.input_json
     expected_json = payload.expected_json if payload.expected_json is not None else row.expected_json
 
-    normalized_input = _validate_case_payload_or_400(
+    _validate_case_payload_or_400(
         workflow_id=workflow_id,
         input_json=input_json,
         expected_json=expected_json,
     )
+    _normalize_runtime_input_or_400(
+        workflow_id=workflow_id,
+        input_json=input_json,
+    )
 
     row.workflow_id = workflow_id
-    row.input_json = normalized_input
+    row.input_json = input_json
     row.expected_json = expected_json
     if payload.name is not None:
         row.name = payload.name
@@ -293,6 +352,10 @@ def get_run_metrics(run_id: str, db: Session) -> MasTestRunBatchMetricsRead:
     duration_ms_total = 0
     duration_count = 0
     case_metrics: list[MasTestCaseRunMetricRead] = []
+    confusion_labels = ["1", "2", "3", "4", "5"] if run.workflow_id == "esi_swarm_v1" else []
+    confusion_pairs: list[tuple[str, str]] = []
+    classified_count = 0
+    unclassified_count = 0
 
     for case_run in ordered:
         metrics = dict(case_run.metrics_json or {})
@@ -323,6 +386,18 @@ def get_run_metrics(run_id: str, db: Session) -> MasTestRunBatchMetricsRead:
             )
         )
 
+        if confusion_labels:
+            case_row = next((row for row in case_rows if row.id == case_run.test_case_id), None)
+            expected_acuity = _coerce_esi_acuity(
+                case_row.expected_json.get("acuity") if case_row is not None and isinstance(case_row.expected_json, dict) else None
+            )
+            actual_acuity = _extract_actual_acuity_from_case_run(case_run)
+            if expected_acuity is None or actual_acuity is None:
+                unclassified_count += 1
+            else:
+                confusion_pairs.append((expected_acuity, actual_acuity))
+                classified_count += 1
+
     total_runs = len(ordered)
     runs_with_swarm_run = len([case_run for case_run in ordered if case_run.swarm_run_id])
     success_rate = round((successful_runs / total_runs), 4) if total_runs else 0.0
@@ -339,10 +414,165 @@ def get_run_metrics(run_id: str, db: Session) -> MasTestRunBatchMetricsRead:
         duration_ms_avg=_avg_or_none(duration_ms_total, duration_count),
     )
 
+    confusion = None
+    if confusion_labels:
+        per_label: dict[str, MasTestRunConfusionCountsRead] = {}
+        for label in confusion_labels:
+            tp = sum(1 for expected, actual in confusion_pairs if expected == label and actual == label)
+            fp = sum(1 for expected, actual in confusion_pairs if expected != label and actual == label)
+            tn = sum(1 for expected, actual in confusion_pairs if expected != label and actual != label)
+            fn = sum(1 for expected, actual in confusion_pairs if expected == label and actual != label)
+            per_label[label] = MasTestRunConfusionCountsRead(
+                tp=tp,
+                fp=fp,
+                tn=tn,
+                fn=fn,
+            )
+
+        confusion = MasTestRunConfusionRead(
+            mode="one_vs_rest",
+            labels=confusion_labels,
+            per_label=per_label,
+            total_classified=classified_count,
+            unclassified_count=unclassified_count,
+        )
+
     return MasTestRunBatchMetricsRead(
         run=MasTestRunRead.model_validate(run.__dict__),
         summary=summary,
         cases=case_metrics,
+        confusion=confusion,
+    )
+
+
+def get_run_analytics(run_id: str, db: Session) -> MasTestRunAnalyticsRead:
+    run = mas_tests_repository.get_test_run(db, run_id)
+    if run is None:
+        raise HTTPException(status_code=404, detail="Test run not found")
+
+    case_runs = mas_tests_repository.get_case_runs_for_test_run(db, run_id)
+    by_case_id = {case_run.test_case_id: case_run for case_run in case_runs}
+    ordered = [by_case_id[case_id] for case_id in run.selected_case_ids_json if case_id in by_case_id]
+
+    case_ids = [case_run.test_case_id for case_run in ordered]
+    case_rows = mas_tests_repository.get_test_cases_by_ids(db, case_ids) if case_ids else []
+    case_name_by_id = {case.id: case.name for case in case_rows}
+
+    analytics_cases: list[MasTestCaseAnalyticsRead] = []
+    metric_count = 0
+    duration_ms_total = 0
+    agent_run_count_total = 0
+    handoff_count_total = 0
+    gate_evaluation_count_total = 0
+    input_tokens_total = 0
+    output_tokens_total = 0
+    tokens_total = 0
+    llm_call_count_total = 0
+    tool_call_count_total = 0
+    tool_error_count_total = 0
+    cost_usd_values: list[float] = []
+    reliability_issue_count_total = 0
+    reliability_error_count_total = 0
+    finalization_failure_count_total = 0
+
+    for case_run in ordered:
+        swarm_status = None
+        duration_ms = None
+        metrics_row = None
+
+        if case_run.swarm_run_id:
+            swarm_run = swarm_runs_repository.get_swarm_run(db, case_run.swarm_run_id)
+            if swarm_run is not None:
+                swarm_status = swarm_run.status
+                if swarm_run.status in TERMINAL_SWARM_STATUSES:
+                    persist_swarm_run_metrics(case_run.swarm_run_id)
+            metrics_row = swarm_run_metrics_repository.get_swarm_run_metrics(db, case_run.swarm_run_id)
+
+        if metrics_row is not None:
+            metric_count += 1
+            duration_ms = metrics_row.duration_ms
+            duration_ms_total += int(metrics_row.duration_ms or 0)
+            agent_run_count_total += int(metrics_row.agent_run_count or 0)
+            handoff_count_total += int(metrics_row.handoff_count or 0)
+            gate_evaluation_count_total += int(metrics_row.gate_evaluation_count or 0)
+            input_tokens_total += int(metrics_row.input_tokens_total or 0)
+            output_tokens_total += int(metrics_row.output_tokens_total or 0)
+            tokens_total += int(metrics_row.tokens_total or 0)
+            llm_call_count_total += int(metrics_row.llm_call_count_total or 0)
+            tool_call_count_total += int(metrics_row.tool_call_count_total or 0)
+            tool_error_count_total += int(metrics_row.tool_error_count_total or 0)
+            if metrics_row.cost_usd_total is not None:
+                cost_usd_values.append(float(metrics_row.cost_usd_total))
+            reliability_issue_count_total += int(metrics_row.reliability_issue_count or 0)
+            reliability_error_count_total += int(metrics_row.reliability_error_count or 0)
+            finalization_failure_count_total += int(metrics_row.finalization_failure_count or 0)
+
+        analytics_cases.append(
+            MasTestCaseAnalyticsRead(
+                test_case_id=case_run.test_case_id,
+                test_case_name=case_name_by_id.get(case_run.test_case_id),
+                swarm_run_id=case_run.swarm_run_id,
+                swarm_status=swarm_status,
+                duration_ms=(metrics_row.duration_ms if metrics_row is not None else None),
+                agent_run_count=(metrics_row.agent_run_count if metrics_row is not None else None),
+                handoff_count=(metrics_row.handoff_count if metrics_row is not None else None),
+                gate_evaluation_count=(metrics_row.gate_evaluation_count if metrics_row is not None else None),
+                input_tokens_total=(int(metrics_row.input_tokens_total or 0) if metrics_row is not None else 0),
+                output_tokens_total=(int(metrics_row.output_tokens_total or 0) if metrics_row is not None else 0),
+                tokens_total=(int(metrics_row.tokens_total or 0) if metrics_row is not None else 0),
+                llm_call_count_total=(int(metrics_row.llm_call_count_total or 0) if metrics_row is not None else 0),
+                tool_call_count_total=(int(metrics_row.tool_call_count_total or 0) if metrics_row is not None else 0),
+                tool_error_count_total=(int(metrics_row.tool_error_count_total or 0) if metrics_row is not None else 0),
+                cost_usd_total=(metrics_row.cost_usd_total if metrics_row is not None else None),
+                cost_usd_per_agent_run=(metrics_row.cost_usd_per_agent_run if metrics_row is not None else None),
+                reliability_issue_count=(int(metrics_row.reliability_issue_count or 0) if metrics_row is not None else 0),
+                reliability_error_count=(int(metrics_row.reliability_error_count or 0) if metrics_row is not None else 0),
+                finalization_failure_count=(
+                    int(metrics_row.finalization_failure_count or 0) if metrics_row is not None else 0
+                ),
+            )
+        )
+
+    cost_usd_total = sum(cost_usd_values) if cost_usd_values else None
+    case_count = len(ordered)
+    summary = MasTestRunAnalyticsSummaryRead(
+        total_cases=case_count,
+        cases_with_swarm_run=len([case_run for case_run in ordered if case_run.swarm_run_id]),
+        cases_with_metrics=metric_count,
+        duration_ms_total=duration_ms_total,
+        duration_ms_avg=_avg_or_none(duration_ms_total, metric_count),
+        agent_run_count_total=agent_run_count_total,
+        agent_run_count_avg=_avg_or_none(agent_run_count_total, metric_count),
+        handoff_count_total=handoff_count_total,
+        handoff_count_avg=_avg_or_none(handoff_count_total, metric_count),
+        gate_evaluation_count_total=gate_evaluation_count_total,
+        gate_evaluation_count_avg=_avg_or_none(gate_evaluation_count_total, metric_count),
+        input_tokens_total=input_tokens_total,
+        input_tokens_avg=_avg_or_none(input_tokens_total, metric_count),
+        output_tokens_total=output_tokens_total,
+        output_tokens_avg=_avg_or_none(output_tokens_total, metric_count),
+        tokens_total=tokens_total,
+        tokens_avg=_avg_or_none(tokens_total, metric_count),
+        llm_call_count_total=llm_call_count_total,
+        llm_call_count_avg=_avg_or_none(llm_call_count_total, metric_count),
+        tool_call_count_total=tool_call_count_total,
+        tool_call_count_avg=_avg_or_none(tool_call_count_total, metric_count),
+        tool_error_count_total=tool_error_count_total,
+        tool_error_count_avg=_avg_or_none(tool_error_count_total, metric_count),
+        cost_usd_total=round(cost_usd_total, 6) if cost_usd_total is not None else None,
+        cost_usd_avg=_avg_or_none(cost_usd_total or 0.0, len(cost_usd_values), ndigits=6) if cost_usd_values else None,
+        reliability_issue_count_total=reliability_issue_count_total,
+        reliability_issue_count_avg=_avg_or_none(reliability_issue_count_total, metric_count),
+        reliability_error_count_total=reliability_error_count_total,
+        reliability_error_count_avg=_avg_or_none(reliability_error_count_total, metric_count),
+        finalization_failure_count_total=finalization_failure_count_total,
+        finalization_failure_count_avg=_avg_or_none(finalization_failure_count_total, metric_count),
+    )
+
+    return MasTestRunAnalyticsRead(
+        run=MasTestRunRead.model_validate(run.__dict__),
+        summary=summary,
+        cases=analytics_cases,
     )
 
 
@@ -466,9 +696,13 @@ def stream_run(run_id: str, db: Session) -> StreamingResponse:
             swarm_status = "failed"
 
             try:
+                normalized_input = _normalize_runtime_input_or_400(
+                    workflow_id=run.workflow_id,
+                    input_json=test_case.input_json,
+                )
                 swarm_run_id, normalized_input, _, workflow_version = swarm_execution_service.create_and_start_swarm_run(
                     workflow_id=run.workflow_id,
-                    input_payload=test_case.input_json,
+                    input_payload=normalized_input,
                     metadata={
                         "source": "mas_tests",
                         "mas_test_run_id": run.id,

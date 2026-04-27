@@ -102,7 +102,85 @@ class MasTestRunMetricsSummaryRead(BaseModel):
     duration_ms_avg: Optional[float] = None
 
 
+class MasTestRunConfusionCountsRead(BaseModel):
+    tp: int
+    fp: int
+    tn: int
+    fn: int
+
+
+class MasTestRunConfusionRead(BaseModel):
+    mode: str
+    labels: list[str]
+    per_label: dict[str, MasTestRunConfusionCountsRead]
+    total_classified: int
+    unclassified_count: int
+
+
 class MasTestRunBatchMetricsRead(BaseModel):
     run: MasTestRunRead
     summary: MasTestRunMetricsSummaryRead
     cases: list[MasTestCaseRunMetricRead]
+    confusion: Optional[MasTestRunConfusionRead] = None
+
+
+class MasTestCaseAnalyticsRead(BaseModel):
+    test_case_id: str
+    test_case_name: Optional[str] = None
+    swarm_run_id: Optional[str] = None
+    swarm_status: Optional[str] = None
+    duration_ms: Optional[int] = None
+    agent_run_count: Optional[int] = None
+    handoff_count: Optional[int] = None
+    gate_evaluation_count: Optional[int] = None
+    input_tokens_total: int = 0
+    output_tokens_total: int = 0
+    tokens_total: int = 0
+    llm_call_count_total: int = 0
+    tool_call_count_total: int = 0
+    tool_error_count_total: int = 0
+    cost_usd_total: Optional[float] = None
+    cost_usd_per_agent_run: Optional[float] = None
+    reliability_issue_count: int = 0
+    reliability_error_count: int = 0
+    finalization_failure_count: int = 0
+
+
+class MasTestRunAnalyticsSummaryRead(BaseModel):
+    total_cases: int
+    cases_with_swarm_run: int
+    cases_with_metrics: int
+    duration_ms_total: int
+    duration_ms_avg: Optional[float] = None
+    agent_run_count_total: int
+    agent_run_count_avg: Optional[float] = None
+    handoff_count_total: int
+    handoff_count_avg: Optional[float] = None
+    gate_evaluation_count_total: int
+    gate_evaluation_count_avg: Optional[float] = None
+    input_tokens_total: int
+    input_tokens_avg: Optional[float] = None
+    output_tokens_total: int
+    output_tokens_avg: Optional[float] = None
+    tokens_total: int
+    tokens_avg: Optional[float] = None
+    llm_call_count_total: int
+    llm_call_count_avg: Optional[float] = None
+    tool_call_count_total: int
+    tool_call_count_avg: Optional[float] = None
+    tool_error_count_total: int
+    tool_error_count_avg: Optional[float] = None
+    cost_usd_total: Optional[float] = None
+    cost_usd_avg: Optional[float] = None
+    reliability_issue_count_total: int
+    reliability_issue_count_avg: Optional[float] = None
+    reliability_error_count_total: int
+    reliability_error_count_avg: Optional[float] = None
+    finalization_failure_count_total: int
+    finalization_failure_count_avg: Optional[float] = None
+
+
+class MasTestRunAnalyticsRead(BaseModel):
+    run: MasTestRunRead
+    summary: MasTestRunAnalyticsSummaryRead
+    cases: list[MasTestCaseAnalyticsRead]
