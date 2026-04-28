@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useId, useRef, useState } from 'react';
 import type { MasCatalogDetail } from '../../../types/mas';
 import { DEFAULT_MAS_WORKFLOW_INPUT } from '../config/defaultWorkflowInput';
 import { AgentInputForm } from '../../agents/components/AgentInputForm';
@@ -12,6 +12,8 @@ import { API_BASE_URL } from '../../../config/env';
 import MasMetricsTab from './MasMetricsTab';
 import MasTestCases from './MasTestCases';
 import { MasTabs } from './MasTabs';
+import { useModels } from '../../agents/hooks/useModels';
+import { AgentModelSelect } from '../../agents/components/shared/AgentModelSelect';
 
 type MasDetailSplitViewProps = {
   workflow: MasCatalogDetail;
@@ -70,6 +72,8 @@ export function MasDetailSplitView({ workflow }: MasDetailSplitViewProps) {
   });
 
   const [masMetrics, setMasMetrics] = useState<SwarmRunMetricsRead | null>(null);
+  const { models, status: modelsStatus, selectedModelId, setSelectedModelId } = useModels();
+  const modelSelectId = useId();
 
   async function handleSubmitInput() {
 
@@ -86,7 +90,8 @@ export function MasDetailSplitView({ workflow }: MasDetailSplitViewProps) {
       const mas_run_details: SwarmExecutionStartResponse = await masRunService.startMasRun(
         workflow.metadata.workflow_id,
         payload,
-        ac.signal
+        ac.signal,
+        selectedModelId
       )
       setRunInfo(mas_run_details)
       if (ac.signal.aborted) return;
@@ -134,7 +139,6 @@ export function MasDetailSplitView({ workflow }: MasDetailSplitViewProps) {
   }, [runInfo?.finalOutputUrl]);
 
 
-
   return (
     <div className="grid h-full min-h-0 p-0 lg:grid-cols-1">
       <section className="flex min-h-0 flex-col border-r border-slate-200 p-0 h-full">
@@ -166,8 +170,18 @@ export function MasDetailSplitView({ workflow }: MasDetailSplitViewProps) {
                     {
                       !submitted ? (
                         <>
-                          <div className="shrink-0 border-b border-slate-300 p-2 px-4 pt-3">
+                          <div className="shrink-0 border-b border-slate-300 p-2 px-4 pt-3 flex flex-row justify-between items-center">
                             <p className="text-md font-semibold text-slate-900">Workflow Input</p>
+                            <div className='space-x-2 '>
+                              <AgentModelSelect
+                                labelClassName='text-sm'
+                                id={modelSelectId}
+                                models={models}
+                                modelsStatus={modelsStatus}
+                                selectedModelId={selectedModelId}
+                                setSelectedModelId={setSelectedModelId}
+                              />
+                            </div>
                           </div>
                           <AgentInputForm
                             schema={workflow.input_schema.json_schema}
@@ -224,9 +238,9 @@ export function MasDetailSplitView({ workflow }: MasDetailSplitViewProps) {
             </div>
           </div>
         ) : (
-         <MasTestCases 
-          workflow={workflow}
-         />
+          <MasTestCases
+            workflow={workflow}
+          />
         )}
       </section>
     </div>

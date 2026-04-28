@@ -1,10 +1,17 @@
 import type { MasTestCaseRead } from '../../../types/masTests';
 import { formatMasDateTime } from '../utils/format';
+import type { ModelSpec } from '../../../types/models';
+import { AgentModelSelect } from '../../agents/components/shared/AgentModelSelect';
 
 type MasTestCaseSelectionPanelProps = {
   testCases: MasTestCaseRead[];
   selectedTestCaseIds: string[];
   allSelected: boolean;
+  modelSelectId: string;
+  modelsStatus: 'loading' | 'error' | 'success';
+  models: ModelSpec[];
+  selectedModelId: string;
+  setSelectedModelId: (value: string) => void;
   onToggleAll: () => void;
   onToggleOne: (testCaseId: string) => void;
   onOpenSelectedCases: () => void;
@@ -17,14 +24,30 @@ export function MasTestCaseSelectionPanel({
   onToggleAll,
   onToggleOne,
   onOpenSelectedCases,
+  modelSelectId,
+  modelsStatus,
+  models,
+  selectedModelId,
+  setSelectedModelId
 }: MasTestCaseSelectionPanelProps) {
   return (
     <div className="flex h-full min-h-0 flex-col bg-white">
-      <div className="border-b border-slate-200 px-6 py-4">
-        <p className="text-lg font-semibold text-slate-900">Select Test Cases</p>
-        <p className="mt-1 text-sm text-slate-500">
-          Choose the cases you want to inspect before opening the workspace.
-        </p>
+      <div className='w-full flex flex-row justify-between'>
+        <div className="border-b border-slate-200 px-6 py-4">
+          <p className="text-lg font-semibold text-slate-900">Select Test Cases</p>
+          <p className="mt-1 text-sm text-slate-500">
+            Choose the cases you want to inspect before opening the workspace.
+          </p>
+        </div>
+        <div className='flex flex-row gap-1 items-center px-8'>
+          <AgentModelSelect
+            id={modelSelectId}
+            models={models}
+            modelsStatus={modelsStatus}
+            selectedModelId={selectedModelId}
+            setSelectedModelId={setSelectedModelId}
+          />
+        </div>
       </div>
 
       <div className="min-h-0 flex-1">

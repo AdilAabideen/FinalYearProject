@@ -1,0 +1,57 @@
+import { useCallback, useEffect, useRef, useState } from 'react';
+import type { MasTestRunResults } from '../../../types/masTests';
+import { masTestService } from '../../../services/masTestService';
+
+export type MasRunResultsState =
+  | { status: 'idle' }
+  | { status: 'loading' }
+  | { status: 'error'; error: string }
+  | { status: 'ready'; data: MasTestRunResults };
+
+export function useMasBatchResults() {
+  const [masRunResultsState, setMasRunResultsState] = useState<MasRunResultsState>({ status: 'idle' });
+  const resultsAbortRef = useRef<AbortController | null>(null);
+
+  const fetchMasRunResults = useCallback(async (runId: string) => {
+    resultsAbortRef.current?.abort();
+    const ac = new AbortController();
+    resultsAbortRef.current = ac;
+    setMasRunResultsState({ status: 'loading' });
+
+    try {
+      const data = await masTestService.getRunResults(runId, ac.signal);
+      if (ac.signal.aborted) return;
+      setMasRunResultsState({ status: 'ready', data });
+    } catch (error) {
+      if (ac.signal.aborted) return;
+      setMasRunResultsState({
+        status: 'error',
+        error: error instanceof Error ? error.message : 'Failed to load MAS test run results',
+      });
+    } finally {
+      if (resultsAbortRef.current === ac) {
+        resultsAbortRef.current = null;
+      }
+    }
+  }, []);
+
+  const resetMasRunResults = useCallback(() => {
+    resultsAbortRef.current?.abort();
+    resultsAbortRef.current = null;
+    setMasRunResultsState({ status: 'idle' });
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      resultsAbortRef.current?.abort();
+      resultsAbortRef.current = null;
+    };
+  }, []);
+
+  return {
+    masRunResultsState,
+    masRunResults: masRunResultsState.status === 'ready' ? masRunResultsState.data : null,
+    fetchMasRunResults,
+    resetMasRunResults,
+  };
+}

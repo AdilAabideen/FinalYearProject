@@ -24,7 +24,7 @@ export function AgentModelSelect({
   return (
     <>
       <label htmlFor={id} className={labelClassName}>
-        Model
+        Model :
       </label>
       <select
         id={id}
@@ -33,7 +33,7 @@ export function AgentModelSelect({
         disabled={disabled || modelsStatus !== 'success' || models.length === 0}
         className={
           selectClassName ??
-          'min-w-48 rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 shadow-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-PrimaryBlue focus-visible:ring-offset-2 focus-visible:ring-offset-white disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-400'
+          'min-w-48 rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700  focus:outline-none focus-visible:ring-2 focus-visible:ring-PrimaryBlue focus-visible:ring-offset-2 focus-visible:ring-offset-white disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-400'
         }
       >
         {modelsStatus === 'loading' ? <option value="">Loading…</option> : null}

@@ -211,6 +211,7 @@ export function MasDiagram({
         Boolean(node),
     );
 
+
   const endNodes: EndNode[] = data.finalizing_agents
     .map((agentName, index) => {
       const key = getBoundaryNodeKey('end', index, data.finalizing_agents.length);
