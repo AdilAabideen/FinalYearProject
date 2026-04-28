@@ -5,6 +5,7 @@ import pytest
 from app.agentic.agents.esi1.evaluator import ES1AcuityEvaluator
 from app.agentic.agents.esi2.evaluator import ESI2AcuityEvaluator
 from app.agentic.agents.esi345.evaluator import ESI345AcuityEvaluator
+from app.agentic.agents.single_agent_system.evaluator import SingleAgentAcuityEvaluator
 from app.agentic.agents.vitals.evaluator import VitalsUptriageEvaluator
 
 
@@ -97,3 +98,35 @@ def test_ut_evl_015_esi345_aggregate_computes_pass_warning_fail_counts_correctly
     assert agg["pass_count"] == 1
     assert agg["warning_count"] == 1
     assert agg["fail_count"] == 1
+
+
+@pytest.mark.unit
+def test_ut_evl_016_single_agent_evaluator_requires_integer_acuity():
+    evaluator = SingleAgentAcuityEvaluator()
+    with pytest.raises(ValueError):
+        evaluator.validate_expected({"acuity": "2"})
+
+
+@pytest.mark.unit
+def test_ut_evl_017_single_agent_evaluator_passes_on_exact_acuity_match():
+    evaluator = SingleAgentAcuityEvaluator()
+    result = evaluator.evaluate({"acuity": 2}, {"final_esi_level": 2}, agent_status="succeeded")
+    assert result.passed is True
+    assert result.score == 1.0
+
+
+@pytest.mark.unit
+def test_ut_evl_018_single_agent_evaluator_fails_on_acuity_mismatch():
+    evaluator = SingleAgentAcuityEvaluator()
+    result = evaluator.evaluate({"acuity": 2}, {"final_esi_level": 3}, agent_status="succeeded")
+    assert result.passed is False
+    assert result.diff_json["expected_acuity"] == 2
+    assert result.diff_json["actual_acuity"] == 3
+
+
+@pytest.mark.unit
+def test_ut_evl_019_single_agent_evaluator_flags_invalid_prediction():
+    evaluator = SingleAgentAcuityEvaluator()
+    result = evaluator.evaluate({"acuity": 2}, {"summary": "missing level"}, agent_status="succeeded")
+    assert result.passed is False
+    assert result.metrics_json["invalid_pred"] is True

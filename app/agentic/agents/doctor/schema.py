@@ -90,45 +90,65 @@ class DoctorAgentInput(BaseModel):
         description="Confidence from the vitals agent."
     )
 
+
+
 class DoctorAgentOutput(BaseModel):
     final_esi_level: Literal[1, 2, 3, 4, 5] = Field(
         ...,
-        description="Final ESI level chosen by combining upstream agent outputs."
+        description="Final ESI level after doctor-agent review."
     )
+
+    source_agent: Literal["esi1_agent", "esi2_agent", "esi345_agent"] = Field(
+        ...,
+        description="Upstream acuity agent that produced the main triage result."
+    )
+
+    accepted_upstream_result: bool = Field(
+        ...,
+        description="True if the upstream acuity result was accepted without changing the ESI level."
+    )
+
     uptriaged: bool = Field(
         ...,
-        description="Whether the doctor agent up-triaged the case from the ESI-345 pathway."
+        description="True only if an ESI-345 result was changed to ESI-2 because of vitals."
     )
+
     decision_source: Literal[
-        "esi1_confirmed",
-        "esi2_confirmed",
-        "esi345_confirmed",
+        "esi1_accepted",
+        "esi2_accepted",
+        "esi345_accepted",
         "esi345_uptriaged_to_esi2"
     ] = Field(
         ...,
-        description="How the final decision was produced."
+        description="Simple explanation of how the final decision was produced."
     )
+
     summary: str = Field(
         ...,
-        description="Short final summary combining the upstream agent output into a clinician-facing result."
+        description="Short clinician-facing final summary."
     )
+
     rationale: str = Field(
         ...,
-        description="Short explanation of why this final result was chosen."
+        description="Concise explanation of why the final ESI level was kept or changed."
     )
+
     key_concerns: List[str] = Field(
         default_factory=list,
-        description="Important concerns carried into the final output."
+        description="Important concerns carried forward from upstream agents."
     )
+
     predicted_resources: List[str] = Field(
         default_factory=list,
-        description="Predicted ESI-counted resources if relevant to the final result."
+        description="Predicted ESI-counted resources if the source was the ESI-345 agent."
     )
+
     abnormal_vitals_considered: List[str] = Field(
         default_factory=list,
-        description="Vital sign abnormalities considered when deciding whether to keep ESI-345 or up-triage to ESI-2."
+        description="Abnormal vitals considered during doctor review."
     )
+
     next_actions: List[str] = Field(
         default_factory=list,
-        description="Immediate next actions or workflow suggestions based on the final triage result."
+        description="Immediate workflow or clinical review actions."
     )

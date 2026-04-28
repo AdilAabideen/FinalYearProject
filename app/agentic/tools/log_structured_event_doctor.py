@@ -6,27 +6,27 @@ from typing import Literal
 class LogStructuredEventInput(BaseModel):
     event_type: Literal[
         "plan_created",
-        "key_risk_detected",
-        "missing_info_detected",
-        "replan_required",
-        "final_output_ready",
-        "resource_needed",
-        "uptraige_needed"
+        "uptriage_applied",
+        "uptriage_not_applied",
+        "final_output_ready"
     ] = Field(
         ...,
-        description="The type of meaningful event being logged."
+        description="The type of milestone event being logged."
     )
+
     step: str = Field(
         ...,
         description="The workflow step this event relates to."
     )
+
     summary: str = Field(
         ...,
-        description="A short one-sentence summary of what happened."
+        description="Short one-sentence summary of the event."
     )
-    tag: Literal["info", "warning", "important", "completed"] = Field(
+
+    tag: Literal["info", "important", "completed"] = Field(
         default="info",
-        description="A very lightweight general tag for the event."
+        description="Lightweight event tag."
     )
 
 

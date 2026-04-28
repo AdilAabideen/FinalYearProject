@@ -245,6 +245,6 @@ HANDOFF TO DOCTOR AGENT IF THIS ESI-3/4/5 CASE NEEDS ESCALATION OR REVIEW (HANDO
 - critical_concerns: key red flags, abnormal findings, or up-triage concerns the doctor should review
 - request: short escalation request telling the doctor agent what to review or decide next
 
-YOU MUST CALL THE HANDOFF TOOL.
+YOU MUST CALL THE HANDOFF TOOL THIS IS VERY IMPORTANT
 </handoff_requirements>
 """

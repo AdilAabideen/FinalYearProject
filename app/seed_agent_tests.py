@@ -1,12 +1,19 @@
 from __future__ import annotations
 
+import json
+import re
 import uuid
 from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models.agent_test_case import AgentTestCase
+
+SINGLE_AGENT_NAME = "single_agent"
+SINGLE_AGENT_RAW_CASES_PATH = Path(__file__).with_name("seed_mas_tests_esi_swarm_v1.jsonish")
 
 
 def ensure_seed_vitals_agent_test_cases(db: Session) -> None:
@@ -152,3 +159,81 @@ def ensure_seed_vitals_agent_test_cases(db: Session) -> None:
         )
     db.commit()
 
+
+def _load_single_agent_raw_cases() -> list[dict[str, Any]]:
+    raw = SINGLE_AGENT_RAW_CASES_PATH.read_text(encoding="utf-8")
+    normalized = raw.replace(
+        '"arrival_transport"MBULANCE",',
+        '"arrival_transport": "AMBULANCE",',
+    )
+    normalized = re.sub(r'(?m)^(\s*)([A-Za-z_][A-Za-z0-9_]*)":', r'\1"\2":', normalized)
+    return json.loads(normalized)
+
+
+def _normalize_single_agent_input(payload: dict[str, Any]) -> dict[str, Any]:
+    normalized = dict(payload)
+
+    if "arrival_transport" not in normalized and "rival_transport" in normalized:
+        normalized["arrival_transport"] = normalized.pop("rival_transport")
+    if "heartrate" not in normalized and "heartte" in normalized:
+        normalized["heartrate"] = normalized.pop("heartte")
+
+    return normalized
+
+
+def _load_single_agent_seed_rows() -> list[dict[str, Any]]:
+    rows = _load_single_agent_raw_cases()
+    prepared: list[dict[str, Any]] = []
+
+    for index, item in enumerate(rows, start=1):
+        input_json = _normalize_single_agent_input(dict(item["input"]))
+        expected_json = {"acuity": int(item["output"]["acuity"])}
+        chiefcomplaint = str(input_json.get("chiefcomplaint") or "case").strip()
+        prepared.append(
+            {
+                "name": f"Seed {index:02d} - {chiefcomplaint}",
+                "input_json": input_json,
+                "expected_json": expected_json,
+                "notes": (
+                    f"seeded_from={SINGLE_AGENT_RAW_CASES_PATH.name};"
+                    f"row={index};"
+                    f"expected_acuity={expected_json['acuity']}"
+                ),
+            }
+        )
+
+    return prepared
+
+
+def ensure_seed_single_agent_test_cases(db: Session) -> None:
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    existing_rows = db.execute(
+        select(AgentTestCase).where(AgentTestCase.agent_name == SINGLE_AGENT_NAME)
+    ).scalars().all()
+    existing_by_name = {row.name: row for row in existing_rows}
+
+    for item in _load_single_agent_seed_rows():
+        existing = existing_by_name.get(item["name"])
+        if existing is None:
+            db.add(
+                AgentTestCase(
+                    id=str(uuid.uuid4()),
+                    agent_name=SINGLE_AGENT_NAME,
+                    name=item["name"],
+                    enabled=True,
+                    input_json=item["input_json"],
+                    expected_json=item["expected_json"],
+                    notes=item["notes"],
+                    created_at=now,
+                    updated_at=now,
+                )
+            )
+            continue
+
+        existing.enabled = True
+        existing.input_json = item["input_json"]
+        existing.expected_json = item["expected_json"]
+        existing.notes = item["notes"]
+        existing.updated_at = now
+
+    db.commit()
