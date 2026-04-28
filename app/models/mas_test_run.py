@@ -14,6 +14,7 @@ class MasTestRun(Base, TimestampMixin):
 
     id: Mapped[str] = mapped_column(String, primary_key=True)
     workflow_id: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    model_name: Mapped[Optional[str]] = mapped_column(String, nullable=True)
 
     name: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     status: Mapped[str] = mapped_column(String, nullable=False, index=True)

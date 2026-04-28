@@ -129,6 +129,19 @@ def test_ut_wrp_010_llama_wrapper_includes_auth_header_when_api_key_provided(mon
 
 @pytest.mark.unit
 @pytest.mark.wrapper
+def test_ut_wrp_011_llama_wrapper_accepts_full_chat_completions_url(monkeypatch, load_json_fixture):
+    recorded = []
+    _patched_client(monkeypatch, FakeResponse(payload=load_json_fixture("provider_payloads/llama_native_tool_calls.json")), recorded)
+    model = LlamaServerChat(
+        model="medgemma-4b-it",
+        base_url="https://llama.test/v1/chat/completions",
+    )
+    model._generate([HumanMessage(content="hi")], tools=[])
+    assert recorded[0]["url"] == "https://llama.test/v1/chat/completions"
+
+
+@pytest.mark.unit
+@pytest.mark.wrapper
 def test_ut_wrp_012_llama_wrapper_resolves_adapter_by_model_id_fallback():
     model = LlamaServerChat(model="esi345")
     assert model._resolve_adapter_id() == 2
@@ -161,12 +174,46 @@ def test_ut_wrp_015_llama_wrapper_parses_tool_calls_when_present(monkeypatch, lo
 
 @pytest.mark.unit
 @pytest.mark.wrapper
+def test_ut_wrp_016_llama_wrapper_applies_zero_value_adapter_id(monkeypatch, load_json_fixture):
+    recorded = []
+    _patched_client(monkeypatch, FakeResponse(payload=load_json_fixture("provider_payloads/llama_native_tool_calls.json")), recorded)
+    model = LlamaServerChat(model="esi1", base_url="https://llama.test")
+    model._generate([HumanMessage(content="hi")], tools=[])
+    assert recorded[0]["json"]["lora"] == [{"id": 0, "scale": 1.0}]
+
+
+@pytest.mark.unit
+@pytest.mark.wrapper
 def test_ut_wrp_017_llama_wrapper_raises_on_http_error(monkeypatch):
     recorded = []
     _patched_client(monkeypatch, FakeResponse(status_code=500, payload={"detail": "bad"}, text="bad"), recorded)
     model = LlamaServerChat(model="esi1", base_url="https://llama.test")
     with pytest.raises(RuntimeError):
         model._generate([HumanMessage(content="hi")], tools=[])
+
+
+@pytest.mark.unit
+@pytest.mark.wrapper
+def test_ut_wrp_018_llama_wrapper_skips_lora_payload_for_medgemma(monkeypatch, load_json_fixture):
+    recorded = []
+    _patched_client(monkeypatch, FakeResponse(payload=load_json_fixture("provider_payloads/llama_native_tool_calls.json")), recorded)
+    model = LlamaServerChat(model="medgemma-4b-it", base_url="https://llama.test")
+    model._generate([HumanMessage(content="hi")], tools=[])
+    assert "lora" not in recorded[0]["json"]
+
+
+@pytest.mark.unit
+def test_ut_wrp_019_medgemma_default_registry_entry_uses_dr7():
+    spec = resolve_model_spec("medgemma-4b-it")
+    assert spec.provider == "dr7"
+
+
+@pytest.mark.unit
+def test_ut_wrp_020_medgemma_llama_alias_keeps_provider_model_id():
+    spec = resolve_model_spec("medgemma-4b-it-llama")
+    model = build_llama_model(spec)
+    assert isinstance(model, LlamaServerChat)
+    assert model.model == "medgemma-4b-it"
 
 
 @pytest.mark.unit

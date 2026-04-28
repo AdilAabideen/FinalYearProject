@@ -26,6 +26,7 @@ class ModelSpec(BaseModel):
 
     id: str
     provider: ModelProvider
+    provider_model_id: Optional[str] = None
     description: Optional[str] = None
     context_length: Optional[int] = None
     max_tokens: Optional[int] = None
@@ -46,7 +47,6 @@ _MODEL_REGISTRY: dict[str, ModelSpec] = {
         default_temperature=0.7,
         pricing=ModelPricing(input_per_1k=0.001, output_per_1k=0.002),
     ),
-    # Dr7
     "medgemma-4b-it": ModelSpec(
         id="medgemma-4b-it",
         provider="dr7",
@@ -55,6 +55,26 @@ _MODEL_REGISTRY: dict[str, ModelSpec] = {
         ),
         context_length=8192,
         max_tokens=4096,
+        pricing=ModelPricing(input_per_1k=0.00015, output_per_1k=0.00060),
+        capabilities=[
+            "medical_text_analysis",
+            "symptom_analysis",
+            "medical_qa",
+            "clinical_reasoning",
+        ],
+        languages=["en", "zh"],
+        supports_tools=True,
+        default_temperature=0,
+    ),
+    "medgemma-4b-it-llama": ModelSpec(
+        id="medgemma-4b-it-llama",
+        provider="llama",
+        provider_model_id="medgemma-4b-it",
+        description=(
+            "MedGemma 4B Instruction Tuned - Optimized for medical text understanding and generation Q_8 Quantization"
+        ),
+        context_length=8192,
+        max_tokens=600,
         pricing=ModelPricing(input_per_1k=0.00015, output_per_1k=0.00060),
         capabilities=[
             "medical_text_analysis",
@@ -175,13 +195,15 @@ def _build_openai_chat_model(spec: ModelSpec) -> BaseChatModel:
 
 
 def _build_dr7_chat_model(spec: ModelSpec) -> BaseChatModel:
+    if spec.provider != "dr7":
+        raise RuntimeError(f"Cannot build Dr7 model for provider '{spec.provider}'.")
     if not settings.DR7_API_KEY:
         raise RuntimeError("DR7_API_KEY is not set. Add it to `.env` to use Dr7 models.")
 
     from app.agentic.models.dr7_medical_chat import Dr7MedicalChatModel
 
     return Dr7MedicalChatModel(
-        model=spec.id,
+        model=spec.provider_model_id or spec.id,
         base_url=settings.DR7_MEDICAL_BASE_URL,
         api_key=settings.DR7_API_KEY,
         temperature=spec.default_temperature,
@@ -190,6 +212,8 @@ def _build_dr7_chat_model(spec: ModelSpec) -> BaseChatModel:
 
 
 def build_llama_model(spec: ModelSpec) -> BaseChatModel:
+    if spec.provider != "llama":
+        raise RuntimeError(f"Cannot build llama model for provider '{spec.provider}'.")
     from app.agentic.models.llama_server_chat import LlamaServerChat
 
     adapter_by_model_id: dict[str, str] = {
@@ -198,14 +222,9 @@ def build_llama_model(spec: ModelSpec) -> BaseChatModel:
         "esi345": "esi345",
     }
     adapter = adapter_by_model_id.get(spec.id)
-    if adapter is None:
-        supported = ", ".join(sorted(adapter_by_model_id))
-        raise RuntimeError(
-            f"Llama model '{spec.id}' is not mapped to an adapter literal. Supported: {supported}"
-        )
 
     return LlamaServerChat(
-        model=spec.id,
+        model=spec.provider_model_id or spec.id,
         base_url=settings.LLAMA_SERVER_BASE_URL,
         api_key=settings.LLAMA_SERVER_API_KEY or "",
         adapter=adapter,

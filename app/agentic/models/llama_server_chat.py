@@ -1,5 +1,4 @@
 from __future__ import annotations
-
 from typing import Any, Callable, Literal, Optional, Sequence, Union
 
 import httpx
@@ -78,6 +77,7 @@ class LlamaServerChat(BaseChatModel):
     model: str = Field(description="Llama server model id (e.g. 'medgemma-4b-it').")
     base_url: str = Field(
         default="http://localhost:8080/v1",
+        # default="http://localhost:8080/v1",
         description="Base URL for llama-server OpenAI-compatible API.",
     )
     api_key: Optional[str] = Field(
@@ -95,7 +95,7 @@ class LlamaServerChat(BaseChatModel):
     )
     adapter_scale: float = Field(default=1.0, description="LoRA scale for selected adapter.")
 
-    temperature: float = 0.7
+    temperature: float = 0
     max_tokens: Optional[int] = None
     timeout_s: float = 60.0
 
@@ -114,6 +114,13 @@ class LlamaServerChat(BaseChatModel):
     def _normalize_llama_messages(self, messages: list[dict[str, str]]) -> list[dict[str, str]]:
         """Normalize provider messages via shared protocol helper."""
         return normalize_chat_messages(messages)
+
+    def _build_chat_completions_url(self) -> str:
+        """Accept either a base API URL or a full chat completions endpoint."""
+        normalized = self.base_url.rstrip("/")
+        if normalized.endswith("/chat/completions"):
+            return normalized
+        return normalized + "/chat/completions"
 
     def _resolve_adapter_id(self, **kwargs: Any) -> Optional[int]:
         raw_adapter_id = kwargs.get("adapter_id", self.adapter_id)
@@ -207,7 +214,10 @@ class LlamaServerChat(BaseChatModel):
         payload: dict[str, Any] = {
             "model": self.model,
             "messages": llama_messages,
-            "temperature": self.temperature,
+            "temperature": 0,
+            "top_k": 1,
+            "top_p": 1,
+            "seed": 42,
             "stream": False,
         }
         if self.max_tokens is not None:
@@ -216,10 +226,10 @@ class LlamaServerChat(BaseChatModel):
             payload["stop"] = stop
         adapter_id = self._resolve_adapter_id(**kwargs)
         adapter_scale = float(kwargs.get("adapter_scale", self.adapter_scale))
-        self._apply_lora_payload(payload, adapter_id=adapter_id, adapter_scale=adapter_scale)
+        if adapter_id is not None and adapter_scale:
+            self._apply_lora_payload(payload, adapter_id=adapter_id, adapter_scale=adapter_scale)
 
-
-        url = self.base_url.rstrip("/") + "/chat/completions"
+        url = self._build_chat_completions_url()
         headers = {"Content-Type": "application/json"}
         if self.api_key:
             headers["Authorization"] = f"Bearer {self.api_key}"

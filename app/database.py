@@ -649,6 +649,7 @@ def ensure_runtime_schema_upgrades() -> None:
                     CREATE TABLE mas_test_runs (
                         id VARCHAR NOT NULL PRIMARY KEY,
                         workflow_id VARCHAR NOT NULL,
+                        model_name VARCHAR,
                         name VARCHAR,
                         status VARCHAR NOT NULL,
                         selected_case_ids_json JSON NOT NULL,
@@ -671,6 +672,7 @@ def ensure_runtime_schema_upgrades() -> None:
             mas_test_runs_existing = {col["name"] for col in inspector.get_columns("mas_test_runs")}
             mas_test_runs_required: dict[str, str] = {
                 "workflow_id": "VARCHAR NOT NULL DEFAULT ''",
+                "model_name": "VARCHAR",
                 "name": "VARCHAR",
                 "status": "VARCHAR NOT NULL DEFAULT 'created'",
                 "selected_case_ids_json": "JSON",

@@ -11,7 +11,8 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
 from app.agentic.eval_types import EvalResult
-from app.agentic.workflows.registry import get_workflow_spec, list_workflow_specs
+from app.agentic.model_registry import validate_model_for_agent
+from app.agentic.workflows.registry import get_workflow_definition, get_workflow_spec, list_workflow_specs
 from app.api.repository import (
     mas_tests_repository,
     swarm_final_outputs_repository,
@@ -20,6 +21,7 @@ from app.api.repository import (
 )
 from app.api.services import swarm_execution_service
 from app.api.services.swarm_run_metrics_service import TERMINAL_SWARM_STATUSES, persist_swarm_run_metrics
+from app.config import settings
 from app.database import SessionLocal
 from app.models.mas_test_case import MasTestCase
 from app.models.mas_test_case_run import MasTestCaseRun
@@ -89,6 +91,10 @@ def _normalize_runtime_input_or_400(
         candidate["arrival_transport"] = candidate["rival_transport"]
     normalized_input, _, _ = swarm_execution_service.normalize_workflow_input(workflow_id, candidate)
     return normalized_input
+
+
+def _resolve_test_run_model_id(run: MasTestRun) -> str:
+    return run.model_name or settings.OPENAI_MODEL
 
 
 def _build_case_diff_payload(
@@ -214,6 +220,15 @@ def start_run(payload: MasTestRunStartRequest, db: Session) -> MasTestRunRead:
         raise HTTPException(status_code=400, detail="case_ids must be non-empty")
 
     _workflow_evaluator_or_400(payload.workflow_id)
+    workflow = get_workflow_definition(payload.workflow_id)
+    model_id = payload.model_id or settings.OPENAI_MODEL
+    for agent_name in workflow.participating_agents:
+        validate_model_for_agent(
+            model_id=model_id,
+            agent_name=agent_name,
+            requires_tools=True,
+        )
+
     cases = mas_tests_repository.get_test_cases_by_ids(db, payload.case_ids)
     case_by_id = {case.id: case for case in cases}
     missing = [case_id for case_id in payload.case_ids if case_id not in case_by_id]
@@ -240,6 +255,7 @@ def start_run(payload: MasTestRunStartRequest, db: Session) -> MasTestRunRead:
     run = MasTestRun(
         id=run_id,
         workflow_id=payload.workflow_id,
+        model_name=model_id,
         name=payload.name,
         status="created",
         selected_case_ids_json=payload.case_ids,
@@ -568,6 +584,7 @@ def stream_run(run_id: str, db: Session) -> StreamingResponse:
 
     def _stream():
         nonlocal run
+        model_id = _resolve_test_run_model_id(run)
 
         now = datetime.utcnow()
         run.status = "running"
@@ -582,6 +599,7 @@ def stream_run(run_id: str, db: Session) -> StreamingResponse:
             {
                 "run_id": run.id,
                 "workflow_id": run.workflow_id,
+                "model_id": model_id,
                 "total": total_cases,
             },
             event_id=event_id,
@@ -635,6 +653,7 @@ def stream_run(run_id: str, db: Session) -> StreamingResponse:
                 swarm_run_id, normalized_input, _, workflow_version = swarm_execution_service.create_and_start_swarm_run(
                     workflow_id=run.workflow_id,
                     input_payload=normalized_input,
+                    model_id=model_id,
                     metadata={
                         "source": "mas_tests",
                         "mas_test_run_id": run.id,
@@ -664,6 +683,7 @@ def stream_run(run_id: str, db: Session) -> StreamingResponse:
                             workflow_version=workflow_version,
                             swarm_run_id=swarm_run_id,
                             case_info=normalized_input,
+                            model_id=model_id,
                         )
                     )
                 except Exception:
