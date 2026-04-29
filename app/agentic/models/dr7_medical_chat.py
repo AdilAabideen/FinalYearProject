@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import time
 from typing import Any, Callable, Optional, Sequence, Union
 
 import httpx
@@ -42,6 +43,10 @@ class Dr7MedicalChatModel(BaseChatModel):
     temperature: float = 0.7
     max_tokens: Optional[int] = None
     timeout_s: float = 60.0
+    rate_limit_max_retries: int = 2
+    rate_limit_backoff_initial_s: float = 10.0
+    rate_limit_backoff_multiplier: float = 2.0
+    rate_limit_backoff_max_s: float = 40.0
 
     def _llm_type(self) -> str:
         return "dr7-medical-chat"
@@ -79,6 +84,50 @@ class Dr7MedicalChatModel(BaseChatModel):
     def _normalize_dr7_messages(self, messages: list[dict[str, str]]) -> list[dict[str, str]]:
         """Normalize provider messages via shared protocol helper."""
         return normalize_chat_messages(messages)
+
+    def _compute_rate_limit_backoff_s(self, attempt_index: int, retry_after_header: Any = None) -> float:
+        if retry_after_header is not None:
+            try:
+                retry_after_s = float(retry_after_header)
+            except (TypeError, ValueError):
+                retry_after_s = None
+            else:
+                if retry_after_s >= 0:
+                    return retry_after_s
+
+        base_delay = max(0.0, float(self.rate_limit_backoff_initial_s))
+        if base_delay == 0.0:
+            return 0.0
+
+        multiplier = max(1.0, float(self.rate_limit_backoff_multiplier))
+        computed = base_delay * (multiplier ** max(0, attempt_index))
+        max_delay = max(0.0, float(self.rate_limit_backoff_max_s))
+        if max_delay > 0.0:
+            return min(computed, max_delay)
+        return computed
+
+    def _post_with_rate_limit_retry(
+        self,
+        *,
+        url: str,
+        headers: dict[str, str],
+        payload: dict[str, Any],
+    ) -> httpx.Response:
+        max_retries = max(0, int(self.rate_limit_max_retries))
+        with httpx.Client(timeout=self.timeout_s) as client:
+            attempt_index = 0
+            while True:
+                resp = client.post(url, headers=headers, json=payload)
+                if resp.status_code != 429 or attempt_index >= max_retries:
+                    return resp
+
+                delay_s = self._compute_rate_limit_backoff_s(
+                    attempt_index,
+                    retry_after_header=getattr(resp, "headers", {}).get("Retry-After"),
+                )
+                if delay_s > 0:
+                    time.sleep(delay_s)
+                attempt_index += 1
 
 
     def _generate(
@@ -125,8 +174,11 @@ class Dr7MedicalChatModel(BaseChatModel):
         }
 
         try:
-            with httpx.Client(timeout=self.timeout_s) as client:
-                resp = client.post(url, headers=headers, json=payload)
+            resp = self._post_with_rate_limit_retry(
+                url=url,
+                headers=headers,
+                payload=payload,
+            )
         except Exception as e:
             raise RuntimeError(f"Dr7 request failed: {e}") from e
 

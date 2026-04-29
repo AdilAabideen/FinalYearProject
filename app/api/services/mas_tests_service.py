@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import time
 import uuid
 from datetime import datetime
 from typing import Any, Optional
@@ -594,6 +595,7 @@ def stream_run(run_id: str, db: Session) -> StreamingResponse:
 
         event_id = 1
         total_cases = len(run.selected_case_ids_json)
+        case_backoff_s = max(0.0, float(settings.MAS_TEST_CASE_BACKOFF_S))
         yield _sse(
             "run_start",
             {
@@ -756,6 +758,19 @@ def stream_run(run_id: str, db: Session) -> StreamingResponse:
                 },
                 event_id=event_id,
             )
+
+            is_last_case = index >= (total_cases - 1)
+            if not is_last_case and case_backoff_s > 0:
+                event_id += 1
+                yield _sse(
+                    "case_backoff",
+                    {
+                        "seconds": case_backoff_s,
+                        "next_index": index + 1,
+                    },
+                    event_id=event_id,
+                )
+                time.sleep(case_backoff_s)
 
         now = datetime.utcnow()
         total = total_cases

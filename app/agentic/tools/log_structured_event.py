@@ -11,7 +11,6 @@ class LogStructuredEventInput(BaseModel):
         "replan_required",
         "final_output_ready",
         "resource_needed",
-        "uptraige_needed"
     ] = Field(
         ...,
         description="The type of meaningful event being logged."

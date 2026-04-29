@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field, AliasChoices
+from pydantic import BaseModel, Field, AliasChoices, model_validator
 from typing import List, Literal, Optional, Any, Union
 
 
@@ -90,27 +90,25 @@ class DoctorAgentInput(BaseModel):
         description="Confidence from the vitals agent."
     )
 
-
-
 class DoctorAgentOutput(BaseModel):
     final_esi_level: Literal[1, 2, 3, 4, 5] = Field(
         ...,
-        description="Final ESI level after doctor-agent review."
+        description="Final ESI level after doctor-agent routing review."
     )
 
     source_agent: Literal["esi1_agent", "esi2_agent", "esi345_agent"] = Field(
         ...,
-        description="Upstream acuity agent that produced the main triage result."
+        description="Upstream acuity agent that produced the main result."
     )
 
     accepted_upstream_result: bool = Field(
         ...,
-        description="True if the upstream acuity result was accepted without changing the ESI level."
+        description="True if the upstream acuity result was accepted without change."
     )
 
     uptriaged: bool = Field(
         ...,
-        description="True only if an ESI-345 result was changed to ESI-2 because of vitals."
+        description="True only if an ESI-345 result was escalated to ESI-2 because of vitals."
     )
 
     decision_source: Literal[
@@ -120,35 +118,25 @@ class DoctorAgentOutput(BaseModel):
         "esi345_uptriaged_to_esi2"
     ] = Field(
         ...,
-        description="Simple explanation of how the final decision was produced."
+        description="Routing rule used to produce the final decision."
     )
 
-    summary: str = Field(
+    audit_summary: str = Field(
         ...,
-        description="Short clinician-facing final summary."
+        description="One concise sentence explaining the routing decision."
     )
-
-    rationale: str = Field(
+    
+    case_summary: str = Field(
         ...,
-        description="Concise explanation of why the final ESI level was kept or changed."
-    )
-
-    key_concerns: List[str] = Field(
-        default_factory=list,
-        description="Important concerns carried forward from upstream agents."
-    )
-
-    predicted_resources: List[str] = Field(
-        default_factory=list,
-        description="Predicted ESI-counted resources if the source was the ESI-345 agent."
+        description="Summary of the Case for a Doctor to look at - Short"
     )
 
     abnormal_vitals_considered: List[str] = Field(
         default_factory=list,
-        description="Abnormal vitals considered during doctor review."
+        description="Vitals considered only for ESI-345 up-triage review."
     )
 
-    next_actions: List[str] = Field(
+    safety_flags: List[str] = Field(
         default_factory=list,
-        description="Immediate workflow or clinical review actions."
+        description="Short carry-forward concerns from the upstream agent only."
     )

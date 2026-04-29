@@ -18,10 +18,11 @@ from pydantic import ValidationError
 
 
 class FakeResponse:
-    def __init__(self, status_code=200, payload=None, text=""):
+    def __init__(self, status_code=200, payload=None, text="", headers=None):
         self.status_code = status_code
         self._payload = payload
         self.text = text or (json.dumps(payload) if payload is not None else "")
+        self.headers = headers or {}
 
     def json(self):
         if isinstance(self._payload, Exception):
@@ -45,6 +46,24 @@ class FakeClient:
         return self.response
 
 
+class SequencedFakeClient:
+    def __init__(self, responses, recorder):
+        self.responses = list(responses)
+        self.recorder = recorder
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        return False
+
+    def post(self, url, headers, json):
+        self.recorder.append({"url": url, "headers": headers, "json": json})
+        if not self.responses:
+            raise AssertionError("No fake responses remaining")
+        return self.responses.pop(0)
+
+
 @tool
 def lookup_value(value: str) -> dict:
     """Return a lookup payload."""
@@ -55,6 +74,12 @@ def _patched_client(monkeypatch, response, recorder):
     import httpx
 
     monkeypatch.setattr(httpx, "Client", lambda timeout: FakeClient(response, recorder))
+
+
+def _patched_sequenced_client(monkeypatch, responses, recorder):
+    import httpx
+
+    monkeypatch.setattr(httpx, "Client", lambda timeout: SequencedFakeClient(responses, recorder))
 
 
 @pytest.mark.unit
@@ -115,6 +140,41 @@ def test_ut_wrp_008_dr7_wrapper_raises_on_missing_choices_message(monkeypatch):
     model = Dr7MedicalChatModel(model="medgemma-4b-it", base_url="https://dr7.test", api_key="secret")
     with pytest.raises(RuntimeError):
         model._generate([HumanMessage(content="hi")], tools=[])
+
+
+@pytest.mark.unit
+@pytest.mark.wrapper
+def test_ut_wrp_009_dr7_wrapper_retries_once_on_429_then_succeeds(monkeypatch, load_json_fixture):
+    recorded = []
+    sleeps = []
+    _patched_sequenced_client(
+        monkeypatch,
+        [
+            FakeResponse(
+                status_code=429,
+                payload={"error": {"message": "rate limited"}},
+                text='{"error":{"message":"rate limited"}}',
+            ),
+            FakeResponse(payload=load_json_fixture("provider_payloads/dr7_native_tool_calls.json")),
+        ],
+        recorded,
+    )
+    monkeypatch.setattr("app.agentic.models.dr7_medical_chat.time.sleep", lambda seconds: sleeps.append(seconds))
+    model = Dr7MedicalChatModel(
+        model="medgemma-4b-it",
+        base_url="https://dr7.test",
+        api_key="secret",
+        rate_limit_max_retries=2,
+        rate_limit_backoff_initial_s=10.0,
+        rate_limit_backoff_multiplier=2.0,
+        rate_limit_backoff_max_s=40.0,
+    )
+
+    result = model._generate([HumanMessage(content="hi")], tools=[{"function": {"name": "lookup_value", "description": "", "parameters": {}}}])
+
+    assert result.generations[0].message.tool_calls[0]["name"] == "lookup_value"
+    assert sleeps == [10.0]
+    assert len(recorded) == 2
 
 
 @pytest.mark.unit

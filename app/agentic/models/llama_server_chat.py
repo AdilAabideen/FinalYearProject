@@ -76,7 +76,7 @@ class LlamaServerChat(BaseChatModel):
 
     model: str = Field(description="Llama server model id (e.g. 'medgemma-4b-it').")
     base_url: str = Field(
-        default="http://localhost:8080/v1",
+        default="https://g6o7hnawustqql-8000.proxy.runpod.net/v1",
         # default="http://localhost:8080/v1",
         description="Base URL for llama-server OpenAI-compatible API.",
     )
@@ -96,7 +96,7 @@ class LlamaServerChat(BaseChatModel):
     adapter_scale: float = Field(default=1.0, description="LoRA scale for selected adapter.")
 
     temperature: float = 0
-    max_tokens: Optional[int] = None
+    max_tokens: Optional[int] = 600
     timeout_s: float = 60.0
 
     def _llm_type(self) -> str:

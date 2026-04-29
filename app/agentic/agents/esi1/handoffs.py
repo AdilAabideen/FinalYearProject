@@ -1,10 +1,10 @@
 from pydantic import BaseModel, Field
 from app.agentic.handoff import define_handoff
-from typing import List
+from typing import List, Literal
 
 
 class ESI1ToESI2Payload(BaseModel):
-    esi1_result: str = Field(
+    esi1_result: Literal["esi1", "not_esi1"] = Field(
         ...,
         description="Outcome of the ESI-1 assessment. Usually 'not_esi1' when handing off to the ESI-2 agent."
     )
@@ -22,7 +22,7 @@ class ESI1ToESI2Payload(BaseModel):
     )
 
 class ESI1ToDoctorPayload(BaseModel):
-    decision: str = Field(
+    decision: Literal["esi1", "not_esi1"] = Field(
         ...,
         description="Result of the ESI-1 assessment, typically 'esi1'."
     )

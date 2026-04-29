@@ -74,7 +74,7 @@ _MODEL_REGISTRY: dict[str, ModelSpec] = {
             "MedGemma 4B Instruction Tuned - Optimized for medical text understanding and generation Q_8 Quantization"
         ),
         context_length=8192,
-        max_tokens=600,
+        max_tokens=4096,
         pricing=ModelPricing(input_per_1k=0.00015, output_per_1k=0.00060),
         capabilities=[
             "medical_text_analysis",
@@ -208,6 +208,10 @@ def _build_dr7_chat_model(spec: ModelSpec) -> BaseChatModel:
         api_key=settings.DR7_API_KEY,
         temperature=spec.default_temperature,
         max_tokens=spec.max_tokens,
+        rate_limit_max_retries=settings.DR7_RATE_LIMIT_MAX_RETRIES,
+        rate_limit_backoff_initial_s=settings.DR7_RATE_LIMIT_BACKOFF_INITIAL_S,
+        rate_limit_backoff_multiplier=settings.DR7_RATE_LIMIT_BACKOFF_MULTIPLIER,
+        rate_limit_backoff_max_s=settings.DR7_RATE_LIMIT_BACKOFF_MAX_S,
     )
 
 

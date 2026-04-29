@@ -30,15 +30,20 @@ class Settings(BaseSettings):
     # Dr7 settings
     DR7_API_KEY: Optional[str] = None
     DR7_MEDICAL_BASE_URL: str = "https://dr7.ai/api/v1/medical"
+    DR7_RATE_LIMIT_MAX_RETRIES: int = 2
+    DR7_RATE_LIMIT_BACKOFF_INITIAL_S: float = 10.0
+    DR7_RATE_LIMIT_BACKOFF_MULTIPLIER: float = 2.0
+    DR7_RATE_LIMIT_BACKOFF_MAX_S: float = 40.0
 
     # Llama Server settings
-    LLAMA_SERVER_BASE_URL: str = "http://localhost:8080/v1"
+    LLAMA_SERVER_BASE_URL: str = "https://g6o7hnawustqql-8000.proxy.runpod.net/v1"
     # LLAMA_SERVER_BASE_URL: str = "http://localhost:8080/v1"
     LLAMA_SERVER_API_KEY: Optional[str] = None
 
     # Agent runtime safety
     AGENT_RUN_TIMEOUT_S: float = 240.0
     TEST_CASE_BACKOFF_S: float = 5.0
+    MAS_TEST_CASE_BACKOFF_S: float = 20.0
 
     #LangSmith settings
     # LANGSMITH_API_KEY: Optional[str] = None

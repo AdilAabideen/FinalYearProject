@@ -5,6 +5,6 @@ from app.agentic.tools.log_thought import log_thought
 
 TOOLS = [
     create_plan,
-    log_structured_event,
+    # log_structured_event,
     log_thought,
 ]
