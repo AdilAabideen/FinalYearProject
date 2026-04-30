@@ -63,7 +63,6 @@ class InvokeWithTelemetry(Protocol):
         iteration: int,
         messages: list[BaseMessage],
         invoke_fn: Callable[[], Awaitable[AIMessage]],
-        timeout_s: float | None = None,
     ) -> Awaitable[AIMessage]: ...
 
 

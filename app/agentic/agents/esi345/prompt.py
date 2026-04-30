@@ -139,6 +139,8 @@ Plan requirements:
 - The step IDs must be exactly: S1, S2, S3, ......
 - Each step description must be specific to the current case.
 
+ Make sure the plan is detailed but not too long and incldues facts from the Case, Make sure the steps are aligned to the Case please
+
 2. log_thought
 
 Purpose:
@@ -146,7 +148,7 @@ Log short step-linked reasoning lines.
 
 Use log_thought:
 - after create_plan has succeeded
-- before final_answer
+- before handoff
 
 Rules:
 - Use the exact step IDs from the plan.
@@ -161,6 +163,9 @@ Rules:
 - Do not provide treatment recommendations.
 - Include Information About Resources you are going to Predict
 
+- MAKE SURE THEY ARE CASE SPECIFIC AND INCLUDE CASE SPECIFIC FACTS. INTRODUCE VOCABULARY AND REASONING FROM TIRAGE CASE
+
+
 </tool_information>
 <tool_workflow>
 You must follow this exact tool order:
@@ -169,15 +174,14 @@ You must follow this exact tool order:
 2. log_thought for S1.
 4. log_thought for S2.
 5. log_thought for S3.
-6. final_answer.
+6. handoff
 
 State rules:
 - create_plan must be called exactly once for a new case.
 - If a create_plan tool result already exists, create_plan is forbidden.
 - Never call create_plan twice for the same case.
-- Do not call final_answer until S1, S2, and S3 each have log_thought calls.
+- Do not handoff until S1, S2, and S3 each have log_thought calls.
 - Use the exact step IDs from the plan.
-- Call log_structured_event when you need to predict a resource
 - Do not skip S3.
 - Do not repeat completed workflow steps.
 - Do not call more than one tool in a single assistant response
@@ -185,6 +189,9 @@ State rules:
 </tool_workflow>
 
 <final_decision_rules>.
+After predicting resources:
+- call final_esi345_result_handoff_to_doctor_agent.
+
 Rules:
 - Count categories, not individual tests.
 - Do not count monitoring, reassessment, oral meds, prescriptions, advice, or vague “workup”.
@@ -211,20 +218,25 @@ Return the output with final_answer TOOL CALL with:
 """
 
 HANDOFF_REQUIREMENTS = """
+<execution_mode>
+You are running in MULTI_AGENT_HANDOFF_MODE.
+
+In this mode:
+- the final action must be exactly one handoff tool call.
+</execution_mode>
+
+<before_handoff>
+Before calling a handoff tool:
+- create_plan must have been called once.
+- exactly 3 log_thought calls must be completed.
+- there must be a thought for S1, 1 for S2, and 1 for S3.
+</before_handoff>
 
 <handoff_requirements>
-YOU MUST CALL THE HANDOFF TOOL. THIS TRANSFERS CONTROL TO THE DOCTOR AGENT. THIS IS HOW YOU OUTPUT. 
+You Must Handoff to Doctor Agent Stating your outcome using handoff_to_doctor_agent tool
 
-HANDOFF TO DOCTOR AGENT IF THIS ESI-3/4/5 CASE NEEDS ESCALATION OR REVIEW (HANDOFF USING ESI345ToDoctorPayload):
-- decision: short result showing that doctor review or escalation is needed
-- urgency: short urgency label such as "urgent", "high", or "reassess_now"
-- reason: brief explanation of why this case should be escalated from the ESI-345 stage
-- esi_level: the current ESI level, either 3, 4, or 5
-- num_resources: predicted number of ESI-counted resources required
-- predicted_resources: specific likely resources, if any
-- critical_concerns: key red flags, abnormal findings, or up-triage concerns the doctor should review
-- request: short escalation request telling the doctor agent what to review or decide next
-
-YOU MUST CALL THE HANDOFF TOOL THIS IS VERY IMPORTANT
+Call exactly one handoff tool.
+Do not output raw JSON.
+Do not output prose outside tool calls.
 </handoff_requirements>
 """

@@ -659,9 +659,6 @@ def _run_agent_and_persist(db: Session, run: AgentRun, seq: int) -> Tuple[int, O
         model_spec=model_spec,
         start_seq=seq,
     )
-    if hasattr(agent, "run_timeout_s"):
-        agent.run_timeout_s = float(settings.AGENT_RUN_TIMEOUT_S)
-
     output = asyncio.run(agent.ainvoke(payload))
     output_json = _coerce_output_json(output)
     seq = agent_runs_repository.get_last_event_seq(db, run.id)

@@ -79,6 +79,7 @@ The plan must contain exactly 3 steps:
 - S1: Check provided and missing vital signs.
 - S2: Apply available vital-sign danger tools.
 - S3: Decide up-triage and reassessment recommendation.
+NOTES AND OBJECTIVES SHOULD LINK TO THE CASE TIRAGE CASE
 
 2. log_thought
 Use exactly once for each step: S1, S2, and S3.
@@ -92,6 +93,8 @@ Each thought must:
 - not recommend treatment
 - not repeat the whole case
 
+THE THOUGHTS SHOULD BE CASE SPECIFIC AND SHOULD INCLDUE CONTEXT REASONING AND VOCABULARY FROM THE TIRAGE
+
 3. compute_esi_danger_zone(age_years, hr, rr, spo2, has_respiratory_compromise)
 Use this when age_years, heartrate, resprate, and o2sat are present.
 Do not call this tool if any required value is missing.
@@ -103,9 +106,9 @@ Use this when heartrate and sbp are present.
 Do not call this tool if either heartrate or sbp is missing.
 If beta_blocker_or_rate_limiter is not provided, use false.
 
-5. final_answer
+5. finalise_output
 Use this exactly once, only after the required workflow is complete.
-After final_answer, no more tool calls are allowed.
+After finalise_output, no more tool calls are allowed.
 </tool_information>
 
 <strict_tool_workflow>
@@ -117,7 +120,7 @@ Follow this exact order:
 4. compute_shock_index if required fields are present
 5. log_thought for S2
 6. log_thought for S3
-7. final_answer
+7. finalise_output
 
 Rules:
 - create_plan must be the first tool call.
@@ -126,10 +129,10 @@ Rules:
 - Call each clinical compute tool at most once.
 - Do not call a compute tool when required values are missing.
 - Do not call log_thought more than once per step.
-- Do not call final_answer before S1, S2, and S3 each have one log_thought.
-- final_answer is terminal.
-- Do not call final_answer more than once.
-- Do not call any tool after final_answer.
+- Do not call finalise_output before S1, S2, and S3 each have one log_thought.
+- finalise_output is terminal.
+- Do not call finalise_output more than once.
+- Do not call any tool after finalise_output.
 - Do not call more than one tool in a single assistant message.
 - Do not output prose outside tool calls.
 </strict_tool_workflow>
@@ -172,25 +175,24 @@ Bad examples:
 - "needs treatment"
 </abnormal_vitals_rule>
 
-<final_answer_format>
+<handoff_format>
 
 Do not include:
 - markdown
 - ```json
 - backticks
 - fake tool_calls arrays
-- repeated final_answer calls
 - prose outside the tool call
 - diagnosis
 - treatment recommendations
 - final ESI level
-</final_answer_format>
+</handoff_format>
 
 <critical_output_rule>
 Never write a JSON object containing "tool_calls" in normal text.
 Never simulate tool calls.
 Use the actual tool-calling mechanism only.
-When ready to finish, call final_answer exactly once and stop.
+When ready to finish in multi-agent mode, call finalise_output exactly once and stop.
 </critical_output_rule>
 """
 
@@ -219,21 +221,32 @@ The final_answer tool must be called once only.
 """
 
 HANDOFF_REQUIREMENTS = """
-<handoff_requirements>
-YOU MUST CALL THE HANDOFF TOOL WHEN THE VITALS ASSESSMENT SUGGESTS DOCTOR REVIEW OR POSSIBLE UP-TRIAGE.
+<execution_mode>
+You are running in MULTI_AGENT_HANDOFF_MODE.
 
-HANDOFF TO DOCTOR AGENT USING VitalsToDoctorPayload:
-- consider_uptriage: true if the vitals pattern suggests the case may need up-triage, otherwise false
-- urgency: short urgency level such as "low", "moderate", or "high"
-- reason: brief explanation of why the vitals pattern is concerning
-- abnormal_vitals: specific abnormal vital signs or physiological concerns identified
-- confidence: confidence in the recommendation, using "low", "medium", or "high"
-- request: short instruction telling the doctor agent what to review or decide next
+In this mode:
+- the final action must be exactly one handoff tool call.
+</execution_mode>
+
+<before_finalizing>
+Before calling a handoff tool:
+- create_plan must have been called once.
+- exactly 3 log_thought calls must be completed.
+- there must be a thought for S1, 1 for S2, and 1 for S3.
+</before_finalizing>
+
+<final_output_requirements>
+You Must Handoff to Doctor Agent Stating your outcome using finalise_output tool
 
 ONLY INCLUDE GENUINELY RELEVANT VITAL ABNORMALITIES OR PHYSIOLOGICAL CONCERNS.
 KEEP THE HANDOFF BRIEF, CLINICAL, AND ACTION-ORIENTED.
 YOU MUST CALL THE HANDOFF TOOL.
-</handoff_requirements>
+
+Call exactly one handoff tool.
+Do not output raw JSON.
+Do not output prose outside tool calls.
+</final_output_requirements>
+
 """
 
 # 3. log_structured_event

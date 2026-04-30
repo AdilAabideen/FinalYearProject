@@ -26,6 +26,8 @@ class Settings(BaseSettings):
     # LLM / Agentic settings (LangChain / LangGraph)
     OPENAI_API_KEY: Optional[str] = None
     OPENAI_MODEL: str = "gpt-4o-mini"
+    HF_TOKEN: Optional[str] = None
+    HF_ROUTER_BASE_URL: str = "https://router.huggingface.co/v1"
 
     # Dr7 settings
     DR7_API_KEY: Optional[str] = None
@@ -36,12 +38,13 @@ class Settings(BaseSettings):
     DR7_RATE_LIMIT_BACKOFF_MAX_S: float = 40.0
 
     # Llama Server settings
-    LLAMA_SERVER_BASE_URL: str = "https://g6o7hnawustqql-8000.proxy.runpod.net/v1"
+    LLAMA_SERVER_BASE_URL: str = "https://u31987bq9bfb30-8000.proxy.runpod.net/v1"
     # LLAMA_SERVER_BASE_URL: str = "http://localhost:8080/v1"
     LLAMA_SERVER_API_KEY: Optional[str] = None
+    LLAMA_SERVER_SERIAL_REQUESTS: Union[bool, str] = False
+    LLAMA_SERVER_TIMEOUT_S: float = 60.0
 
     # Agent runtime safety
-    AGENT_RUN_TIMEOUT_S: float = 240.0
     TEST_CASE_BACKOFF_S: float = 5.0
     MAS_TEST_CASE_BACKOFF_S: float = 20.0
 
@@ -68,6 +71,15 @@ class Settings(BaseSettings):
     @field_validator('SQLALCHEMY_ECHO', mode='before')
     @classmethod
     def parse_echo(cls, v):
+        if isinstance(v, bool):
+            return v
+        if isinstance(v, str):
+            return v.lower() in ('true', '1', 'yes', 'on')
+        return False
+
+    @field_validator('LLAMA_SERVER_SERIAL_REQUESTS', mode='before')
+    @classmethod
+    def parse_llama_serial_requests(cls, v):
         if isinstance(v, bool):
             return v
         if isinstance(v, str):

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 import json
 import threading
 import time
@@ -55,7 +54,6 @@ class SSEHandrolledAgent:
         llm_kwargs: dict[str, Any] | None = None,
         agent_node_name: str = "agent",
         tools_node_name: str = "tools",
-        run_timeout_s: float | None = None,
         event_handlers: Sequence[Callable[[dict[str, Any]], None]] | None = None,
         llm_call_handlers: Sequence[Callable[[dict[str, Any]], None]] | None = None,
         tool_call_handlers: Sequence[Callable[[dict[str, Any]], None]] | None = None,
@@ -109,7 +107,6 @@ class SSEHandrolledAgent:
         self.tools_by_name: dict[str, BaseTool] = {t.name: t for t in self.tools}
         self.agent_node_name = agent_node_name
         self.tools_node_name = tools_node_name
-        self.run_timeout_s = None if run_timeout_s is None else float(run_timeout_s)
         self.max_tool_calls = int(self.runtime_config.max_tool_calls_per_turn)
         self._token_estimator = TokenEstimator()
         self._events = EventEmitter()
@@ -137,7 +134,6 @@ class SSEHandrolledAgent:
         self._agent_runner = AgentRunner(
             bound_model=self.bound_model,
             runtime_config=self.runtime_config,
-            run_timeout_s=self.run_timeout_s,
             agent_node_name=self.agent_node_name,
             tools_node_name=self.tools_node_name,
             finalization_policy=self._finalization_policy,
@@ -386,7 +382,6 @@ class SSEHandrolledAgent:
         iteration: int,
         messages: list[BaseMessage],
         invoke_fn: Callable[[], Any],
-        timeout_s: float | None = None,
     ) -> Any:
         started_at = datetime.utcnow()
         t0 = time.perf_counter()
@@ -394,10 +389,7 @@ class SSEHandrolledAgent:
         run_id, agent_name = self._telemetry.current_context()
 
         try:
-            if timeout_s is None:
-                response = await invoke_fn()
-            else:
-                response = await asyncio.wait_for(invoke_fn(), timeout=timeout_s)
+            response = await invoke_fn()
 
             ended_at = datetime.utcnow()
             latency_ms = int((time.perf_counter() - t0) * 1000)

@@ -1,5 +1,8 @@
 from __future__ import annotations
+from contextlib import contextmanager
+import threading
 from typing import Any, Callable, Literal, Optional, Sequence, Union
+import json
 
 import httpx
 from langchain_core.language_models import LanguageModelInput
@@ -62,6 +65,46 @@ ESI_LORA_ADAPTERS: list[dict[str, Any]] = [
 ]
 
 
+class _SerialRequestQueue:
+    def __init__(self) -> None:
+        self._condition = threading.Condition()
+        self._next_ticket = 0
+        self._serving_ticket = 0
+
+    @contextmanager
+    def acquire(self):
+        with self._condition:
+            ticket = self._next_ticket
+            self._next_ticket += 1
+            while ticket != self._serving_ticket:
+                self._condition.wait()
+
+        try:
+            yield
+        finally:
+            with self._condition:
+                self._serving_ticket += 1
+                self._condition.notify_all()
+
+
+_SERIAL_QUEUE_GUARD = threading.Lock()
+_SERIAL_QUEUES_BY_BASE_URL: dict[str, _SerialRequestQueue] = {}
+
+
+def _queue_key_for(base_url: str) -> str:
+    return str(base_url or "").rstrip("/")
+
+
+def _serial_queue_for(base_url: str) -> _SerialRequestQueue:
+    key = _queue_key_for(base_url)
+    with _SERIAL_QUEUE_GUARD:
+        queue = _SERIAL_QUEUES_BY_BASE_URL.get(key)
+        if queue is None:
+            queue = _SerialRequestQueue()
+            _SERIAL_QUEUES_BY_BASE_URL[key] = queue
+        return queue
+
+
 class LlamaServerChat(BaseChatModel):
     """
     Minimal LangChain ChatModel wrapper around LLama Server chat completions endpoint.
@@ -76,7 +119,7 @@ class LlamaServerChat(BaseChatModel):
 
     model: str = Field(description="Llama server model id (e.g. 'medgemma-4b-it').")
     base_url: str = Field(
-        default="https://g6o7hnawustqql-8000.proxy.runpod.net/v1",
+        default="https://u31987bq9bfb30-8000.proxy.runpod.net/v1",
         # default="http://localhost:8080/v1",
         description="Base URL for llama-server OpenAI-compatible API.",
     )
@@ -94,6 +137,10 @@ class LlamaServerChat(BaseChatModel):
         description="Default LoRA adapter id. If omitted, inferred from model when possible.",
     )
     adapter_scale: float = Field(default=1.0, description="LoRA scale for selected adapter.")
+    serialize_requests: bool = Field(
+        default=False,
+        description="When true, queue llama-server requests serially per backend URL.",
+    )
 
     temperature: float = 0
     max_tokens: Optional[int] = 600
@@ -192,6 +239,30 @@ class LlamaServerChat(BaseChatModel):
         run_manager: Optional[Any] = None,
         **kwargs: Any,
     ) -> ChatResult:
+        serialize_requests = bool(kwargs.get("serialize_requests", self.serialize_requests))
+        if not serialize_requests:
+            return self._generate_once(
+                messages=messages,
+                stop=stop,
+                run_manager=run_manager,
+                **kwargs,
+            )
+
+        with _serial_queue_for(self.base_url).acquire():
+            return self._generate_once(
+                messages=messages,
+                stop=stop,
+                run_manager=run_manager,
+                **kwargs,
+            )
+
+    def _generate_once(
+        self,
+        messages: list[BaseMessage],
+        stop: Optional[list[str]] = None,
+        run_manager: Optional[Any] = None,
+        **kwargs: Any,
+    ) -> ChatResult:
         bound_tools = kwargs.get("tools")
         tool_choice = kwargs.get("tool_choice")
         tools = coerce_bound_tools(bound_tools)
@@ -231,6 +302,7 @@ class LlamaServerChat(BaseChatModel):
 
         url = self._build_chat_completions_url()
         headers = {"Content-Type": "application/json"}
+        print(json.dumps(payload))
         if self.api_key:
             headers["Authorization"] = f"Bearer {self.api_key}"
 

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import time
 from typing import Any, AsyncGenerator, Mapping
 
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage, ToolMessage
@@ -35,7 +34,6 @@ class AgentRunner:
         *,
         bound_model: BoundModel,
         runtime_config: RuntimeConfig,
-        run_timeout_s: float | None,
         agent_node_name: str,
         tools_node_name: str,
         finalization_policy: FinalizationPolicy,
@@ -54,7 +52,6 @@ class AgentRunner:
     ) -> None:
         self.bound_model = bound_model
         self.runtime_config = runtime_config
-        self.run_timeout_s = run_timeout_s
         self.agent_node_name = agent_node_name
         self.tools_node_name = tools_node_name
         self.finalization_policy = finalization_policy
@@ -74,14 +71,6 @@ class AgentRunner:
     @staticmethod
     def _resolve_modes(stream_mode: StreamModesInput) -> tuple[str, ...]:
         return (stream_mode,) if isinstance(stream_mode, str) else tuple(stream_mode or ("updates", "values"))
-
-    def _remaining_timeout_s(self, *, run_started_t: float) -> float | None:
-        if self.run_timeout_s is None:
-            return None
-        remaining = self.run_timeout_s - (time.perf_counter() - run_started_t)
-        if remaining <= 0:
-            raise TimeoutError("run_timeout_exceeded")
-        return remaining
 
     def _build_call_messages(
         self,
@@ -270,7 +259,6 @@ class AgentRunner:
         iteration = 0
         malformed_tool_retry_counts: dict[str, int] = {}
         pending_retry_feedback: HumanMessage | None = None
-        run_started_t = time.perf_counter()
 
         while not done:
             iteration += 1
@@ -287,7 +275,6 @@ class AgentRunner:
                 iteration=iteration,
                 messages=call_messages,
                 invoke_fn=lambda: self.bound_model.ainvoke(call_messages),
-                timeout_s=self._remaining_timeout_s(run_started_t=run_started_t),
             )
 
             tool_calls = self._extract_normalized_tool_calls(ai_msg)
@@ -357,28 +344,22 @@ class AgentRunner:
                 break
 
             tool_msgs_by_index: dict[int, ToolMessage] = {}
+            run_id, agent_name = self.current_telemetry_context()
+            async for idx, tm in self.tool_executor.execute_tool_calls_batched(
+                tool_calls,
+                iteration=iteration,
+                run_id=run_id,
+                agent_name=agent_name,
+                timeout_s=None,
+            ):
+                tool_msgs_by_index[idx] = tm
+                streamed_messages.append(tm)
+                self._emit_tool_result_event(tm)
 
-            try:
-                remaining = self._remaining_timeout_s(run_started_t=run_started_t)
-                run_id, agent_name = self.current_telemetry_context()
-                async for idx, tm in self.tool_executor.execute_tool_calls_batched(
-                    tool_calls,
-                    iteration=iteration,
-                    run_id=run_id,
-                    agent_name=agent_name,
-                    timeout_s=remaining,
-                ):
-                    tool_msgs_by_index[idx] = tm
-                    streamed_messages.append(tm)
-                    self._emit_tool_result_event(tm)
-
-                    if self._should_emit(modes, "updates"):
-                        yield "updates", {self.tools_node_name: {"messages": [tm]}}
-                    if self._should_emit(modes, "values"):
-                        yield "values", self.values_state(streamed_messages, iteration, False, None)
-            except TimeoutError:
-                raise TimeoutError("run_timeout_exceeded")
-
+                if self._should_emit(modes, "updates"):
+                    yield "updates", {self.tools_node_name: {"messages": [tm]}}
+                if self._should_emit(modes, "values"):
+                    yield "values", self.values_state(streamed_messages, iteration, False, None)
             tool_msgs = [tool_msgs_by_index[idx] for idx in range(len(tool_calls)) if idx in tool_msgs_by_index]
             for tm in tool_msgs:
                 scratchpad.append_tool_result(tm)

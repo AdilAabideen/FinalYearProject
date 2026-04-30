@@ -95,27 +95,16 @@ class DoctorAgentOutput(BaseModel):
         ...,
         description="Final ESI level after doctor-agent routing review."
     )
-
-    source_agent: Literal["esi1_agent", "esi2_agent", "esi345_agent"] = Field(
-        ...,
-        description="Upstream acuity agent that produced the main result."
-    )
-
-    accepted_upstream_result: bool = Field(
-        ...,
-        description="True if the upstream acuity result was accepted without change."
-    )
-
     uptriaged: bool = Field(
         ...,
         description="True only if an ESI-345 result was escalated to ESI-2 because of vitals."
     )
 
     decision_source: Literal[
-        "esi1_accepted",
-        "esi2_accepted",
-        "esi345_accepted",
-        "esi345_uptriaged_to_esi2"
+        "esi1",
+        "esi2",
+        "esi345",
+        "vitals"
     ] = Field(
         ...,
         description="Routing rule used to produce the final decision."
@@ -125,18 +114,8 @@ class DoctorAgentOutput(BaseModel):
         ...,
         description="One concise sentence explaining the routing decision."
     )
-    
-    case_summary: str = Field(
-        ...,
-        description="Summary of the Case for a Doctor to look at - Short"
-    )
 
     abnormal_vitals_considered: List[str] = Field(
         default_factory=list,
         description="Vitals considered only for ESI-345 up-triage review."
-    )
-
-    safety_flags: List[str] = Field(
-        default_factory=list,
-        description="Short carry-forward concerns from the upstream agent only."
     )

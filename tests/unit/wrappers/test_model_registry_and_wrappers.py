@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import threading
+import time
 
 import pytest
 from langchain_core.messages import HumanMessage
@@ -8,11 +10,13 @@ from langchain_core.tools import tool
 
 from app.agentic.model_registry import (
     build_llama_model,
+    get_chat_model,
     list_registered_models,
     resolve_model_spec,
     validate_model_for_agent,
 )
 from app.agentic.models.dr7_medical_chat import Dr7MedicalChatModel
+from app.agentic.models.hf_router_chat import HuggingFaceRouterChatModel
 from app.agentic.models.llama_server_chat import LlamaServerChat
 from pydantic import ValidationError
 
@@ -179,6 +183,53 @@ def test_ut_wrp_009_dr7_wrapper_retries_once_on_429_then_succeeds(monkeypatch, l
 
 @pytest.mark.unit
 @pytest.mark.wrapper
+def test_ut_wrp_009a_hf_router_wrapper_builds_bearer_auth_header(monkeypatch, load_json_fixture):
+    recorded = []
+    _patched_client(monkeypatch, FakeResponse(payload=load_json_fixture("provider_payloads/dr7_native_tool_calls.json")), recorded)
+    model = HuggingFaceRouterChatModel(
+        model="Intelligent-Internet/II-Medical-8B-1706:featherless-ai",
+        base_url="https://router.huggingface.co/v1",
+        api_key="hf_secret",
+    )
+    model._generate([HumanMessage(content="hi")], tools=[])
+    assert recorded[0]["headers"]["Authorization"] == "Bearer hf_secret"
+
+
+@pytest.mark.unit
+@pytest.mark.wrapper
+def test_ut_wrp_009b_hf_router_wrapper_accepts_full_chat_completions_url(monkeypatch, load_json_fixture):
+    recorded = []
+    _patched_client(monkeypatch, FakeResponse(payload=load_json_fixture("provider_payloads/dr7_native_tool_calls.json")), recorded)
+    model = HuggingFaceRouterChatModel(
+        model="Intelligent-Internet/II-Medical-8B-1706:featherless-ai",
+        base_url="https://router.huggingface.co/v1/chat/completions",
+        api_key="hf_secret",
+    )
+    model._generate([HumanMessage(content="hi")], tools=[])
+    assert recorded[0]["url"] == "https://router.huggingface.co/v1/chat/completions"
+
+
+@pytest.mark.unit
+@pytest.mark.wrapper
+def test_ut_wrp_009c_hf_router_wrapper_injects_tool_instruction_and_parses_tool_calls(monkeypatch, load_json_fixture):
+    recorded = []
+    _patched_client(monkeypatch, FakeResponse(payload=load_json_fixture("provider_payloads/dr7_native_tool_calls.json")), recorded)
+    model = HuggingFaceRouterChatModel(
+        model="Intelligent-Internet/II-Medical-8B-1706:featherless-ai",
+        base_url="https://router.huggingface.co/v1",
+        api_key="hf_secret",
+    )
+    result = model._generate(
+        [HumanMessage(content="hi")],
+        tools=[{"function": {"name": "lookup_value", "description": "", "parameters": {}}}],
+        tool_choice="any",
+    )
+    assert "<tool_rules>" in recorded[0]["json"]["messages"][0]["content"]
+    assert result.generations[0].message.tool_calls[0]["name"] == "lookup_value"
+
+
+@pytest.mark.unit
+@pytest.mark.wrapper
 def test_ut_wrp_010_llama_wrapper_includes_auth_header_when_api_key_provided(monkeypatch, load_json_fixture):
     recorded = []
     _patched_client(monkeypatch, FakeResponse(payload=load_json_fixture("provider_payloads/llama_native_tool_calls.json")), recorded)
@@ -269,11 +320,95 @@ def test_ut_wrp_019_medgemma_default_registry_entry_uses_dr7():
 
 
 @pytest.mark.unit
-def test_ut_wrp_020_medgemma_llama_alias_keeps_provider_model_id():
+def test_ut_wrp_020_medgemma_llama_alias_keeps_provider_model_id(monkeypatch):
+    from app.config import settings
+
+    monkeypatch.setattr(settings, "LLAMA_SERVER_SERIAL_REQUESTS", False)
     spec = resolve_model_spec("medgemma-4b-it-llama")
     model = build_llama_model(spec)
     assert isinstance(model, LlamaServerChat)
     assert model.model == "medgemma-4b-it"
+    assert model.serialize_requests is False
+
+
+@pytest.mark.unit
+def test_ut_wrp_021_hf_router_registry_builds_model(monkeypatch):
+    from app.config import settings
+
+    get_chat_model.cache_clear()
+    monkeypatch.setattr(settings, "HF_TOKEN", "hf_secret")
+    monkeypatch.setattr(settings, "HF_ROUTER_BASE_URL", "https://router.huggingface.co/v1")
+    model = get_chat_model("ii-medical-8b")
+    assert isinstance(model, HuggingFaceRouterChatModel)
+    assert model.model == "Intelligent-Internet/II-Medical-8B-1706:featherless-ai"
+    assert model.base_url == "https://router.huggingface.co/v1"
+
+
+@pytest.mark.unit
+def test_ut_wrp_022_llama_registry_threads_serialize_flag(monkeypatch):
+    from app.config import settings
+
+    monkeypatch.setattr(settings, "LLAMA_SERVER_SERIAL_REQUESTS", True)
+    monkeypatch.setattr(settings, "LLAMA_SERVER_TIMEOUT_S", 123.0)
+    spec = resolve_model_spec("medgemma-4b-it-llama")
+    model = build_llama_model(spec)
+    assert isinstance(model, LlamaServerChat)
+    assert model.serialize_requests is True
+    assert model.timeout_s == 123.0
+
+
+@pytest.mark.unit
+@pytest.mark.wrapper
+def test_ut_wrp_023_llama_wrapper_serializes_requests_when_enabled(monkeypatch, load_json_fixture):
+    active = 0
+    max_active = 0
+    state_lock = threading.Lock()
+    start_gate = threading.Event()
+
+    class SlowFakeClient:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def post(self, url, headers, json):
+            nonlocal active, max_active
+            start_gate.wait(timeout=1.0)
+            with state_lock:
+                active += 1
+                max_active = max(max_active, active)
+            time.sleep(0.05)
+            with state_lock:
+                active -= 1
+            return FakeResponse(payload=load_json_fixture("provider_payloads/llama_native_tool_calls.json"))
+
+    import httpx
+
+    monkeypatch.setattr(httpx, "Client", lambda timeout: SlowFakeClient())
+    model = LlamaServerChat(
+        model="medgemma-4b-it",
+        base_url="https://llama.test",
+        serialize_requests=True,
+    )
+
+    errors: list[Exception] = []
+
+    def _worker():
+        try:
+            model._generate([HumanMessage(content="hi")], tools=[])
+        except Exception as exc:  # pragma: no cover
+            errors.append(exc)
+
+    threads = [threading.Thread(target=_worker) for _ in range(2)]
+    for thread in threads:
+        thread.start()
+    start_gate.set()
+    for thread in threads:
+        thread.join(timeout=1.0)
+
+    assert errors == []
+    assert max_active == 1
 
 
 @pytest.mark.unit
@@ -283,12 +418,12 @@ def test_ut_wrp_019_resolve_unknown_model_id_as_openai_provider_fallback():
 
 
 @pytest.mark.unit
-def test_ut_wrp_021_registered_models_list_is_stable_and_sorted():
+def test_ut_wrp_024_registered_models_list_is_stable_and_sorted():
     ids = [spec.id for spec in list_registered_models()]
     assert ids == sorted(ids)
 
 
 @pytest.mark.unit
-def test_ut_wrp_023_unknown_llama_model_mapping_raises_runtime_error():
+def test_ut_wrp_025_unknown_llama_model_mapping_raises_runtime_error():
     with pytest.raises(RuntimeError):
         build_llama_model(resolve_model_spec("unknown-llama"))

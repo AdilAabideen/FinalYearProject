@@ -70,11 +70,12 @@ def define_handoff(
 def create_handoff_tool(definition: HandoffDefinition) -> BaseTool:
     payload_model = definition.payload_model
     tool_name = definition.name
-    tool_description = "{description} Transfers control from {source} to {target}.".format(
+    tool_description = "{description}".format(
         description=definition.description,
         source=definition.source_agent,
         target=definition.target_agent,
     )
+
 
     @tool(tool_name, args_schema=payload_model, description=tool_description)
     def _handoff(**kwargs: Any) -> Dict[str, Any]:
