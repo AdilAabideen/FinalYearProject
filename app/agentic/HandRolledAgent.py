@@ -116,6 +116,7 @@ class SSEHandrolledAgent:
             final_answer_tool_name=self.final_answer_tool_name,
             validate_output=self._schema_validation_error_for_output,
         )
+        self._handoff_tool_names = list(handoff_tool_names or [])
         self._handoff_policy = HandoffPolicy(handoff_tool_names=handoff_tool_names)
         self._tool_executor = ToolExecutor(
             tools_by_name=self.tools_by_name,
@@ -128,7 +129,12 @@ class SSEHandrolledAgent:
         self.set_tool_call_handlers(tool_call_handlers)
 
         if self.tools:
-            self.bound_model = self.model.bind_tools(self.tools, tool_choice="any")
+            self.bound_model = self.model.bind_tools(
+                self.tools,
+                tool_choice="any",
+                multi_agent=bool(self.runtime_config.multi_agent),
+                handoff_names=self._handoff_tool_names,
+            )
         else:
             self.bound_model = self.model
         self._agent_runner = AgentRunner(

@@ -90,10 +90,31 @@ _MODEL_REGISTRY: dict[str, ModelSpec] = {
         supports_tools=True,
         default_temperature=0.7,
     ),
+    # "ii-medical-8b": ModelSpec(
+    #     id="ii-medical-8b",
+    #     provider="llama",
+    #     model_category="default",
+    #     provider_model_id="ii-medical-8b",
+    #     description=(
+    #         "MedGemma 4B Instruction Tuned - Optimized for medical text understanding and generation Q_8 Quantization"
+    #     ),
+    #     context_length=8192,
+    #     max_tokens=8192,
+    #     pricing=ModelPricing(input_per_1k=0.00015, output_per_1k=0.00060),
+    #     capabilities=[
+    #         "medical_text_analysis",
+    #         "symptom_analysis",
+    #         "medical_qa",
+    #         "clinical_reasoning",
+    #     ],
+    #     languages=["en", "zh"],
+    #     supports_tools=True,
+    #     default_temperature=0,
+    # ),
     "medgemma-4b-it-llama-tool": ModelSpec(
         id="medgemma-4b-it-llama-tool",
         provider="llama",
-        model_category="single_user_message",
+        model_category="default",
         provider_model_id="medgemma-tool",
         description=(
             "MedGemma 4B Instruction Tuned - Optimized for medical text understanding and generation Q_8 Quantization"
@@ -268,7 +289,7 @@ def _build_hf_router_chat_model(spec: ModelSpec) -> BaseChatModel:
     if spec.provider != "hf_router":
         raise RuntimeError(f"Cannot build HF Router model for provider '{spec.provider}'.")
     if not settings.HF_TOKEN:
-        raise RuntimeError("HF_TOKEN is not set. Add it to `.env` to use Hugging Face Router models.")
+        raise RuntimeError("HF_TOKEN is not set. Add it to `.env` to use HF Router models.")
 
     from app.agentic.models.hf_router_chat import HuggingFaceRouterChatModel
 

@@ -145,6 +145,7 @@ def inject_tool_instruction(
         final_answer_tool_name=final_answer_tool_name,
         highlight_final_answer=highlight_final_answer,
     )
+
     if messages and messages[0].get("role") == "system":
         existing = (messages[0].get("content") or "").strip()
         messages[0]["content"] = f"{existing}\n\n{tool_instruction}" if existing else tool_instruction
@@ -196,10 +197,10 @@ def normalize_tool_calls_typed(
 
         raw_function = raw_call.get("function")
         if isinstance(raw_function, dict):
-            name = raw_function.get("name")
+            name = raw_function.get("name", raw_function.get("tool_name"))
             raw_args = raw_function.get("arguments", {})
         else:
-            name = raw_call.get("name")
+            name = raw_call.get("name", raw_call.get("tool_name"))
             raw_args = raw_call.get("arguments", raw_call.get("args", {}))
 
         if not isinstance(name, str) or not name.strip():

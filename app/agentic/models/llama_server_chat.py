@@ -119,7 +119,7 @@ class LlamaServerChat(BaseChatModel):
 
     model: str = Field(description="Llama server model id (e.g. 'medgemma-4b-it').")
     base_url: str = Field(
-        default="https://u31987bq9bfb30-8000.proxy.runpod.net/v1",
+        default="https://nb8zru9c70lsjy-8000.proxy.runpod.net/v1",
         # default="http://localhost:8080/v1",
         description="Base URL for llama-server OpenAI-compatible API.",
     )
@@ -141,9 +141,17 @@ class LlamaServerChat(BaseChatModel):
         default=False,
         description="When true, queue llama-server requests serially per backend URL.",
     )
+    message_layout: Literal["chat", "single_user"] = Field(
+        default="chat",
+        description=(
+            "How provider messages are formatted. "
+            "'chat' preserves system/user/assistant roles; "
+            "'single_user' folds system instructions into the first user turn."
+        ),
+    )
 
     temperature: float = 0
-    max_tokens: Optional[int] = 600
+    max_tokens: Optional[int] = 250
     timeout_s: float = 60.0
 
     def _llm_type(self) -> str:
@@ -161,6 +169,43 @@ class LlamaServerChat(BaseChatModel):
     def _normalize_llama_messages(self, messages: list[dict[str, str]]) -> list[dict[str, str]]:
         """Normalize provider messages via shared protocol helper."""
         return normalize_chat_messages(messages)
+
+    def _apply_message_layout(self, messages: list[dict[str, str]]) -> list[dict[str, str]]:
+        if self.message_layout != "single_user":
+            return messages
+
+        system_parts: list[str] = []
+        remaining: list[dict[str, str]] = []
+        for msg in messages:
+            role = str(msg.get("role") or "").strip()
+            content = str(msg.get("content") or "").strip()
+            if not role:
+                continue
+            if role == "system":
+                if content:
+                    system_parts.append(content)
+                continue
+            remaining.append({"role": role, "content": content})
+
+        if not system_parts:
+            return remaining
+
+        system_content = "\n\n".join(part for part in system_parts if part).strip()
+        if not system_content:
+            return remaining
+
+        for idx, msg in enumerate(remaining):
+            if msg.get("role") != "user":
+                continue
+            user_content = str(msg.get("content") or "").strip()
+            merged_content = (
+                f"{system_content}\n\n{user_content}" if user_content else system_content
+            )
+            merged_messages = list(remaining)
+            merged_messages[idx] = {"role": "user", "content": merged_content}
+            return merged_messages
+
+        return [{"role": "user", "content": system_content}, *remaining]
 
     def _build_chat_completions_url(self) -> str:
         """Accept either a base API URL or a full chat completions endpoint."""
@@ -265,6 +310,8 @@ class LlamaServerChat(BaseChatModel):
     ) -> ChatResult:
         bound_tools = kwargs.get("tools")
         tool_choice = kwargs.get("tool_choice")
+        multi_agent = bool(kwargs.get("multi_agent"))
+        handoff_names = list(kwargs.get("handoff_names") or [])
         tools = coerce_bound_tools(bound_tools)
 
         llama_messages = to_provider_messages(
@@ -277,10 +324,13 @@ class LlamaServerChat(BaseChatModel):
             llama_messages,
             tools=tools,
             tool_choice=tool_choice,
+            multi_agent=multi_agent,
+            handoff_names=handoff_names,
             final_answer_tool_name="final_answer",
-            highlight_final_answer=True,
+            highlight_final_answer=not multi_agent,
         )
         llama_messages = self._normalize_llama_messages(llama_messages)
+        llama_messages = self._apply_message_layout(llama_messages)
 
         payload: dict[str, Any] = {
             "model": self.model,
@@ -292,7 +342,7 @@ class LlamaServerChat(BaseChatModel):
             "stream": False,
         }
         if self.max_tokens is not None:
-            payload["max_tokens"] = self.max_tokens
+            payload["max_tokens"] = 250
         if stop:
             payload["stop"] = stop
         adapter_id = self._resolve_adapter_id(**kwargs)
@@ -302,7 +352,6 @@ class LlamaServerChat(BaseChatModel):
 
         url = self._build_chat_completions_url()
         headers = {"Content-Type": "application/json"}
-        print(json.dumps(payload))
         if self.api_key:
             headers["Authorization"] = f"Bearer {self.api_key}"
 
@@ -340,7 +389,7 @@ class LlamaServerChat(BaseChatModel):
         tool_calls: list[dict[str, Any]] = []
         if tools and isinstance(choice_msg, dict):
             tool_calls = normalize_tool_calls(
-                choice_msg.get("tool_calls"),
+                choice_msg.get("content"),
                 allowed_tool_names=allowed_tool_names,
             )
 

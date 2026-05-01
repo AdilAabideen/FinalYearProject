@@ -139,6 +139,8 @@ class Dr7MedicalChatModel(BaseChatModel):
     ) -> ChatResult:
         bound_tools = kwargs.get("tools")
         tool_choice = kwargs.get("tool_choice")
+        multi_agent = bool(kwargs.get("multi_agent"))
+        handoff_names = list(kwargs.get("handoff_names") or [])
         tools = coerce_bound_tools(bound_tools)
 
         dr7_messages = to_provider_messages(
@@ -151,8 +153,10 @@ class Dr7MedicalChatModel(BaseChatModel):
             dr7_messages,
             tools=tools,
             tool_choice=tool_choice,
+            multi_agent=multi_agent,
+            handoff_names=handoff_names,
             final_answer_tool_name="final_answer",
-            highlight_final_answer=True,
+            highlight_final_answer=not multi_agent,
         )
         dr7_messages = self._normalize_dr7_messages(dr7_messages)
 
@@ -208,7 +212,7 @@ class Dr7MedicalChatModel(BaseChatModel):
         tool_calls: list[dict[str, Any]] = []
         if tools and isinstance(choice_msg, dict):
             tool_calls = normalize_tool_calls(
-                choice_msg.get("tool_calls"),
+                choice_msg.get("content"),
                 allowed_tool_names=allowed_tool_names,
             )
 

@@ -1,8 +1,13 @@
-from pydantic import BaseModel, Field
-from app.agentic.handoff import define_handoff
-from typing import List, Literal
+from typing import ClassVar, List, Literal
 
-class ESI2ToESI345Payload(BaseModel):
+from pydantic import Field
+
+from app.agentic.handoff import CoerciveHandoffPayload, define_handoff
+
+class ESI2ToESI345Payload(CoerciveHandoffPayload):
+    _bool_fields: ClassVar[frozenset[str]] = frozenset({"is_esi2"})
+    _list_fields: ClassVar[frozenset[str]] = frozenset({"carry_forward_concerns"})
+
     is_esi2: Literal[False] = Field(
         ...,
         description="Confirmed ESI-2 decision."
@@ -12,11 +17,14 @@ class ESI2ToESI345Payload(BaseModel):
         description="Short explanation of why the case was not judged to require immediate life-saving intervention from the available information."
     )
     carry_forward_concerns: List[str] = Field(
-        ...,
+        default_factory=list,
         description="Key concerns or unresolved issues that the ESI-3/4/5 agent should keep in mind during resource prediction."
     )
 
-class ESI2ToDoctorPayload(BaseModel):
+class ESI2ToDoctorPayload(CoerciveHandoffPayload):
+    _bool_fields: ClassVar[frozenset[str]] = frozenset({"is_esi2"})
+    _list_fields: ClassVar[frozenset[str]] = frozenset({"critical_concerns"})
+
     is_esi2: Literal[True] = Field(
         ...,
         description="Confirmed ESI-2 decision."
@@ -26,7 +34,7 @@ class ESI2ToDoctorPayload(BaseModel):
         description="Brief explanation of why the patient appears to meet ESI-2 criteria."
     )
     critical_concerns: List[str] = Field(
-        ...,
+        default_factory=list,
         description="Key immediate threats or red flags identified from the case, such as airway compromise, severe respiratory distress, shock, or unresponsiveness."
     )
 

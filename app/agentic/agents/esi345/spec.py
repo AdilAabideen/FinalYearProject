@@ -15,7 +15,8 @@ from app.agentic.model_registry import get_chat_model, resolve_model_spec
 from app.agentic.runtime import AgentRuntime, RuntimeConfig
 from app.config import settings
 
-from .prompt import HANDOFF_REQUIREMENTS, SINGLE_AGENT_OUTPUT_REQUIREMENTS, SYSTEM_PROMPT
+from . import prompt as default_prompt
+from . import prompt_ii as ii_prompt
 from .tools import TOOLS
 from .evaluator import ESI345AcuityEvaluator
 from .handoffs import HANDOFFS
@@ -27,15 +28,16 @@ from .schema import ES345AgentInput, ES345AgentOutput
 def build_esi345_agent(runtime: AgentRuntime, runtime_config: Optional[RuntimeConfig] = None):
     """Build the ESI345 agent."""
     try:
+        prompt_module = ii_prompt if runtime.model_spec.id == "ii-medical-8b" else default_prompt
         handoff_tools = create_handoff_tools("esi345_agent", HANDOFFS)
         handoff_tool_names = [tool.name for tool in handoff_tools]
         tools = [*TOOLS, *handoff_tools] if runtime_config and runtime_config.multi_agent else TOOLS
         return SSEHandrolledAgent(
             model=runtime.model,
             tools=tools,
-            system_prompt=SYSTEM_PROMPT,
-            single_agent_prompt_addon=SINGLE_AGENT_OUTPUT_REQUIREMENTS,
-            multi_agent_prompt_addon=HANDOFF_REQUIREMENTS,
+            system_prompt=prompt_module.SYSTEM_PROMPT,
+            single_agent_prompt_addon=prompt_module.SINGLE_AGENT_OUTPUT_REQUIREMENTS,
+            multi_agent_prompt_addon=prompt_module.HANDOFF_REQUIREMENTS,
             response_format=ES345AgentOutput,
             handoff_tool_names=handoff_tool_names,
             runtime_config=runtime_config,

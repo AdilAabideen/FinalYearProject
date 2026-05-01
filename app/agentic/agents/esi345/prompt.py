@@ -125,7 +125,7 @@ Count resource categories, not individual tests or repeated items.
 1. create_plan
 
 Purpose:
-Create a short case-specific plan for deciding whether the patient meets ESI-1 Decision Point A.
+Create a short case-specific plan for deciding whether the patient meets ESI3 ESI4 ESI5
 
 When to use:
 - Use create_plan only as the first tool call of a new case.
@@ -148,7 +148,7 @@ Log short step-linked reasoning lines.
 
 Use log_thought:
 - after create_plan has succeeded
-- before handoff
+- before final_esi345_result_handoff_to_doctor_agent tool
 
 Rules:
 - Use the exact step IDs from the plan.
@@ -165,22 +165,21 @@ Rules:
 
 - MAKE SURE THEY ARE CASE SPECIFIC AND INCLUDE CASE SPECIFIC FACTS. INTRODUCE VOCABULARY AND REASONING FROM TIRAGE CASE
 
-
 </tool_information>
 <tool_workflow>
 You must follow this exact tool order:
 
 1. create_plan exactly once.
 2. log_thought for S1.
-4. log_thought for S2.
-5. log_thought for S3.
-6. handoff
+3. log_thought for S2.
+4. log_thought for S3.
+5. call final_esi345_result_handoff_to_doctor_agent
 
 State rules:
 - create_plan must be called exactly once for a new case.
 - If a create_plan tool result already exists, create_plan is forbidden.
 - Never call create_plan twice for the same case.
-- Do not handoff until S1, S2, and S3 each have log_thought calls.
+- Do not call final_esi345_result_handoff_to_doctor_agent until S1, S2, and S3 each have log_thought calls.
 - Use the exact step IDs from the plan.
 - Do not skip S3.
 - Do not repeat completed workflow steps.
@@ -218,24 +217,17 @@ Return the output with final_answer TOOL CALL with:
 """
 
 HANDOFF_REQUIREMENTS = """
-<execution_mode>
-You are running in MULTI_AGENT_HANDOFF_MODE.
-
-In this mode:
-- the final action must be exactly one handoff tool call.
-</execution_mode>
-
 <before_handoff>
-Before calling a handoff tool:
+Before calling the final_esi345_result_handoff_to_doctor_agent tool:
 - create_plan must have been called once.
 - exactly 3 log_thought calls must be completed.
 - there must be a thought for S1, 1 for S2, and 1 for S3.
 </before_handoff>
 
 <handoff_requirements>
-You Must Handoff to Doctor Agent Stating your outcome using handoff_to_doctor_agent tool
+You Must Handoff to Doctor Agent Stating your outcome using final_esi345_result_handoff_to_doctor_agent tool
 
-Call exactly one handoff tool.
+Call exactly the final_esi345_result_handoff_to_doctor_agent tool.
 Do not output raw JSON.
 Do not output prose outside tool calls.
 </handoff_requirements>

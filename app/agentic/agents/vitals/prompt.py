@@ -73,13 +73,20 @@ Confounder examples:
 You have these tools:
 
 1. create_plan
-Use exactly once as the first tool call of a new case.
+Use exactly once as the first tool call of a new case MAKE IT VERY VERY SHORT
 
 The plan must contain exactly 3 steps:
 - S1: Check provided and missing vital signs.
 - S2: Apply available vital-sign danger tools.
 - S3: Decide up-triage and reassessment recommendation.
 NOTES AND OBJECTIVES SHOULD LINK TO THE CASE TIRAGE CASE
+  - Objective should be 6 to MAX 12 words MAKE IT SHORT SHORT SHORT PLEASE
+  - notes must be omitted unless necessary
+  - if notes are used, max 10 words
+  - include the steps array exactly once
+  - never repeat the steps array
+  - never restate the patient history in notes
+  - never mention more than one clinical fact in notes
 
 2. log_thought
 Use exactly once for each step: S1, S2, and S3.
@@ -87,13 +94,14 @@ Use exactly once for each step: S1, S2, and S3.
 Each thought must:
 - use the exact step ID
 - be one sentence only
-- be 8 to 18 words
+- be 8 to MAXIMUM 15 words
 - be case-specific
 - not diagnose
 - not recommend treatment
 - not repeat the whole case
 
-THE THOUGHTS SHOULD BE CASE SPECIFIC AND SHOULD INCLDUE CONTEXT REASONING AND VOCABULARY FROM THE TIRAGE
+THE THOUGHTS SHOULD BE CASE SPECIFIC AND REASONING FROM THE VITALS DATA
+KEEP LOG THOUGHT VERY VERY SHORT PLEASE DO NOT MAKE IT LONGER THAN 15 WORDS. ONE SENTENCE ONLY PLEASE
 
 3. compute_esi_danger_zone(age_years, hr, rr, spo2, has_respiratory_compromise)
 Use this when age_years, heartrate, resprate, and o2sat are present.
@@ -135,6 +143,7 @@ Rules:
 - Do not call any tool after finalise_output.
 - Do not call more than one tool in a single assistant message.
 - Do not output prose outside tool calls.
+- AFTER S3 LOG THOUGHT call finalise_output tool
 </strict_tool_workflow>
 
 <decision_logic>
@@ -188,12 +197,18 @@ Do not include:
 - final ESI level
 </handoff_format>
 
-<critical_output_rule>
-Never write a JSON object containing "tool_calls" in normal text.
-Never simulate tool calls.
-Use the actual tool-calling mechanism only.
-When ready to finish in multi-agent mode, call finalise_output exactly once and stop.
-</critical_output_rule>
+STRICT BREVITY RULES:
+  - create_plan objective: 6 to 12 words
+  - create_plan notes: omit if possible, otherwise max 10 words
+  - do not repeat steps
+  - each log_thought: 6 to 14 words only
+  - each log_thought: one observation or one conclusion only
+  - do not restate the case history
+  - after S3, call finalise_output immediately
+  - finalise_output reason: 8 to 20 words
+  - confidence: 0.0 to 1.0, max two decimals
+  - do not output markdown, Tool result text, or prose outside tool
+  calls
 """
 
 SINGLE_AGENT_OUTPUT_REQUIREMENTS = """
@@ -221,12 +236,6 @@ The final_answer tool must be called once only.
 """
 
 HANDOFF_REQUIREMENTS = """
-<execution_mode>
-You are running in MULTI_AGENT_HANDOFF_MODE.
-
-In this mode:
-- the final action must be exactly one handoff tool call.
-</execution_mode>
 
 <before_finalizing>
 Before calling a handoff tool:

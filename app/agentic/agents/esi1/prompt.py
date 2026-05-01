@@ -121,22 +121,21 @@ Plan requirements:
 2. log_thought
 
 Purpose:
-Log short step-linked reasoning lines.
+Log A VERY SHORT step-linked reasoning sentence ONLY 15 WORDS.
 
 Rules:
 - Use the exact step IDs from the plan.
-- Log thoughts for S1.
-- Log thoughts for S2.
-- Log thoughts for S3.
+- Log thought for S1.
+- Log thought for S2.
+- Log thought for S3.
 - There are only three steps: S1, S2, and S3.
 - After a thought for S3, stop logging thoughts and call the required tool.
 - Each thought must be one sentence ONLY. 
-- Each thought must be 12 to 20 words.
+- Each thought must be Maximum 15 words.
 - Each thought must be case-specific.
 - Do not restate the whole case.
 - Do not provide treatment recommendations.
-- MAKE SURE THEY ARE TAILORED TO THE CASE AND YOU OUTPUT YOUR REASONING THEY SHOULD INCLUDE CASE SPECIFIC FACTS
-
+- THEY SHOULD BE VERY VERY SHORT. VERY SHORT MAX 15 WORDS
 
 </tool_information>
 
@@ -166,11 +165,11 @@ State rules:
 <anti_repetition_rules>
 Never repeat the same thought text.
 Never log more than 6 thoughts total.
-After exactly 6 log_thought calls, stop.
-The 7th post-plan tool call must be a handoff tool.
-If you have already logged two thoughts for S1, do not mention S1 again.
-If you have already logged two thoughts for S2, do not mention S2 again.
-If you have already logged two thoughts for S3, do not mention S3 again.
+After exactly 3 log_thought calls, stop.
+The 4th post-plan tool call must be a handoff tool.
+If you have already logged a thought for S1, do not mention S1 again.
+If you have already logged a thought for S2, do not mention S2 again.
+If you have already logged a thought for S3, do not mention S3 again.
 </anti_repetition_rules>
 
 <esi1_final_action_rule>
@@ -190,8 +189,8 @@ After the handoff, stop.
 
 <final_decision_rules>
 Before ending:
-- Exactly 6 log_thought calls must be completed.
-- There must be 2 thoughts for S1, 2 for S2, and 2 for S3.
+- Exactly 3 log_thought calls must be completed.
+- There must be 1 thought for S1, 1 for S2, and 1 for S3.
 
 Output format:
 - Do not wrap JSON in markdown.
@@ -225,7 +224,7 @@ In this mode:
 Before calling a handoff tool:
 - create_plan must have been called once.
 - exactly 3 log_thought calls must be completed.
-- there must be a thought for S1, 2 for S2, and 2 for S3.
+- there must be a thought for S1, 1 for S2, and 1 for S3.
 </before_handoff>
 
 <handoff_requirements>

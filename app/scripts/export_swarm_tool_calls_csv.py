@@ -14,6 +14,9 @@ if __package__ in {None, ""}:
 
 from sqlalchemy import select
 
+from langchain_core.messages import ToolMessage
+
+from app.agentic.protocols.message_normalizer import render_tool_message_as_user_content
 from app.database import SessionLocal
 from app.models.agent_event import AgentEvent
 from app.models.agent_run import AgentRun
@@ -31,15 +34,12 @@ CSV_FIELDNAMES = [
     "agent_name",
     "tool_call_name",
     "tool_call_output_json",
+    "tool_result_user_message",
     "case_input_json",
-    "tiragecase",
-    "temperature",
-    "heartrate",
-    "resprate",
-    "o2sat",
-    "sbp",
-    "dbp",
 ]
+
+VITAL_INPUT_KEYS = ("temperature", "heartrate", "resprate", "o2sat", "sbp", "dbp")
+ACUITY_AGENT_NAMES = {"esi1_agent", "esi2_agent", "esi345_agent"}
 
 
 def _json_dumps(value: Any) -> str:
@@ -70,18 +70,26 @@ def _string_or_empty(value: Any) -> str:
     return str(value)
 
 
-def _build_case_columns(input_json: dict[str, Any] | None) -> dict[str, str]:
+def _case_input_for_agent(
+    *,
+    input_json: dict[str, Any] | None,
+    agent_name: str,
+) -> dict[str, Any]:
     payload = dict(input_json or {})
-    return {
-        "case_input_json": _json_dumps(payload) if payload else "",
-        "tiragecase": _string_or_empty(payload.get("tiragecase")),
-        "temperature": _string_or_empty(payload.get("temperature")),
-        "heartrate": _string_or_empty(payload.get("heartrate")),
-        "resprate": _string_or_empty(payload.get("resprate")),
-        "o2sat": _string_or_empty(payload.get("o2sat")),
-        "sbp": _string_or_empty(payload.get("sbp")),
-        "dbp": _string_or_empty(payload.get("dbp")),
-    }
+    if agent_name not in ACUITY_AGENT_NAMES:
+        return payload
+    for key in VITAL_INPUT_KEYS:
+        payload.pop(key, None)
+    return payload
+
+
+def _build_case_columns(
+    *,
+    input_json: dict[str, Any] | None,
+    agent_name: str,
+) -> dict[str, str]:
+    payload = _case_input_for_agent(input_json=input_json, agent_name=agent_name)
+    return {"case_input_json": _json_dumps(payload) if payload else ""}
 
 
 def _build_tool_output_json(
@@ -96,6 +104,48 @@ def _build_tool_output_json(
         "arguments": call_payload.get("args"),
     }
     return _json_dumps({"tool_calls": [record]})
+
+
+def _build_tool_result_user_message(
+    *,
+    tool_result_event: AgentEvent | None,
+) -> str:
+    if tool_result_event is None:
+        return ""
+
+    if tool_result_event.payload_text is not None:
+        raw_content = str(tool_result_event.payload_text or "").strip()
+    elif tool_result_event.payload_json is not None:
+        raw_content = _json_dumps(tool_result_event.payload_json.get("result"))
+    else:
+        raw_content = ""
+
+    tool_message = ToolMessage(
+        content=raw_content,
+        tool_call_id=tool_result_event.tool_call_id,
+        name=tool_result_event.tool_name,
+        status=tool_result_event.status,
+    )
+    return render_tool_message_as_user_content(tool_message)
+
+
+def _find_tool_result_event(
+    *,
+    events: list[AgentEvent],
+    tool_call_event: AgentEvent,
+) -> AgentEvent | None:
+    for event in events:
+        if event.seq <= tool_call_event.seq:
+            continue
+        if event.event_type != "tool_result":
+            continue
+        if event.tool_call_id and tool_call_event.tool_call_id:
+            if event.tool_call_id == tool_call_event.tool_call_id:
+                return event
+            continue
+        if event.tool_name and tool_call_event.tool_name and event.tool_name == tool_call_event.tool_name:
+            return event
+    return None
 
 
 def _ordered_agent_runs_for_swarm(db, swarm_run_id: str) -> list[AgentRun]:
@@ -118,7 +168,6 @@ def _collect_rows_for_agent_runs(
     mas_test_case_run_id: str | None = None,
 ) -> list[dict[str, str]]:
     rows: list[dict[str, str]] = []
-    case_columns = _build_case_columns(case_input_json)
 
     for agent_run in agent_runs:
         events = list(
@@ -132,6 +181,11 @@ def _collect_rows_for_agent_runs(
         for event in events:
             if event.event_type != "tool_call":
                 continue
+            case_columns = _build_case_columns(
+                input_json=case_input_json,
+                agent_name=agent_run.agent_name,
+            )
+            tool_result_event = _find_tool_result_event(events=events, tool_call_event=event)
 
             rows.append(
                 {
@@ -143,6 +197,9 @@ def _collect_rows_for_agent_runs(
                     "tool_call_name": str(event.tool_name or ""),
                     "tool_call_output_json": _build_tool_output_json(
                         tool_call_event=event,
+                    ),
+                    "tool_result_user_message": _build_tool_result_user_message(
+                        tool_result_event=tool_result_event,
                     ),
                     **case_columns,
                 }
@@ -263,7 +320,8 @@ def main() -> int:
         description=(
             "Export tool calls to CSV for either a swarm run or a MAS test run. "
             "The tool_call_output_json column contains only the model-side tool call "
-            "format: tool_calls -> id, name, arguments."
+            "format, and tool_result_user_message contains the rendered tool result "
+            "replayed back as a user message."
         )
     )
     parser.add_argument(

@@ -1,9 +1,13 @@
-from pydantic import BaseModel, Field
-from app.agentic.handoff import define_handoff
-from typing import List, Literal
+from typing import ClassVar, List, Literal
+
+from pydantic import AliasChoices, Field
+
+from app.agentic.handoff import CoerciveHandoffPayload, define_handoff
 
 
-class ESI345ToDoctorPayload(BaseModel):
+class ESI345ToDoctorPayload(CoerciveHandoffPayload):
+    _list_fields: ClassVar[frozenset[str]] = frozenset({"predicted_resources"})
+
     esi_level: Literal[3, 4, 5] = Field(
         ...,
         description="Which ESI level the case is currently judged to be in before doctor review."
@@ -19,6 +23,7 @@ class ESI345ToDoctorPayload(BaseModel):
     )
     reason: str = Field(
         ...,
+        validation_alias=AliasChoices("reason", "justification"),
         description="Brief rationale for the provisional ESI decision."
     )
 

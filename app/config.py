@@ -38,7 +38,7 @@ class Settings(BaseSettings):
     DR7_RATE_LIMIT_BACKOFF_MAX_S: float = 40.0
 
     # Llama Server settings
-    LLAMA_SERVER_BASE_URL: str = "https://u31987bq9bfb30-8000.proxy.runpod.net/v1"
+    LLAMA_SERVER_BASE_URL: str = "https://nb8zru9c70lsjy-8000.proxy.runpod.net/v1"
     # LLAMA_SERVER_BASE_URL: str = "http://localhost:8080/v1"
     LLAMA_SERVER_API_KEY: Optional[str] = None
     LLAMA_SERVER_SERIAL_REQUESTS: Union[bool, str] = False
@@ -96,3 +96,5 @@ class Settings(BaseSettings):
     #     return False
 
 settings = Settings()
+
+

@@ -1,10 +1,14 @@
-from pydantic import BaseModel, Field
-from typing import List, Literal
+from typing import ClassVar, List
 
-from app.agentic.handoff import define_handoff
+from pydantic import Field
+
+from app.agentic.handoff import CoerciveHandoffPayload, define_handoff
 
 
-class VitalsToDoctorPayload(BaseModel):
+class VitalsToDoctorPayload(CoerciveHandoffPayload):
+    _bool_fields: ClassVar[frozenset[str]] = frozenset({"consider_uptriage"})
+    _list_fields: ClassVar[frozenset[str]] = frozenset({"abnormal_vitals"})
+
     consider_uptriage: bool = Field(
         ...,
         description="Whether the vitals agent recommends that the case should be considered for up-triage."

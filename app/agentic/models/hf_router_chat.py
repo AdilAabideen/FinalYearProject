@@ -40,7 +40,10 @@ class HuggingFaceRouterChatModel(BaseChatModel):
     base_url: str = Field(
         description="Base URL for HF Router OpenAI-compatible API, e.g. 'https://router.huggingface.co/v1'."
     )
-    api_key: str = Field(description="Hugging Face token.", repr=False)
+    api_key: str = Field(
+        description="Auth token for the upstream OpenAI-compatible endpoint.",
+        repr=False,
+    )
 
     temperature: float = 0.7
     max_tokens: Optional[int] = None
@@ -87,6 +90,8 @@ class HuggingFaceRouterChatModel(BaseChatModel):
     ) -> ChatResult:
         bound_tools = kwargs.get("tools")
         tool_choice = kwargs.get("tool_choice")
+        multi_agent = bool(kwargs.get("multi_agent"))
+        handoff_names = list(kwargs.get("handoff_names") or [])
         tools = coerce_bound_tools(bound_tools)
 
         provider_messages = to_provider_messages(
@@ -99,8 +104,10 @@ class HuggingFaceRouterChatModel(BaseChatModel):
             provider_messages,
             tools=tools,
             tool_choice=tool_choice,
+            multi_agent=multi_agent,
+            handoff_names=handoff_names,
             final_answer_tool_name="final_answer",
-            highlight_final_answer=True,
+            highlight_final_answer=not multi_agent,
         )
         provider_messages = self._normalize_messages(provider_messages)
 
@@ -116,8 +123,8 @@ class HuggingFaceRouterChatModel(BaseChatModel):
             payload["stop"] = stop
 
         headers = {
-            "Authorization": f"Bearer {self.api_key}",
             "Content-Type": "application/json",
+            "Authorization": f"Bearer {self.api_key}",
         }
 
         try:

@@ -342,6 +342,7 @@ def test_ut_wrp_021_hf_router_registry_builds_model(monkeypatch):
     assert isinstance(model, HuggingFaceRouterChatModel)
     assert model.model == "Intelligent-Internet/II-Medical-8B-1706:featherless-ai"
     assert model.base_url == "https://router.huggingface.co/v1"
+    assert model.api_key == "hf_secret"
 
 
 @pytest.mark.unit

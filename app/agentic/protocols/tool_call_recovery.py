@@ -17,7 +17,7 @@ from .tool_protocol import normalize_tool_calls_typed
 def _extract_raw_calls(parsed: Any) -> list[Any]:
     if isinstance(parsed, dict) and isinstance(parsed.get("tool_calls"), list):
         return list(parsed["tool_calls"])
-    if isinstance(parsed, dict) and isinstance(parsed.get("name"), str):
+    if isinstance(parsed, dict) and isinstance(parsed.get("name", parsed.get("tool_name")), str):
         return [parsed]
     if isinstance(parsed, list):
         return parsed
@@ -170,6 +170,50 @@ def _extract_balanced_json_segment(
     return None
 
 
+def _extract_tool_call_objects_from_unbalanced_array(text: str, *, array_start: int) -> list[Any]:
+    """
+    Recover one or more balanced object entries from an unbalanced tool_calls array.
+
+    This targets outputs like:
+    {"tool_calls":[{"id":"call_1","name":"x","arguments":{...}}}
+
+    where the outer array/object wrapper is truncated but the inner call object(s)
+    are still structurally intact.
+    """
+    if array_start < 0 or array_start >= len(text) or text[array_start] != "[":
+        return []
+
+    i = array_start + 1
+    recovered: list[Any] = []
+    while i < len(text):
+        while i < len(text) and text[i] in " \t\r\n,":
+            i += 1
+        if i >= len(text):
+            break
+        if text[i] == "]":
+            break
+        if text[i] != "{":
+            break
+
+        obj_segment = _extract_balanced_json_segment(
+            text,
+            open_char="{",
+            close_char="}",
+            start_index=i,
+        )
+        if not obj_segment:
+            break
+
+        try:
+            recovered.append(json.loads(obj_segment))
+        except Exception:
+            break
+
+        i += len(obj_segment)
+
+    return recovered
+
+
 def recover_from_partial_json_text(
     content: str,
     *,
@@ -246,16 +290,22 @@ def recover_from_tool_calls_array_text(
         close_char="]",
         start_index=array_start,
     )
-    if not array_segment:
-        return ToolCallParseResult()
+    raw_calls: list[Any]
+    if array_segment:
+        candidate = f'{{"tool_calls":{array_segment}}}'
+        try:
+            parsed = json.loads(candidate)
+        except Exception:
+            return ToolCallParseResult()
+        raw_calls = _extract_raw_calls(parsed)
+    else:
+        raw_calls = _extract_tool_call_objects_from_unbalanced_array(
+            stripped,
+            array_start=array_start,
+        )
+        if not raw_calls:
+            return ToolCallParseResult()
 
-    candidate = f'{{"tool_calls":{array_segment}}}'
-    try:
-        parsed = json.loads(candidate)
-    except Exception:
-        return ToolCallParseResult()
-
-    raw_calls = _extract_raw_calls(parsed)
     calls = normalize_tool_calls_typed(
         raw_calls,
         allowed_tool_names=allowed_tool_names,
