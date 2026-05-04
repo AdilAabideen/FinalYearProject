@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import threading
 import time
@@ -7,7 +8,7 @@ from datetime import datetime
 from queue import Queue
 from typing import Any, AsyncGenerator, Callable, Mapping, Sequence
 
-from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage, ToolMessage
+from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
 from langchain_core.tools import BaseTool, tool as lc_tool
 from langchain_openai import ChatOpenAI
 from pydantic import BaseModel, ConfigDict
@@ -129,13 +130,7 @@ class SSEHandrolledAgent:
         self.set_tool_call_handlers(tool_call_handlers)
 
         if self.tools:
-            self.bound_model = self.model.bind_tools(
-                self.tools,
-                tool_choice="any",
-                agent_name=self.agent_node_name,
-                multi_agent=bool(self.runtime_config.multi_agent),
-                handoff_names=self._handoff_tool_names,
-            )
+            self.bound_model = self._bind_model_tools()
         else:
             self.bound_model = self.model
         self._agent_runner = AgentRunner(
@@ -178,6 +173,28 @@ class SSEHandrolledAgent:
             else:
                 raise TypeError(f"Unsupported tool type: {type(item)!r}")
         return normalized
+
+    def _bind_model_tools(self) -> Any:
+        """
+        Bind tools to the underlying model.
+
+        Some lightweight test doubles only accept `(tools, tool_choice=...)`, while
+        the production wrappers accept extra runtime hints such as `agent_name`,
+        `multi_agent`, and `handoff_names`.
+        """
+        try:
+            return self.model.bind_tools(
+                self.tools,
+                tool_choice="any",
+                agent_name=self.agent_node_name,
+                multi_agent=bool(self.runtime_config.multi_agent),
+                handoff_names=self._handoff_tool_names,
+            )
+        except TypeError:
+            return self.model.bind_tools(
+                self.tools,
+                tool_choice="any",
+            )
 
     @staticmethod
     def _fallback_final_answer_schema() -> type[BaseModel]:

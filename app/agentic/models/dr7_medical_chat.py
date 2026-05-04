@@ -212,7 +212,7 @@ class Dr7MedicalChatModel(BaseChatModel):
         tool_calls: list[dict[str, Any]] = []
         if tools and isinstance(choice_msg, dict):
             tool_calls = normalize_tool_calls(
-                choice_msg.get("content"),
+                choice_msg.get("tool_calls", choice_msg.get("content")),
                 allowed_tool_names=allowed_tool_names,
             )
 

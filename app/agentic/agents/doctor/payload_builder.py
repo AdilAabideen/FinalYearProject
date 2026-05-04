@@ -48,6 +48,7 @@ def build_payload(state: SwarmState) -> Dict[str, Any]:
     )
 
     llm_payload = {
+        "case_info": case_info,
         "source_agent": source_agent,
         "upstream_esi_level": upstream_esi_level,
         "vitals_consider_uptriage": (
