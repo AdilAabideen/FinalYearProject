@@ -11,7 +11,7 @@ from langchain_core.tools import tool
 from app.agentic.model_registry import (
     FINETUNED_MULTI_AGENT_MODEL_ID_OVERRIDES,
     build_llama_model,
-    get_chat_model,
+    list_registered_models,
     resolve_model_spec,
 )
 from app.agentic.models.dr7_medical_chat import Dr7MedicalChatModel

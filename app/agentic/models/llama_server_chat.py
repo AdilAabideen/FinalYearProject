@@ -2,7 +2,6 @@ from __future__ import annotations
 from contextlib import contextmanager
 import threading
 from typing import Any, Callable, Optional, Sequence, Union
-import json
 
 import httpx
 from langchain_core.language_models import LanguageModelInput
@@ -263,7 +262,7 @@ class LlamaServerChat(BaseChatModel):
         tool_calls: list[dict[str, Any]] = []
         if tools and isinstance(choice_msg, dict):
             tool_calls = normalize_tool_calls(
-                choice_msg.get("content"),
+                choice_msg.get("tool_calls", choice_msg.get("content")),
                 allowed_tool_names=allowed_tool_names,
             )
 

@@ -39,7 +39,11 @@ class VitalsUptriageEvaluator:
         return bool(expected_json["recommendation"]["consider_uptriage"])
 
     def _y_pred(self, actual_json: Dict[str, Any]) -> Optional[bool]:
-        val = (actual_json.get("consider_uptriage"))
+        recommendation = actual_json.get("recommendation")
+        if isinstance(recommendation, dict):
+            val = recommendation.get("consider_uptriage")
+        else:
+            val = actual_json.get("consider_uptriage")
         return val if isinstance(val, bool) else None
 
     def evaluate(
