@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import time
 import uuid
 from datetime import datetime
 from typing import Any, Optional
@@ -11,7 +12,8 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
 from app.agentic.eval_types import EvalResult
-from app.agentic.workflows.registry import get_workflow_spec, list_workflow_specs
+from app.agentic.model_registry import validate_model_for_agent
+from app.agentic.workflows.registry import get_workflow_definition, get_workflow_spec, list_workflow_specs
 from app.api.repository import (
     mas_tests_repository,
     swarm_final_outputs_repository,
@@ -20,6 +22,7 @@ from app.api.repository import (
 )
 from app.api.services import swarm_execution_service
 from app.api.services.swarm_run_metrics_service import TERMINAL_SWARM_STATUSES, persist_swarm_run_metrics
+from app.config import settings
 from app.database import SessionLocal
 from app.models.mas_test_case import MasTestCase
 from app.models.mas_test_case_run import MasTestCaseRun
@@ -28,8 +31,6 @@ from app.schemas.mas_tests import (
     MasTestCaseAnalyticsRead,
     MasTestCaseCreateRequest,
     MasTestCaseRead,
-    MasTestRunConfusionCountsRead,
-    MasTestRunConfusionRead,
     MasTestCaseRunMetricRead,
     MasTestCaseRunRead,
     MasTestCaseUpdateRequest,
@@ -93,6 +94,10 @@ def _normalize_runtime_input_or_400(
     return normalized_input
 
 
+def _resolve_test_run_model_id(run: MasTestRun) -> str:
+    return run.model_name or settings.OPENAI_MODEL
+
+
 def _build_case_diff_payload(
     *,
     expected_answer: dict[str, Any],
@@ -119,32 +124,6 @@ def _avg_or_none(total: float, count: int, ndigits: int = 4) -> Optional[float]:
     if count <= 0:
         return None
     return round(total / count, ndigits)
-
-
-def _coerce_esi_acuity(value: Any) -> Optional[str]:
-    if value is None:
-        return None
-    as_str = str(value).strip()
-    return as_str if as_str in {"1", "2", "3", "4", "5"} else None
-
-
-def _extract_actual_acuity_from_case_run(case_run: MasTestCaseRun) -> Optional[str]:
-    diff_json = dict(case_run.diff_json or {})
-    actual_answer = diff_json.get("actual_answer")
-    if isinstance(actual_answer, dict):
-        if "acuity" in actual_answer:
-            acuity = _coerce_esi_acuity(actual_answer.get("acuity"))
-            if acuity is not None:
-                return acuity
-        if "final_esi_level" in actual_answer:
-            acuity = _coerce_esi_acuity(actual_answer.get("final_esi_level"))
-            if acuity is not None:
-                return acuity
-
-    actual = diff_json.get("actual")
-    if isinstance(actual, dict):
-        return _coerce_esi_acuity(actual.get("acuity"))
-    return None
 
 
 def list_cases(
@@ -242,6 +221,15 @@ def start_run(payload: MasTestRunStartRequest, db: Session) -> MasTestRunRead:
         raise HTTPException(status_code=400, detail="case_ids must be non-empty")
 
     _workflow_evaluator_or_400(payload.workflow_id)
+    workflow = get_workflow_definition(payload.workflow_id)
+    model_id = payload.model_id or settings.OPENAI_MODEL
+    for agent_name in workflow.participating_agents:
+        validate_model_for_agent(
+            model_id=model_id,
+            agent_name=agent_name,
+            requires_tools=True,
+        )
+
     cases = mas_tests_repository.get_test_cases_by_ids(db, payload.case_ids)
     case_by_id = {case.id: case for case in cases}
     missing = [case_id for case_id in payload.case_ids if case_id not in case_by_id]
@@ -268,6 +256,7 @@ def start_run(payload: MasTestRunStartRequest, db: Session) -> MasTestRunRead:
     run = MasTestRun(
         id=run_id,
         workflow_id=payload.workflow_id,
+        model_name=model_id,
         name=payload.name,
         status="created",
         selected_case_ids_json=payload.case_ids,
@@ -352,10 +341,6 @@ def get_run_metrics(run_id: str, db: Session) -> MasTestRunBatchMetricsRead:
     duration_ms_total = 0
     duration_count = 0
     case_metrics: list[MasTestCaseRunMetricRead] = []
-    confusion_labels = ["1", "2", "3", "4", "5"] if run.workflow_id == "esi_swarm_v1" else []
-    confusion_pairs: list[tuple[str, str]] = []
-    classified_count = 0
-    unclassified_count = 0
 
     for case_run in ordered:
         metrics = dict(case_run.metrics_json or {})
@@ -386,18 +371,6 @@ def get_run_metrics(run_id: str, db: Session) -> MasTestRunBatchMetricsRead:
             )
         )
 
-        if confusion_labels:
-            case_row = next((row for row in case_rows if row.id == case_run.test_case_id), None)
-            expected_acuity = _coerce_esi_acuity(
-                case_row.expected_json.get("acuity") if case_row is not None and isinstance(case_row.expected_json, dict) else None
-            )
-            actual_acuity = _extract_actual_acuity_from_case_run(case_run)
-            if expected_acuity is None or actual_acuity is None:
-                unclassified_count += 1
-            else:
-                confusion_pairs.append((expected_acuity, actual_acuity))
-                classified_count += 1
-
     total_runs = len(ordered)
     runs_with_swarm_run = len([case_run for case_run in ordered if case_run.swarm_run_id])
     success_rate = round((successful_runs / total_runs), 4) if total_runs else 0.0
@@ -414,34 +387,10 @@ def get_run_metrics(run_id: str, db: Session) -> MasTestRunBatchMetricsRead:
         duration_ms_avg=_avg_or_none(duration_ms_total, duration_count),
     )
 
-    confusion = None
-    if confusion_labels:
-        per_label: dict[str, MasTestRunConfusionCountsRead] = {}
-        for label in confusion_labels:
-            tp = sum(1 for expected, actual in confusion_pairs if expected == label and actual == label)
-            fp = sum(1 for expected, actual in confusion_pairs if expected != label and actual == label)
-            tn = sum(1 for expected, actual in confusion_pairs if expected != label and actual != label)
-            fn = sum(1 for expected, actual in confusion_pairs if expected == label and actual != label)
-            per_label[label] = MasTestRunConfusionCountsRead(
-                tp=tp,
-                fp=fp,
-                tn=tn,
-                fn=fn,
-            )
-
-        confusion = MasTestRunConfusionRead(
-            mode="one_vs_rest",
-            labels=confusion_labels,
-            per_label=per_label,
-            total_classified=classified_count,
-            unclassified_count=unclassified_count,
-        )
-
     return MasTestRunBatchMetricsRead(
         run=MasTestRunRead.model_validate(run.__dict__),
         summary=summary,
         cases=case_metrics,
-        confusion=confusion,
     )
 
 
@@ -636,6 +585,7 @@ def stream_run(run_id: str, db: Session) -> StreamingResponse:
 
     def _stream():
         nonlocal run
+        model_id = _resolve_test_run_model_id(run)
 
         now = datetime.utcnow()
         run.status = "running"
@@ -645,11 +595,13 @@ def stream_run(run_id: str, db: Session) -> StreamingResponse:
 
         event_id = 1
         total_cases = len(run.selected_case_ids_json)
+        case_backoff_s = max(0.0, float(settings.MAS_TEST_CASE_BACKOFF_S))
         yield _sse(
             "run_start",
             {
                 "run_id": run.id,
                 "workflow_id": run.workflow_id,
+                "model_id": model_id,
                 "total": total_cases,
             },
             event_id=event_id,
@@ -703,6 +655,7 @@ def stream_run(run_id: str, db: Session) -> StreamingResponse:
                 swarm_run_id, normalized_input, _, workflow_version = swarm_execution_service.create_and_start_swarm_run(
                     workflow_id=run.workflow_id,
                     input_payload=normalized_input,
+                    model_id=model_id,
                     metadata={
                         "source": "mas_tests",
                         "mas_test_run_id": run.id,
@@ -732,6 +685,7 @@ def stream_run(run_id: str, db: Session) -> StreamingResponse:
                             workflow_version=workflow_version,
                             swarm_run_id=swarm_run_id,
                             case_info=normalized_input,
+                            model_id=model_id,
                         )
                     )
                 except Exception:
@@ -804,6 +758,19 @@ def stream_run(run_id: str, db: Session) -> StreamingResponse:
                 },
                 event_id=event_id,
             )
+
+            is_last_case = index >= (total_cases - 1)
+            if not is_last_case and case_backoff_s > 0:
+                event_id += 1
+                yield _sse(
+                    "case_backoff",
+                    {
+                        "seconds": case_backoff_s,
+                        "next_index": index + 1,
+                    },
+                    event_id=event_id,
+                )
+                time.sleep(case_backoff_s)
 
         now = datetime.utcnow()
         total = total_cases

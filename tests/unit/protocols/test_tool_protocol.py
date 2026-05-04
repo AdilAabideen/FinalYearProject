@@ -93,3 +93,15 @@ def test_ut_pro_012_preserve_source_metadata():
     )
     assert calls[0].source == ToolCallParseSource.TEXT_JSON
     assert calls[0].recovered is True
+
+
+@pytest.mark.unit
+def test_ut_pro_013_accept_tool_name_alias():
+    calls = normalize_tool_calls_typed(
+        [{"id": "call_13", "tool_name": "tool_a", "arguments": {"x": 13}}],
+        source=ToolCallParseSource.TEXT_JSON,
+        recovered=True,
+    )
+    assert len(calls) == 1
+    assert calls[0].name == "tool_a"
+    assert calls[0].args == {"x": 13}

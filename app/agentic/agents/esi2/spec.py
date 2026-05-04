@@ -37,6 +37,7 @@ def build_esi2_agent(runtime: AgentRuntime, runtime_config: Optional[RuntimeConf
             single_agent_prompt_addon=SINGLE_AGENT_OUTPUT_REQUIREMENTS,
             multi_agent_prompt_addon=HANDOFF_REQUIREMENTS,
             response_format=ES2AgentOutput,
+            agent_node_name="esi2_agent",
             handoff_tool_names=handoff_tool_names,
             runtime_config=runtime_config,
         )

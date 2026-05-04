@@ -7,6 +7,7 @@ from app.agentic.agents.esi1.spec import ESI1_AGENT_SPEC
 from app.agentic.agents.esi2.spec import ESI2_AGENT_SPEC
 from app.agentic.agents.esi345.spec import ESI345_AGENT_SPEC
 from app.agentic.agents.doctor.spec import DOCTOR_AGENT_SPEC
+from app.agentic.agents.single_agent_system.spec import SINGLE_AGENT_SPEC
 
 
 AGENTS: dict[str, AgentSpec] = {
@@ -15,7 +16,8 @@ AGENTS: dict[str, AgentSpec] = {
     ESI1_AGENT_SPEC.name: ESI1_AGENT_SPEC,
     ESI2_AGENT_SPEC.name: ESI2_AGENT_SPEC,
     ESI345_AGENT_SPEC.name: ESI345_AGENT_SPEC,
-    DOCTOR_AGENT_SPEC.name : DOCTOR_AGENT_SPEC
+    DOCTOR_AGENT_SPEC.name : DOCTOR_AGENT_SPEC,
+    SINGLE_AGENT_SPEC.name: SINGLE_AGENT_SPEC
 }
 
 

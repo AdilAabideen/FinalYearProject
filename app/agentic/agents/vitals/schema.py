@@ -18,18 +18,12 @@ class VitalsAgentInput(BaseModel):
     chiefcomplaint: str
 
 
-class RecommendationOutput(BaseModel):
+class VitalsAgentOutput(BaseModel):
     consider_uptriage: bool = Field(description="Whether the agent recommends uptriage")
     reasoning_consider_uptriage: str = Field(
         description="The reasoning behind the recommendation to consider uptriage"
     )
-    confidence: Literal["low", "medium", "high"] = Field(
+    abnormal_vitals : list[str] = Field(description="A list of Vitals that are abnormal")
+    confidence: float = Field(
         description="The confidence in the recommendation of the agent"
     )
-
-
-class VitalsAgentOutput(BaseModel):
-    ok: bool = Field(
-        description="Whether the agent was able to complete the task successfully and did not encounter any errors"
-    )
-    recommendation: RecommendationOutput = Field(description="The recommendation of the agent")

@@ -8,7 +8,7 @@ TOOLS = [
     compute_esi_danger_zone,
     compute_shock_index,
     create_plan,
-    log_structured_event,
+    # log_structured_event,
     log_thought,
 ]
 

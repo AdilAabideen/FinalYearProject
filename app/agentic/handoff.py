@@ -1,13 +1,67 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Sequence, Type
+from typing import Any, ClassVar, Dict, List, Optional, Sequence, Type
 
 from langchain.tools import tool
 from langchain_core.messages import ToolMessage
 from langchain_core.tools import BaseTool
 from langgraph.types import Command
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
+
+
+def _coerce_string_bool(value: Any) -> Any:
+    if isinstance(value, str):
+        lowered = value.strip().lower()
+        if lowered == "true":
+            return True
+        if lowered == "false":
+            return False
+    return value
+
+
+def _coerce_string_list(value: Any) -> list[str]:
+    if value is None:
+        return []
+    if isinstance(value, str):
+        stripped = value.strip()
+        return [stripped] if stripped else []
+    if isinstance(value, (list, tuple, set)):
+        return [str(item).strip() for item in value if str(item).strip()]
+    return [str(value).strip()] if str(value).strip() else []
+
+
+class CoerciveHandoffPayload(BaseModel):
+    """
+    Shared coercion layer for handoff payloads.
+
+    Keep meaning-bearing scalar fields strict, but normalize the repeated model
+    drift we see in production traces:
+    - "true"/"false" strings for boolean flags
+    - omitted concern arrays -> []
+    - scalar/string concern values -> [value]
+    """
+
+    model_config = ConfigDict(extra="ignore")
+
+    _bool_fields: ClassVar[frozenset[str]] = frozenset()
+    _list_fields: ClassVar[frozenset[str]] = frozenset()
+
+    @model_validator(mode="before")
+    @classmethod
+    def _coerce_common_handoff_shapes(cls, value: Any) -> Any:
+        if not isinstance(value, dict):
+            return value
+
+        data = dict(value)
+        for field_name in cls._bool_fields:
+            if field_name in data:
+                data[field_name] = _coerce_string_bool(data[field_name])
+
+        for field_name in cls._list_fields:
+            data[field_name] = _coerce_string_list(data.get(field_name))
+
+        return data
 
 
 class HandoffResult(BaseModel):
@@ -70,11 +124,12 @@ def define_handoff(
 def create_handoff_tool(definition: HandoffDefinition) -> BaseTool:
     payload_model = definition.payload_model
     tool_name = definition.name
-    tool_description = "{description} Transfers control from {source} to {target}.".format(
+    tool_description = "{description}".format(
         description=definition.description,
         source=definition.source_agent,
         target=definition.target_agent,
     )
+
 
     @tool(tool_name, args_schema=payload_model, description=tool_description)
     def _handoff(**kwargs: Any) -> Dict[str, Any]:

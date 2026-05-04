@@ -43,18 +43,6 @@ class ES345AgentOutput(BaseModel):
         le=1.0,
         description="Model confidence between 0 and 1."
     )
-    case_summary: str = Field(
-        ...,
-        description="A brief summary of the case."
-    )
-    key_risks: List[str] = Field(
-        default_factory=list,
-        description="Important risks or high-risk features identified."
-    )
-    missing_information: List[str] = Field(
-        default_factory=list,
-        description="Important information missing from the case."
-    )
     justification: str = Field(
         ...,
         description="Brief rationale for the provisional ESI decision."

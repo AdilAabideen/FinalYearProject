@@ -26,6 +26,8 @@ class ModelSpec(BaseModel):
 
     id: str
     provider: ModelProvider
+    model_category: str = "default"
+    provider_model_id: Optional[str] = None
     description: Optional[str] = None
     context_length: Optional[int] = None
     max_tokens: Optional[int] = None
@@ -36,20 +38,30 @@ class ModelSpec(BaseModel):
     default_temperature: float = 0.7
 
 
+FINETUNED_MULTI_AGENT_MODEL_ID_OVERRIDES: dict[str, str] = {
+    "esi1_agent": "esi1-agent-075",
+    "esi2_agent": "esi2-agent-025",
+    "esi345_agent": "esi3-agent-075",
+    "vitals_agent": "medgemma-4b-it",
+    "doctor_agent": "medgemma-4b-it",
+}
+
+
 _MODEL_REGISTRY: dict[str, ModelSpec] = {
     # OpenAI (known defaults)
     "gpt-4o-mini": ModelSpec(
         id="gpt-4o-mini",
         provider="openai",
+        model_category="default",
         description="OpenAI GPT-4o mini",
         supports_tools=True,
         default_temperature=0.7,
         pricing=ModelPricing(input_per_1k=0.001, output_per_1k=0.002),
     ),
-    # Dr7
     "medgemma-4b-it": ModelSpec(
         id="medgemma-4b-it",
         provider="dr7",
+        model_category="default",
         description=(
             "MedGemma 4B Instruction Tuned - Optimized for medical text understanding and generation"
         ),
@@ -64,37 +76,153 @@ _MODEL_REGISTRY: dict[str, ModelSpec] = {
         ],
         languages=["en", "zh"],
         supports_tools=True,
+        default_temperature=0,
+    ),
+     "gemma-3-4b-it": ModelSpec(
+        id="gemma-3-4b-it",
+        provider="llama",
+        model_category="default",
+        description=(
+            "Gemma 4B Instruction Tuned - Optimized for text understanding and generation"
+        ),
+        context_length=8192,
+        max_tokens=4096,
+        pricing=ModelPricing(input_per_1k=0.00015, output_per_1k=0.00060),
+        capabilities=[
+            "medical_text_analysis",
+            "symptom_analysis",
+            "medical_qa",
+            "clinical_reasoning",
+        ],
+        languages=["en", "zh"],
+        supports_tools=True,
+        default_temperature=0,
+    ),
+    "medgemma-4b-it-llama": ModelSpec(
+        id="medgemma-4b-it-llama",
+        provider="llama",
+        model_category="default",
+        provider_model_id="medgemma-4b-it",
+        description=(
+            "MedGemma 4B Instruction Tuned - Optimized for medical text understanding and generation Q_8 Quantization"
+        ),
+        context_length=8192,
+        max_tokens=4096,
+        pricing=ModelPricing(input_per_1k=0.00015, output_per_1k=0.00060),
+        capabilities=[
+            "medical_text_analysis",
+            "symptom_analysis",
+            "medical_qa",
+            "clinical_reasoning",
+        ],
+        languages=["en", "zh"],
+        supports_tools=True,
         default_temperature=0.7,
     ),
-    "esi1": ModelSpec(
-        id="esi1",
+    "medgemma-4b-it-ESI1": ModelSpec(
+        id="medgemma-4b-it-ESI1",
         provider="llama",
-        description="Llama Server ESI-1 adapter profile.",
-        supports_tools=True,
-        default_temperature=0,
-        pricing=ModelPricing(input_per_1k=0.00015, output_per_1k=0.00060),
+        model_category="default",
+        provider_model_id="esi1-agent",
+        description=(
+            "MedGemma 4B Instruction Tuned - Optimized for medical text understanding and generation Q_8 Quantization"
+        ),
         context_length=8192,
         max_tokens=4096,
+        pricing=ModelPricing(input_per_1k=0.00015, output_per_1k=0.00060),
+        capabilities=[
+            "medical_text_analysis",
+            "symptom_analysis",
+            "medical_qa",
+            "clinical_reasoning",
+        ],
+        languages=["en", "zh"],
+        supports_tools=True,
+        default_temperature=0,
     ),
-    "esi2": ModelSpec(
-        id="esi2",
+    "medgemma-4b-it-ESI2": ModelSpec(
+        id="medgemma-4b-it-ESI2",
         provider="llama",
-        description="Llama Server ESI-2 adapter profile.",
-        supports_tools=True,
-        default_temperature=0,
-        pricing=ModelPricing(input_per_1k=0.00015, output_per_1k=0.00060),
+        model_category="default",
+        provider_model_id="esi2-agent",
+        description=(
+            "MedGemma 4B Instruction Tuned - Optimized for medical text understanding and generation Q_8 Quantization"
+        ),
         context_length=8192,
         max_tokens=4096,
+        pricing=ModelPricing(input_per_1k=0.00015, output_per_1k=0.00060),
+        capabilities=[
+            "medical_text_analysis",
+            "symptom_analysis",
+            "medical_qa",
+            "clinical_reasoning",
+        ],
+        languages=["en", "zh"],
+        supports_tools=True,
+        default_temperature=0,
     ),
-    "esi345": ModelSpec(
-        id="esi345",
+    "medgemma-4b-it-ESI345": ModelSpec(
+        id="medgemma-4b-it-ESI345",
         provider="llama",
-        description="Llama Server ESI-345 adapter profile.",
-        supports_tools=True,
-        default_temperature=0,
-        pricing=ModelPricing(input_per_1k=0.00015, output_per_1k=0.00060),
+        model_category="default",
+        provider_model_id="esi3-agent",
+        description=(
+            "MedGemma 4B Instruction Tuned - Optimized for medical text understanding and generation Q_8 Quantization"
+        ),
         context_length=8192,
         max_tokens=4096,
+        pricing=ModelPricing(input_per_1k=0.00015, output_per_1k=0.00060),
+        capabilities=[
+            "medical_text_analysis",
+            "symptom_analysis",
+            "medical_qa",
+            "clinical_reasoning",
+        ],
+        languages=["en", "zh"],
+        supports_tools=True,
+        default_temperature=0,
+    ),
+    "medgemma-4b-it-llama-tool": ModelSpec(
+        id="medgemma-4b-it-llama-tool",
+        provider="llama",
+        model_category="default",
+        provider_model_id="medgemma-tool-050",
+        description=(
+            "MedGemma 4B Instruction Tuned - Optimized for medical text understanding and generation Q_8 Quantization"
+        ),
+        context_length=8192,
+        max_tokens=4096,
+        pricing=ModelPricing(input_per_1k=0.00015, output_per_1k=0.00060),
+        capabilities=[
+            "medical_text_analysis",
+            "symptom_analysis",
+            "medical_qa",
+            "clinical_reasoning",
+        ],
+        languages=["en", "zh"],
+        supports_tools=True,
+        default_temperature=0,
+    ),
+    "medgemma-4b-it-Finetuned": ModelSpec(
+        id="medgemma-4b-it-Finetuned",
+        provider="llama",
+        model_category="default",
+        provider_model_id="medgemma-tool",
+        description=(
+            "MedGemma 4B finetuned multi-agent routing entry served through the shared llama endpoint."
+        ),
+        context_length=8192,
+        max_tokens=4096,
+        pricing=ModelPricing(input_per_1k=0.00015, output_per_1k=0.00060),
+        capabilities=[
+            "medical_text_analysis",
+            "symptom_analysis",
+            "medical_qa",
+            "clinical_reasoning",
+        ],
+        languages=["en", "zh"],
+        supports_tools=True,
+        default_temperature=0,
     ),
 }
 
@@ -175,40 +303,42 @@ def _build_openai_chat_model(spec: ModelSpec) -> BaseChatModel:
 
 
 def _build_dr7_chat_model(spec: ModelSpec) -> BaseChatModel:
+    if spec.provider != "dr7":
+        raise RuntimeError(f"Cannot build Dr7 model for provider '{spec.provider}'.")
     if not settings.DR7_API_KEY:
         raise RuntimeError("DR7_API_KEY is not set. Add it to `.env` to use Dr7 models.")
 
     from app.agentic.models.dr7_medical_chat import Dr7MedicalChatModel
 
     return Dr7MedicalChatModel(
-        model=spec.id,
+        model=spec.provider_model_id or spec.id,
         base_url=settings.DR7_MEDICAL_BASE_URL,
         api_key=settings.DR7_API_KEY,
         temperature=spec.default_temperature,
         max_tokens=spec.max_tokens,
+        rate_limit_max_retries=settings.DR7_RATE_LIMIT_MAX_RETRIES,
+        rate_limit_backoff_initial_s=settings.DR7_RATE_LIMIT_BACKOFF_INITIAL_S,
+        rate_limit_backoff_multiplier=settings.DR7_RATE_LIMIT_BACKOFF_MULTIPLIER,
+        rate_limit_backoff_max_s=settings.DR7_RATE_LIMIT_BACKOFF_MAX_S,
     )
 
 
 def build_llama_model(spec: ModelSpec) -> BaseChatModel:
+    if spec.provider != "llama":
+        raise RuntimeError(f"Cannot build llama model for provider '{spec.provider}'.")
     from app.agentic.models.llama_server_chat import LlamaServerChat
 
-    adapter_by_model_id: dict[str, str] = {
-        "esi1": "esi1",
-        "esi2": "esi2",
-        "esi345": "esi345",
-    }
-    adapter = adapter_by_model_id.get(spec.id)
-    if adapter is None:
-        supported = ", ".join(sorted(adapter_by_model_id))
-        raise RuntimeError(
-            f"Llama model '{spec.id}' is not mapped to an adapter literal. Supported: {supported}"
-        )
+    agent_model_id_overrides: dict[str, str] = {}
+    if spec.id == "medgemma-4b-it-Finetuned":
+        agent_model_id_overrides = FINETUNED_MULTI_AGENT_MODEL_ID_OVERRIDES
 
     return LlamaServerChat(
-        model=spec.id,
+        model=spec.provider_model_id or spec.id,
         base_url=settings.LLAMA_SERVER_BASE_URL,
         api_key=settings.LLAMA_SERVER_API_KEY or "",
-        adapter=adapter,
+        agent_model_id_overrides=agent_model_id_overrides,
+        serialize_requests=bool(settings.LLAMA_SERVER_SERIAL_REQUESTS),
         temperature=spec.default_temperature,
         max_tokens=spec.max_tokens,
+        timeout_s=settings.LLAMA_SERVER_TIMEOUT_S,
     )

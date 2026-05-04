@@ -28,6 +28,7 @@ def build_doctor_agent(runtime: AgentRuntime, runtime_config: Optional[RuntimeCo
             tools=TOOLS,
             system_prompt=SYSTEM_PROMPT,
             response_format=DoctorAgentOutput,
+            agent_node_name="doctor_agent",
             runtime_config=runtime_config,
         )
     except Exception as e:

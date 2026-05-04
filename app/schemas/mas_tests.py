@@ -40,6 +40,10 @@ class MasTestCaseRead(BaseModel):
 class MasTestRunStartRequest(BaseModel):
     workflow_id: str
     name: Optional[str] = Field(default=None, description="Optional label for UI.")
+    model_id: Optional[str] = Field(
+        default=None,
+        description="Optional model id for this MAS test run (e.g. 'gpt-4o-mini', 'medgemma-4b-it').",
+    )
     case_ids: list[str] = Field(description="IDs of the test cases to run, in execution order.")
 
 
@@ -47,6 +51,7 @@ class MasTestRunRead(BaseModel):
     id: str
     workflow_id: str
     name: Optional[str] = None
+    model_name: Optional[str] = None
     status: MasTestRunStatus
     selected_case_ids_json: list[str]
     metrics_json: Optional[dict[str, Any]] = None
@@ -102,26 +107,10 @@ class MasTestRunMetricsSummaryRead(BaseModel):
     duration_ms_avg: Optional[float] = None
 
 
-class MasTestRunConfusionCountsRead(BaseModel):
-    tp: int
-    fp: int
-    tn: int
-    fn: int
-
-
-class MasTestRunConfusionRead(BaseModel):
-    mode: str
-    labels: list[str]
-    per_label: dict[str, MasTestRunConfusionCountsRead]
-    total_classified: int
-    unclassified_count: int
-
-
 class MasTestRunBatchMetricsRead(BaseModel):
     run: MasTestRunRead
     summary: MasTestRunMetricsSummaryRead
     cases: list[MasTestCaseRunMetricRead]
-    confusion: Optional[MasTestRunConfusionRead] = None
 
 
 class MasTestCaseAnalyticsRead(BaseModel):

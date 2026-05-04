@@ -6,7 +6,7 @@ from typing import Any, Dict, Optional
 from fastapi import BackgroundTasks, HTTPException, status
 from pydantic import ValidationError
 
-from app.agentic.model_registry import get_chat_model, resolve_model_spec
+from app.agentic.model_registry import get_chat_model, resolve_model_spec, validate_model_for_agent
 from app.agentic.runtime import AgentRuntime, RuntimeConfig
 from app.agentic.swarm import (
     AgentNodeExecutor,
@@ -29,8 +29,7 @@ from app.schemas.swarm_runs import SwarmRunCreateRequest
 from app.api.services import swarm_runs_service
 
 
-def _build_real_registry() -> SwarmAgentRegistry:
-    model_id = settings.OPENAI_MODEL
+def _build_real_registry(model_id: str) -> SwarmAgentRegistry:
     model_spec = resolve_model_spec(model_id)
     runtime = AgentRuntime(
         model_id=model_id,
@@ -124,6 +123,7 @@ def create_and_start_swarm_run(
     *,
     workflow_id: str,
     input_payload: dict[str, Any],
+    model_id: str,
     metadata: Optional[dict[str, Any]] = None,
 ) -> tuple[str, dict[str, Any], str, str | None]:
     normalized_input, input_schema_name, workflow_version = normalize_workflow_input(
@@ -139,7 +139,10 @@ def create_and_start_swarm_run(
                 workflow_version=workflow_version,
                 input_schema_name=input_schema_name,
                 input=normalized_input,
-                metadata=metadata,
+                metadata={
+                    "model_id": model_id,
+                    **dict(metadata or {}),
+                },
             ),
             db,
         )
@@ -174,9 +177,19 @@ def start_swarm_execution(
     payload: SwarmExecutionStartRequest,
     background_tasks: BackgroundTasks,
 ) -> SwarmExecutionStartResponse:
+    workflow = get_workflow_definition(workflow_id)
+    model_id = payload.model_id or settings.OPENAI_MODEL
+    for agent_name in workflow.participating_agents:
+        validate_model_for_agent(
+            model_id=model_id,
+            agent_name=agent_name,
+            requires_tools=True,
+        )
+
     swarm_run_id, normalized_input, input_schema_name, workflow_version = create_and_start_swarm_run(
         workflow_id=workflow_id,
         input_payload=payload.input,
+        model_id=model_id,
         metadata={
             "source": "mas_execution_api",
             **dict(payload.metadata or {}),
@@ -189,6 +202,7 @@ def start_swarm_execution(
         workflow_version,
         swarm_run_id,
         normalized_input,
+        model_id,
     )
 
     urls = _run_urls(swarm_run_id)
@@ -197,6 +211,7 @@ def start_swarm_execution(
         workflow_id=workflow_id,
         workflow_version=workflow_version,
         input_schema_name=input_schema_name,
+        model_id=model_id,
         status="running",
         **urls,
     )
@@ -207,6 +222,7 @@ def _execute_swarm_run_in_background(
     workflow_version: str | None,
     swarm_run_id: str,
     case_info: dict[str, Any],
+    model_id: str,
 ) -> None:
     asyncio.run(
         execute_swarm_run(
@@ -214,6 +230,7 @@ def _execute_swarm_run_in_background(
             workflow_version=workflow_version,
             swarm_run_id=swarm_run_id,
             case_info=case_info,
+            model_id=model_id,
         )
     )
 
@@ -224,9 +241,10 @@ async def execute_swarm_run(
     workflow_version: str | None,
     swarm_run_id: str,
     case_info: dict[str, Any],
+    model_id: str,
 ) -> SwarmState:
     workflow = get_workflow_definition(workflow_id)
-    registry = _build_real_registry()
+    registry = _build_real_registry(model_id)
     event_emitter = SwarmEventEmitter(
         workflow_id=workflow_id,
         session_factory=SessionLocal,
@@ -248,6 +266,7 @@ async def execute_swarm_run(
             "swarm_run_id": swarm_run_id,
             "workflow_id": workflow_id,
             "workflow_version": workflow_version,
+            "model_id": model_id,
             "next_sequence_index": 1,
         },
     )
@@ -258,6 +277,7 @@ async def execute_swarm_run(
         payload_json={
             "workflow_id": workflow_id,
             "workflow_version": workflow_version,
+            "model_id": model_id,
             "input": case_info,
         },
     )
@@ -274,6 +294,7 @@ async def execute_swarm_run(
             payload_json={
                 "workflow_id": workflow_id,
                 "workflow_version": workflow.metadata.version,
+                "model_id": model_id,
                 "final_output": result.get("final_output"),
             },
         )
@@ -294,6 +315,7 @@ async def execute_swarm_run(
             payload_json={
                 "workflow_id": workflow_id,
                 "workflow_version": workflow.metadata.version,
+                "model_id": model_id,
                 "error": str(exc),
             },
         )

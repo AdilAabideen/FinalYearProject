@@ -26,18 +26,24 @@ class Settings(BaseSettings):
     # LLM / Agentic settings (LangChain / LangGraph)
     OPENAI_API_KEY: Optional[str] = None
     OPENAI_MODEL: str = "gpt-4o-mini"
-
     # Dr7 settings
     DR7_API_KEY: Optional[str] = None
     DR7_MEDICAL_BASE_URL: str = "https://dr7.ai/api/v1/medical"
+    DR7_RATE_LIMIT_MAX_RETRIES: int = 2
+    DR7_RATE_LIMIT_BACKOFF_INITIAL_S: float = 10.0
+    DR7_RATE_LIMIT_BACKOFF_MULTIPLIER: float = 2.0
+    DR7_RATE_LIMIT_BACKOFF_MAX_S: float = 40.0
 
     # Llama Server settings
-    LLAMA_SERVER_BASE_URL: str = "http://localhost:8080/v1"
+    LLAMA_SERVER_BASE_URL: str = "https://aa4its07ztlqwx-8000.proxy.runpod.net/v1"
+    # LLAMA_SERVER_BASE_URL: str = "http://localhost:8080/v1"
     LLAMA_SERVER_API_KEY: Optional[str] = None
+    LLAMA_SERVER_SERIAL_REQUESTS: Union[bool, str] = False
+    LLAMA_SERVER_TIMEOUT_S: float = 60.0
 
     # Agent runtime safety
-    AGENT_RUN_TIMEOUT_S: float = 240.0
     TEST_CASE_BACKOFF_S: float = 5.0
+    MAS_TEST_CASE_BACKOFF_S: float = 20.0
 
     #LangSmith settings
     # LANGSMITH_API_KEY: Optional[str] = None
@@ -68,6 +74,15 @@ class Settings(BaseSettings):
             return v.lower() in ('true', '1', 'yes', 'on')
         return False
 
+    @field_validator('LLAMA_SERVER_SERIAL_REQUESTS', mode='before')
+    @classmethod
+    def parse_llama_serial_requests(cls, v):
+        if isinstance(v, bool):
+            return v
+        if isinstance(v, str):
+            return v.lower() in ('true', '1', 'yes', 'on')
+        return False
+
     # @field_validator('LANGCHAIN_TRACING_V2', mode='before')
     # @classmethod
     # def parse_langchain_tracing(cls, v):
@@ -78,3 +93,4 @@ class Settings(BaseSettings):
     #     return False
 
 settings = Settings()
+

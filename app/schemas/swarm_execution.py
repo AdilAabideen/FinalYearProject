@@ -11,6 +11,10 @@ class SwarmExecutionStartRequest(BaseModel):
     input: dict[str, Any] = Field(
         description="Workflow input payload validated against the MAS input schema.",
     )
+    model_id: Optional[str] = Field(
+        default=None,
+        description="Optional model id for this MAS run (e.g. 'gpt-4o-mini', 'medgemma-4b-it').",
+    )
     metadata: Optional[dict[str, Any]] = Field(
         default=None,
         description="Optional caller metadata stored on the swarm run.",
@@ -22,6 +26,7 @@ class SwarmExecutionStartResponse(BaseModel):
     workflow_id: str
     workflow_version: Optional[str] = None
     input_schema_name: str
+    model_id: str
     status: SwarmRunStatus
     run_url: str
     summary_url: str

@@ -1,6 +1,8 @@
 from __future__ import annotations
-
-from typing import Any, Callable, Literal, Optional, Sequence, Union
+from contextlib import contextmanager
+import threading
+from typing import Any, Callable, Optional, Sequence, Union
+import json
 
 import httpx
 from langchain_core.language_models import LanguageModelInput
@@ -22,45 +24,44 @@ from app.agentic.protocols import (
     normalize_tool_calls,
 )
 
-ESI1_ADAPTER_ID = 0
-ESI2_ADAPTER_ID = 1
-ESI345_ADAPTER_ID = 2
-ES1_ADAPTER_ID = ESI1_ADAPTER_ID
-ES2_ADAPTER_ID = ESI2_ADAPTER_ID
-ES345_ADAPTER_ID = ESI345_ADAPTER_ID
+class _SerialRequestQueue:
+    def __init__(self) -> None:
+        self._condition = threading.Condition()
+        self._next_ticket = 0
+        self._serving_ticket = 0
 
-ESIAdapterName = Literal["esi1", "esi2", "esi345"]
+    @contextmanager
+    def acquire(self):
+        with self._condition:
+            ticket = self._next_ticket
+            self._next_ticket += 1
+            while ticket != self._serving_ticket:
+                self._condition.wait()
 
-ESI_ADAPTER_ID_BY_NAME: dict[str, int] = {
-    "esi1": ESI1_ADAPTER_ID,
-    "esi2": ESI2_ADAPTER_ID,
-    "esi345": ESI345_ADAPTER_ID,
-}
-SUPPORTED_ADAPTER_IDS = set(ESI_ADAPTER_ID_BY_NAME.values())
+        try:
+            yield
+        finally:
+            with self._condition:
+                self._serving_ticket += 1
+                self._condition.notify_all()
 
-ESI_LORA_ADAPTERS: list[dict[str, Any]] = [
-    {
-        "id": ESI1_ADAPTER_ID,
-        "path": "/Users/adil/Documents/University/MultiAgentResearch/UseCase1ESI/model_artifacts/adapters_gguf/esi1-lora.gguf",
-        "scale": 1.0,
-        "task_name": "",
-        "prompt_prefix": "",
-    },
-    {
-        "id": ESI2_ADAPTER_ID,
-        "path": "/Users/adil/Documents/University/MultiAgentResearch/UseCase1ESI/model_artifacts/adapters_gguf/esi2-lora.gguf",
-        "scale": 1.0,
-        "task_name": "",
-        "prompt_prefix": "",
-    },
-    {
-        "id": ESI345_ADAPTER_ID,
-        "path": "/Users/adil/Documents/University/MultiAgentResearch/UseCase1ESI/model_artifacts/adapters_gguf/esi345-lora.gguf",
-        "scale": 1.0,
-        "task_name": "",
-        "prompt_prefix": "",
-    },
-]
+
+_SERIAL_QUEUE_GUARD = threading.Lock()
+_SERIAL_QUEUES_BY_BASE_URL: dict[str, _SerialRequestQueue] = {}
+
+
+def _queue_key_for(base_url: str) -> str:
+    return str(base_url or "").rstrip("/")
+
+
+def _serial_queue_for(base_url: str) -> _SerialRequestQueue:
+    key = _queue_key_for(base_url)
+    with _SERIAL_QUEUE_GUARD:
+        queue = _SERIAL_QUEUES_BY_BASE_URL.get(key)
+        if queue is None:
+            queue = _SerialRequestQueue()
+            _SERIAL_QUEUES_BY_BASE_URL[key] = queue
+        return queue
 
 
 class LlamaServerChat(BaseChatModel):
@@ -77,7 +78,7 @@ class LlamaServerChat(BaseChatModel):
 
     model: str = Field(description="Llama server model id (e.g. 'medgemma-4b-it').")
     base_url: str = Field(
-        default="http://localhost:8080/v1",
+        default="https://aa4its07ztlqwx-8000.proxy.runpod.net/v1",
         description="Base URL for llama-server OpenAI-compatible API.",
     )
     api_key: Optional[str] = Field(
@@ -85,18 +86,16 @@ class LlamaServerChat(BaseChatModel):
         description="Optional API key. Local llama-server usually does not require one.",
         repr=False,
     )
-    adapter: Optional[ESIAdapterName] = Field(
-        default=None,
-        description="Default LoRA adapter literal: 'esi1' | 'esi2' | 'esi345'.",
+    agent_model_id_overrides: dict[str, str] = Field(
+        default_factory=dict,
+        description="Optional per-agent override map for the outgoing provider model id.",
     )
-    adapter_id: Optional[int] = Field(
-        default=None,
-        description="Default LoRA adapter id. If omitted, inferred from model when possible.",
+    serialize_requests: bool = Field(
+        default=False,
+        description="When true, queue llama-server requests serially per backend URL.",
     )
-    adapter_scale: float = Field(default=1.0, description="LoRA scale for selected adapter.")
-
-    temperature: float = 0.7
-    max_tokens: Optional[int] = None
+    temperature: float = 0
+    max_tokens: Optional[int] = 250
     timeout_s: float = 60.0
 
     def _llm_type(self) -> str:
@@ -107,50 +106,26 @@ class LlamaServerChat(BaseChatModel):
         return {
             "model": self.model,
             "base_url": self.base_url,
-            "adapter": self.adapter,
-            "adapter_id": self.adapter_id,
         }
+
+    def _resolve_provider_model(self, **kwargs: Any) -> str:
+        agent_name = str(kwargs.get("agent_name") or "").strip()
+        if agent_name and self.agent_model_id_overrides:
+            override = self.agent_model_id_overrides.get(agent_name)
+            if isinstance(override, str) and override.strip():
+                return override.strip()
+        return self.model
 
     def _normalize_llama_messages(self, messages: list[dict[str, str]]) -> list[dict[str, str]]:
         """Normalize provider messages via shared protocol helper."""
         return normalize_chat_messages(messages)
 
-    def _resolve_adapter_id(self, **kwargs: Any) -> Optional[int]:
-        raw_adapter_id = kwargs.get("adapter_id", self.adapter_id)
-        if raw_adapter_id is not None:
-            adapter_id = int(raw_adapter_id)
-            if adapter_id not in SUPPORTED_ADAPTER_IDS:
-                supported = ", ".join(str(x) for x in sorted(SUPPORTED_ADAPTER_IDS))
-                raise ValueError(
-                    f"Unsupported adapter_id '{adapter_id}'. Expected one of: {supported}."
-                )
-            return adapter_id
-
-        raw_adapter_name = kwargs.get("adapter", self.adapter)
-        if isinstance(raw_adapter_name, str):
-            adapter_name = raw_adapter_name.strip().lower()
-            if adapter_name not in ESI_ADAPTER_ID_BY_NAME:
-                supported = ", ".join(sorted(ESI_ADAPTER_ID_BY_NAME))
-                raise ValueError(
-                    f"Unsupported adapter '{raw_adapter_name}'. Expected one of: {supported}."
-                )
-            return ESI_ADAPTER_ID_BY_NAME[adapter_name]
-
-        model_key = self.model.strip().lower()
-        return ESI_ADAPTER_ID_BY_NAME.get(model_key)
-
-    def _apply_lora_payload(
-        self,
-        payload: dict[str, Any],
-        *,
-        adapter_id: Optional[int],
-        adapter_scale: float,
-    ) -> None:
-        """Apply llama-only LoRA payload fields."""
-        if adapter_id is None:
-            return
-        # Intentionally disabled to preserve existing transport behavior.
-        payload["lora"] = [{"id": int(adapter_id), "scale": float(1.0)}]
+    def _build_chat_completions_url(self) -> str:
+        """Accept either a base API URL or a full chat completions endpoint."""
+        normalized = self.base_url.rstrip("/")
+        if normalized.endswith("/chat/completions"):
+            return normalized
+        return normalized + "/chat/completions"
 
     def bind_tools(
         self,
@@ -185,8 +160,34 @@ class LlamaServerChat(BaseChatModel):
         run_manager: Optional[Any] = None,
         **kwargs: Any,
     ) -> ChatResult:
+        serialize_requests = bool(kwargs.get("serialize_requests", self.serialize_requests))
+        if not serialize_requests:
+            return self._generate_once(
+                messages=messages,
+                stop=stop,
+                run_manager=run_manager,
+                **kwargs,
+            )
+
+        with _serial_queue_for(self.base_url).acquire():
+            return self._generate_once(
+                messages=messages,
+                stop=stop,
+                run_manager=run_manager,
+                **kwargs,
+            )
+
+    def _generate_once(
+        self,
+        messages: list[BaseMessage],
+        stop: Optional[list[str]] = None,
+        run_manager: Optional[Any] = None,
+        **kwargs: Any,
+    ) -> ChatResult:
         bound_tools = kwargs.get("tools")
         tool_choice = kwargs.get("tool_choice")
+        multi_agent = bool(kwargs.get("multi_agent"))
+        handoff_names = list(kwargs.get("handoff_names") or [])
         tools = coerce_bound_tools(bound_tools)
 
         llama_messages = to_provider_messages(
@@ -199,27 +200,31 @@ class LlamaServerChat(BaseChatModel):
             llama_messages,
             tools=tools,
             tool_choice=tool_choice,
+            multi_agent=multi_agent,
+            handoff_names=handoff_names,
             final_answer_tool_name="final_answer",
-            highlight_final_answer=True,
+            highlight_final_answer=not multi_agent,
         )
         llama_messages = self._normalize_llama_messages(llama_messages)
+        provider_model = self._resolve_provider_model(**kwargs)
+
 
         payload: dict[str, Any] = {
-            "model": self.model,
+            "model": provider_model,
             "messages": llama_messages,
-            "temperature": self.temperature,
+            "temperature": 0,
+            "top_k": 1,
+            "top_p": 1,
+            "seed": 42,
             "stream": False,
         }
+
         if self.max_tokens is not None:
-            payload["max_tokens"] = self.max_tokens
+            payload["max_tokens"] = 250
         if stop:
             payload["stop"] = stop
-        adapter_id = self._resolve_adapter_id(**kwargs)
-        adapter_scale = float(kwargs.get("adapter_scale", self.adapter_scale))
-        self._apply_lora_payload(payload, adapter_id=adapter_id, adapter_scale=adapter_scale)
 
-
-        url = self.base_url.rstrip("/") + "/chat/completions"
+        url = self._build_chat_completions_url()
         headers = {"Content-Type": "application/json"}
         if self.api_key:
             headers["Authorization"] = f"Bearer {self.api_key}"
@@ -258,7 +263,7 @@ class LlamaServerChat(BaseChatModel):
         tool_calls: list[dict[str, Any]] = []
         if tools and isinstance(choice_msg, dict):
             tool_calls = normalize_tool_calls(
-                choice_msg.get("tool_calls"),
+                choice_msg.get("content"),
                 allowed_tool_names=allowed_tool_names,
             )
 

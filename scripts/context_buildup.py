@@ -333,7 +333,7 @@ def _build_llama_context(
 ) -> dict[str, Any]:
     model = LlamaServerChat(
         model=model_id,
-        base_url="http://localhost:8080/v1",
+        base_url="https://l99jmubodzvsex-8000.proxy.runpod.net/v1",
         api_key="",
     )
 

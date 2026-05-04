@@ -3,6 +3,9 @@ from __future__ import annotations
 from typing import Any, Dict, List, Optional
 
 from app.agentic.swarm_contract import SwarmState
+from app.agentic.workflows.definitions.esi_swarm_v1.payload_builders import (
+    unified_payload_builder,
+)
 
 
 ACUITY_AGENTS = {"esi1_agent", "esi2_agent", "esi345_agent"}
@@ -33,23 +36,27 @@ def build_payload(state: SwarmState) -> Dict[str, Any]:
     vitals_handoff = _latest_handoff_from(doctor_handoffs, {"vitals_agent"})
     acuity_payload = dict((acuity_handoff or {}).get("payload") or {})
     vitals_payload = dict((vitals_handoff or {}).get("payload") or {})
+    case_info = unified_payload_builder("doctor_agent", dict(state.get("case_info") or {}))
+
+    source_agent = (acuity_handoff or {}).get("from_agent")
+
+    upstream_esi_level = (
+        acuity_payload.get("esi_level")
+        or acuity_payload.get("final_esi_level")
+        or acuity_payload.get("upstream_esi_level")
+        or acuity_payload.get("esi_level_345")
+    )
 
     llm_payload = {
-        "task": "Produce the final doctor review for this triage case.",
-        "agent_role": "doctor_agent",
-        "case_info": dict(state.get("case_info") or {}),
-        "handoff_context": (
-            "You are receiving one acuity-branch handoff and one vitals-branch handoff. "
-            "Use both to produce the final review."
+        "source_agent": source_agent,
+        "upstream_esi_level": upstream_esi_level,
+        "vitals_consider_uptriage": (
+            vitals_payload.get("consider_uptriage")
+            or vitals_payload.get("vitals_consider_uptriage")
+            or False
+
         ),
-        "acuity_context": {
-            "from_agent": (acuity_handoff or {}).get("from_agent"),
-            "result": acuity_payload,
-        },
-        "vitals_context": {
-            "from_agent": (vitals_handoff or {}).get("from_agent"),
-            "result": vitals_payload,
-        }
+        "abnormal_vitals": vitals_payload.get("abnormal_vitals") or []
     }
     return {
         "llm_payload": llm_payload,

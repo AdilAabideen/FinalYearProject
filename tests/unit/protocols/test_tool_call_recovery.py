@@ -77,6 +77,16 @@ def test_ut_pro_020_recover_from_embedded_balanced_tool_calls_array():
 
 
 @pytest.mark.unit
+def test_ut_pro_020a_recover_from_unbalanced_tool_calls_wrapper():
+    result = recover_from_tool_calls_array_text(
+        '{"tool_calls":[{"id":"call_10","name":"tool_a","arguments":{"x":10}}}'
+    )
+    assert result.succeeded is True
+    assert len(result.calls) == 1
+    assert result.calls[0].name == "tool_a"
+
+
+@pytest.mark.unit
 def test_ut_pro_021_empty_assistant_text_returns_empty_parse_result():
     result = recover_tool_calls_from_content("")
     assert result.succeeded is False

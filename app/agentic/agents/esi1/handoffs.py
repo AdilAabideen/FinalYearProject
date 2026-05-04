@@ -1,46 +1,43 @@
-from pydantic import BaseModel, Field
-from app.agentic.handoff import define_handoff
-from typing import List
+from typing import ClassVar, List, Literal
+
+from pydantic import AliasChoices, Field
+
+from app.agentic.handoff import CoerciveHandoffPayload, define_handoff
 
 
-class ESI1ToESI2Payload(BaseModel):
-    esi1_result: str = Field(
+class ESI1ToESI2Payload(CoerciveHandoffPayload):
+    _bool_fields: ClassVar[frozenset[str]] = frozenset({"is_esi1"})
+    _list_fields: ClassVar[frozenset[str]] = frozenset({"carry_forward_concerns"})
+
+    is_esi1: Literal[False] = Field(
         ...,
-        description="Outcome of the ESI-1 assessment. Usually 'not_esi1' when handing off to the ESI-2 agent."
+        description="Confirmed ESI-1 decision"
     )
     brief_reason: str = Field(
         ...,
+        validation_alias=AliasChoices("brief_reason", "reason"),
         description="Short explanation of why the case was not judged to require immediate life-saving intervention from the available information."
     )
     carry_forward_concerns: List[str] = Field(
-        ...,
+        default_factory=list,
         description="Key concerns or unresolved issues that the ESI-2 agent should keep in mind during high-risk assessment."
     )
-    focus_for_esi2: str = Field(
-        ...,
-        description="Short instruction describing what the ESI-2 agent should evaluate next, such as high-risk features, likely deterioration, or ESI-2 consistency."
-    )
 
-class ESI1ToDoctorPayload(BaseModel):
-    decision: str = Field(
+class ESI1ToDoctorPayload(CoerciveHandoffPayload):
+    _bool_fields: ClassVar[frozenset[str]] = frozenset({"is_esi1"})
+    _list_fields: ClassVar[frozenset[str]] = frozenset({"critical_concerns"})
+
+    is_esi1: Literal[True] = Field(
         ...,
-        description="Result of the ESI-1 assessment, typically 'esi1'."
-    )
-    urgency: str = Field(
-        ...,
-        description="Short urgency label showing that immediate clinical attention is required, for example 'immediate' or 'critical'."
+        description="Confirmed ESI-1 decision"
     )
     reason: str = Field(
         ...,
         description="Brief explanation of why the patient appears to meet ESI-1 criteria."
     )
     critical_concerns: List[str] = Field(
-        ...,
+        default_factory=list,
         description="Key immediate threats or red flags identified from the case, such as airway compromise, severe respiratory distress, shock, or unresponsiveness."
-    )
-    request: str = Field(
-        ...,
-        description="Short escalation request telling the doctor agent what to do next."
     )
 
 HANDOFFS = [
@@ -49,11 +46,13 @@ HANDOFFS = [
         target_agent="esi2_agent",
         payload_model=ESI1ToESI2Payload,
         description="Transfer to ESI-2 when ESI-1 criteria are not met.",
+        tool_name="final_esi1_false_handoff_to_esi2_agent"
     ),
     define_handoff(
         source_agent="esi1_agent",
         target_agent="doctor_agent",
         payload_model=ESI1ToDoctorPayload,
         description="Transfer to Doctor when the Case is Confirmed to be ESI1.",
+        tool_name="final_esi1_true_handoff_to_doctor_agent"
     )
 ]

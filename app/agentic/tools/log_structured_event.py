@@ -10,7 +10,7 @@ class LogStructuredEventInput(BaseModel):
         "missing_info_detected",
         "replan_required",
         "final_output_ready",
-        "resource_needed"
+        "resource_needed",
     ] = Field(
         ...,
         description="The type of meaningful event being logged."
