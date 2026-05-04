@@ -132,6 +132,7 @@ class SSEHandrolledAgent:
             self.bound_model = self.model.bind_tools(
                 self.tools,
                 tool_choice="any",
+                agent_name=self.agent_node_name,
                 multi_agent=bool(self.runtime_config.multi_agent),
                 handoff_names=self._handoff_tool_names,
             )

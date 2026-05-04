@@ -15,8 +15,7 @@ from app.agentic.runtime import AgentRuntime, RuntimeConfig
 from app.config import settings
 
 from .evaluator import DoctorAlwaysPassEvaluator
-from . import prompt as default_prompt
-from . import prompt_ii as ii_prompt
+from .prompt import SYSTEM_PROMPT
 from .schema import DoctorAgentInput, DoctorAgentOutput
 from .tools import TOOLS
 
@@ -24,12 +23,12 @@ from .tools import TOOLS
 def build_doctor_agent(runtime: AgentRuntime, runtime_config: Optional[RuntimeConfig] = None):
     """Build the doctor/supervisor agent."""
     try:
-        prompt_module = ii_prompt if runtime.model_spec.id == "ii-medical-8b" else default_prompt
         return SSEHandrolledAgent(
             model=runtime.model,
             tools=TOOLS,
-            system_prompt=prompt_module.SYSTEM_PROMPT,
+            system_prompt=SYSTEM_PROMPT,
             response_format=DoctorAgentOutput,
+            agent_node_name="doctor_agent",
             runtime_config=runtime_config,
         )
     except Exception as e:

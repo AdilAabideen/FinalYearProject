@@ -1,12 +1,26 @@
-from typing import ClassVar, List, Literal
+from typing import Any, ClassVar, List, Literal
 
-from pydantic import Field
+from pydantic import Field, model_validator
 
 from app.agentic.handoff import CoerciveHandoffPayload, define_handoff
 
 class ESI2ToESI345Payload(CoerciveHandoffPayload):
     _bool_fields: ClassVar[frozenset[str]] = frozenset({"is_esi2"})
     _list_fields: ClassVar[frozenset[str]] = frozenset({"carry_forward_concerns"})
+
+    @model_validator(mode="before")
+    @classmethod
+    def _coerce_stale_false_branch_fields(cls, value: Any) -> Any:
+        if not isinstance(value, dict):
+            return value
+
+        data = dict(value)
+        if "is_esi2" not in data:
+            stale_result = str(data.get("esi1_result", "")).strip().lower()
+            stale_decision = str(data.get("decision", "")).strip().lower()
+            if stale_result == "not_esi2" or stale_decision == "not_esi2":
+                data["is_esi2"] = False
+        return data
 
     is_esi2: Literal[False] = Field(
         ...,
@@ -24,6 +38,19 @@ class ESI2ToESI345Payload(CoerciveHandoffPayload):
 class ESI2ToDoctorPayload(CoerciveHandoffPayload):
     _bool_fields: ClassVar[frozenset[str]] = frozenset({"is_esi2"})
     _list_fields: ClassVar[frozenset[str]] = frozenset({"critical_concerns"})
+
+    @model_validator(mode="before")
+    @classmethod
+    def _coerce_stale_true_branch_fields(cls, value: Any) -> Any:
+        if not isinstance(value, dict):
+            return value
+
+        data = dict(value)
+        if "is_esi2" not in data:
+            stale_decision = str(data.get("decision", "")).strip().lower()
+            if stale_decision == "esi2" or "reason" in data or "critical_concerns" in data:
+                data["is_esi2"] = True
+        return data
 
     is_esi2: Literal[True] = Field(
         ...,

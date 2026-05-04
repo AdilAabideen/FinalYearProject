@@ -18,8 +18,7 @@ from app.agentic.agents.vitals.schema import VitalsAgentInput, VitalsAgentOutput
 
 from .evaluator import VitalsUptriageEvaluator
 from .handoffs import HANDOFFS
-from . import prompt as default_prompt
-from . import prompt_ii as ii_prompt
+from .prompt import HANDOFF_REQUIREMENTS, SINGLE_AGENT_OUTPUT_REQUIREMENTS, SYSTEM_PROMPT
 from .tools import TOOLS
 
 from app.agentic.HandRolledAgent import SSEHandrolledAgent
@@ -28,17 +27,17 @@ from app.agentic.HandRolledAgent import SSEHandrolledAgent
 def build_vitals_agent(runtime: AgentRuntime, runtime_config: Optional[RuntimeConfig] = None):
     """Build the vitals LangGraph ReAct agent."""
     try:
-        prompt_module = ii_prompt if runtime.model_spec.id == "ii-medical-8b" else default_prompt
         handoff_tools = create_handoff_tools("vitals_agent", HANDOFFS)
         handoff_tool_names = [tool.name for tool in handoff_tools]
         tools = [*TOOLS, *handoff_tools] if runtime_config and runtime_config.multi_agent else TOOLS
         return SSEHandrolledAgent(
             model=runtime.model,
             tools=tools,
-            system_prompt=prompt_module.SYSTEM_PROMPT,
-            single_agent_prompt_addon=prompt_module.SINGLE_AGENT_OUTPUT_REQUIREMENTS,
-            multi_agent_prompt_addon=prompt_module.HANDOFF_REQUIREMENTS,
+            system_prompt=SYSTEM_PROMPT,
+            single_agent_prompt_addon=SINGLE_AGENT_OUTPUT_REQUIREMENTS,
+            multi_agent_prompt_addon=HANDOFF_REQUIREMENTS,
             response_format=VitalsAgentOutput,
+            agent_node_name="vitals_agent",
             handoff_tool_names=handoff_tool_names,
             runtime_config=runtime_config,
         )

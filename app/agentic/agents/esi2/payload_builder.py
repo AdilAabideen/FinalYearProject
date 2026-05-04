@@ -9,7 +9,8 @@ from app.agentic.workflows.definitions.esi_swarm_v1.payload_builders import (
 
 def clean_payload(payload):
     return {
-        "Concerns" : payload.get("carry_forward_concerns")
+        "Concerns" : payload.get("carry_forward_concerns"),
+        "brief_reason" : payload.get("brief_reason")
     }
 
 
@@ -23,7 +24,6 @@ def build_payload(state: SwarmState) -> Dict[str, Any]:
         "handoff_context": (
             "You are receiving a Case from the ESI1 Agent. "
             "This means the patient was judged to be NOT ESI-1."
-            "Use this as Context"
         ),
         "prior_result": clean_payload(handoff_payload),
     }

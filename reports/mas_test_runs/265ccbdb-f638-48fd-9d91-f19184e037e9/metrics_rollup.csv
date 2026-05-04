@@ -1,0 +1,9 @@
+group_type,group_key,run_count,failed_count,succeeded_count,avg_input_tokens,avg_output_tokens,avg_llm_calls,avg_tool_calls,most_common_failure
+agent_name,doctor_agent,45,0,45,3380.53,328.44,2.00,3.00,
+agent_name,esi1_agent,50,1,49,12672.38,652.20,4.38,5.00,truncated_output
+agent_name,esi2_agent,34,1,33,13891.79,652.79,4.88,4.88,truncated_output
+agent_name,esi345_agent,16,0,16,9703.44,622.81,3.50,4.38,
+agent_name,vitals_agent,50,3,47,13416.24,705.14,4.54,6.92,schema_validation_error
+failure_class,truncated_output,2,2,0,,,,,truncated_output
+failure_class,schema_validation_error,2,2,0,,,,,schema_validation_error
+failure_class,handoff_payload_invalid,1,1,0,,,,,handoff_payload_invalid

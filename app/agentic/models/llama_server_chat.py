@@ -1,7 +1,7 @@
 from __future__ import annotations
 from contextlib import contextmanager
 import threading
-from typing import Any, Callable, Literal, Optional, Sequence, Union
+from typing import Any, Callable, Optional, Sequence, Union
 import json
 
 import httpx
@@ -23,47 +23,6 @@ from app.agentic.protocols import (
     to_provider_messages,
     normalize_tool_calls,
 )
-
-ESI1_ADAPTER_ID = 0
-ESI2_ADAPTER_ID = 1
-ESI345_ADAPTER_ID = 2
-ES1_ADAPTER_ID = ESI1_ADAPTER_ID
-ES2_ADAPTER_ID = ESI2_ADAPTER_ID
-ES345_ADAPTER_ID = ESI345_ADAPTER_ID
-
-ESIAdapterName = Literal["esi1", "esi2", "esi345"]
-
-ESI_ADAPTER_ID_BY_NAME: dict[str, int] = {
-    "esi1": ESI1_ADAPTER_ID,
-    "esi2": ESI2_ADAPTER_ID,
-    "esi345": ESI345_ADAPTER_ID,
-}
-SUPPORTED_ADAPTER_IDS = set(ESI_ADAPTER_ID_BY_NAME.values())
-
-ESI_LORA_ADAPTERS: list[dict[str, Any]] = [
-    {
-        "id": ESI1_ADAPTER_ID,
-        "path": "/Users/adil/Documents/University/MultiAgentResearch/UseCase1ESI/model_artifacts/adapters_gguf/esi1-lora.gguf",
-        "scale": 1.0,
-        "task_name": "",
-        "prompt_prefix": "",
-    },
-    {
-        "id": ESI2_ADAPTER_ID,
-        "path": "/Users/adil/Documents/University/MultiAgentResearch/UseCase1ESI/model_artifacts/adapters_gguf/esi2-lora.gguf",
-        "scale": 1.0,
-        "task_name": "",
-        "prompt_prefix": "",
-    },
-    {
-        "id": ESI345_ADAPTER_ID,
-        "path": "/Users/adil/Documents/University/MultiAgentResearch/UseCase1ESI/model_artifacts/adapters_gguf/esi345-lora.gguf",
-        "scale": 1.0,
-        "task_name": "",
-        "prompt_prefix": "",
-    },
-]
-
 
 class _SerialRequestQueue:
     def __init__(self) -> None:
@@ -119,8 +78,7 @@ class LlamaServerChat(BaseChatModel):
 
     model: str = Field(description="Llama server model id (e.g. 'medgemma-4b-it').")
     base_url: str = Field(
-        default="https://nb8zru9c70lsjy-8000.proxy.runpod.net/v1",
-        # default="http://localhost:8080/v1",
+        default="https://aa4its07ztlqwx-8000.proxy.runpod.net/v1",
         description="Base URL for llama-server OpenAI-compatible API.",
     )
     api_key: Optional[str] = Field(
@@ -128,28 +86,14 @@ class LlamaServerChat(BaseChatModel):
         description="Optional API key. Local llama-server usually does not require one.",
         repr=False,
     )
-    adapter: Optional[ESIAdapterName] = Field(
-        default=None,
-        description="Default LoRA adapter literal: 'esi1' | 'esi2' | 'esi345'.",
+    agent_model_id_overrides: dict[str, str] = Field(
+        default_factory=dict,
+        description="Optional per-agent override map for the outgoing provider model id.",
     )
-    adapter_id: Optional[int] = Field(
-        default=None,
-        description="Default LoRA adapter id. If omitted, inferred from model when possible.",
-    )
-    adapter_scale: float = Field(default=1.0, description="LoRA scale for selected adapter.")
     serialize_requests: bool = Field(
         default=False,
         description="When true, queue llama-server requests serially per backend URL.",
     )
-    message_layout: Literal["chat", "single_user"] = Field(
-        default="chat",
-        description=(
-            "How provider messages are formatted. "
-            "'chat' preserves system/user/assistant roles; "
-            "'single_user' folds system instructions into the first user turn."
-        ),
-    )
-
     temperature: float = 0
     max_tokens: Optional[int] = 250
     timeout_s: float = 60.0
@@ -162,50 +106,19 @@ class LlamaServerChat(BaseChatModel):
         return {
             "model": self.model,
             "base_url": self.base_url,
-            "adapter": self.adapter,
-            "adapter_id": self.adapter_id,
         }
+
+    def _resolve_provider_model(self, **kwargs: Any) -> str:
+        agent_name = str(kwargs.get("agent_name") or "").strip()
+        if agent_name and self.agent_model_id_overrides:
+            override = self.agent_model_id_overrides.get(agent_name)
+            if isinstance(override, str) and override.strip():
+                return override.strip()
+        return self.model
 
     def _normalize_llama_messages(self, messages: list[dict[str, str]]) -> list[dict[str, str]]:
         """Normalize provider messages via shared protocol helper."""
         return normalize_chat_messages(messages)
-
-    def _apply_message_layout(self, messages: list[dict[str, str]]) -> list[dict[str, str]]:
-        if self.message_layout != "single_user":
-            return messages
-
-        system_parts: list[str] = []
-        remaining: list[dict[str, str]] = []
-        for msg in messages:
-            role = str(msg.get("role") or "").strip()
-            content = str(msg.get("content") or "").strip()
-            if not role:
-                continue
-            if role == "system":
-                if content:
-                    system_parts.append(content)
-                continue
-            remaining.append({"role": role, "content": content})
-
-        if not system_parts:
-            return remaining
-
-        system_content = "\n\n".join(part for part in system_parts if part).strip()
-        if not system_content:
-            return remaining
-
-        for idx, msg in enumerate(remaining):
-            if msg.get("role") != "user":
-                continue
-            user_content = str(msg.get("content") or "").strip()
-            merged_content = (
-                f"{system_content}\n\n{user_content}" if user_content else system_content
-            )
-            merged_messages = list(remaining)
-            merged_messages[idx] = {"role": "user", "content": merged_content}
-            return merged_messages
-
-        return [{"role": "user", "content": system_content}, *remaining]
 
     def _build_chat_completions_url(self) -> str:
         """Accept either a base API URL or a full chat completions endpoint."""
@@ -213,43 +126,6 @@ class LlamaServerChat(BaseChatModel):
         if normalized.endswith("/chat/completions"):
             return normalized
         return normalized + "/chat/completions"
-
-    def _resolve_adapter_id(self, **kwargs: Any) -> Optional[int]:
-        raw_adapter_id = kwargs.get("adapter_id", self.adapter_id)
-        if raw_adapter_id is not None:
-            adapter_id = int(raw_adapter_id)
-            if adapter_id not in SUPPORTED_ADAPTER_IDS:
-                supported = ", ".join(str(x) for x in sorted(SUPPORTED_ADAPTER_IDS))
-                raise ValueError(
-                    f"Unsupported adapter_id '{adapter_id}'. Expected one of: {supported}."
-                )
-            return adapter_id
-
-        raw_adapter_name = kwargs.get("adapter", self.adapter)
-        if isinstance(raw_adapter_name, str):
-            adapter_name = raw_adapter_name.strip().lower()
-            if adapter_name not in ESI_ADAPTER_ID_BY_NAME:
-                supported = ", ".join(sorted(ESI_ADAPTER_ID_BY_NAME))
-                raise ValueError(
-                    f"Unsupported adapter '{raw_adapter_name}'. Expected one of: {supported}."
-                )
-            return ESI_ADAPTER_ID_BY_NAME[adapter_name]
-
-        model_key = self.model.strip().lower()
-        return ESI_ADAPTER_ID_BY_NAME.get(model_key)
-
-    def _apply_lora_payload(
-        self,
-        payload: dict[str, Any],
-        *,
-        adapter_id: Optional[int],
-        adapter_scale: float,
-    ) -> None:
-        """Apply llama-only LoRA payload fields."""
-        if adapter_id is None:
-            return
-        # Intentionally disabled to preserve existing transport behavior.
-        payload["lora"] = [{"id": int(adapter_id), "scale": float(1.0)}]
 
     def bind_tools(
         self,
@@ -330,10 +206,11 @@ class LlamaServerChat(BaseChatModel):
             highlight_final_answer=not multi_agent,
         )
         llama_messages = self._normalize_llama_messages(llama_messages)
-        llama_messages = self._apply_message_layout(llama_messages)
+        provider_model = self._resolve_provider_model(**kwargs)
+
 
         payload: dict[str, Any] = {
-            "model": self.model,
+            "model": provider_model,
             "messages": llama_messages,
             "temperature": 0,
             "top_k": 1,
@@ -341,14 +218,11 @@ class LlamaServerChat(BaseChatModel):
             "seed": 42,
             "stream": False,
         }
+
         if self.max_tokens is not None:
             payload["max_tokens"] = 250
         if stop:
             payload["stop"] = stop
-        adapter_id = self._resolve_adapter_id(**kwargs)
-        adapter_scale = float(kwargs.get("adapter_scale", self.adapter_scale))
-        if adapter_id is not None and adapter_scale:
-            self._apply_lora_payload(payload, adapter_id=adapter_id, adapter_scale=adapter_scale)
 
         url = self._build_chat_completions_url()
         headers = {"Content-Type": "application/json"}

@@ -10,7 +10,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from app.config import settings
 
 
-ModelProvider = Literal["openai", "dr7", "llama", "hf_router"]
+ModelProvider = Literal["openai", "dr7", "llama"]
 
 
 class ModelPricing(BaseModel):
@@ -38,6 +38,15 @@ class ModelSpec(BaseModel):
     default_temperature: float = 0.7
 
 
+FINETUNED_MULTI_AGENT_MODEL_ID_OVERRIDES: dict[str, str] = {
+    "esi1_agent": "esi1-agent-075",
+    "esi2_agent": "esi2-agent-025",
+    "esi345_agent": "esi3-agent-075",
+    "vitals_agent": "medgemma-4b-it",
+    "doctor_agent": "medgemma-4b-it",
+}
+
+
 _MODEL_REGISTRY: dict[str, ModelSpec] = {
     # OpenAI (known defaults)
     "gpt-4o-mini": ModelSpec(
@@ -55,6 +64,26 @@ _MODEL_REGISTRY: dict[str, ModelSpec] = {
         model_category="default",
         description=(
             "MedGemma 4B Instruction Tuned - Optimized for medical text understanding and generation"
+        ),
+        context_length=8192,
+        max_tokens=4096,
+        pricing=ModelPricing(input_per_1k=0.00015, output_per_1k=0.00060),
+        capabilities=[
+            "medical_text_analysis",
+            "symptom_analysis",
+            "medical_qa",
+            "clinical_reasoning",
+        ],
+        languages=["en", "zh"],
+        supports_tools=True,
+        default_temperature=0,
+    ),
+     "gemma-3-4b-it": ModelSpec(
+        id="gemma-3-4b-it",
+        provider="llama",
+        model_category="default",
+        description=(
+            "Gemma 4B Instruction Tuned - Optimized for text understanding and generation"
         ),
         context_length=8192,
         max_tokens=4096,
@@ -90,32 +119,11 @@ _MODEL_REGISTRY: dict[str, ModelSpec] = {
         supports_tools=True,
         default_temperature=0.7,
     ),
-    # "ii-medical-8b": ModelSpec(
-    #     id="ii-medical-8b",
-    #     provider="llama",
-    #     model_category="default",
-    #     provider_model_id="ii-medical-8b",
-    #     description=(
-    #         "MedGemma 4B Instruction Tuned - Optimized for medical text understanding and generation Q_8 Quantization"
-    #     ),
-    #     context_length=8192,
-    #     max_tokens=8192,
-    #     pricing=ModelPricing(input_per_1k=0.00015, output_per_1k=0.00060),
-    #     capabilities=[
-    #         "medical_text_analysis",
-    #         "symptom_analysis",
-    #         "medical_qa",
-    #         "clinical_reasoning",
-    #     ],
-    #     languages=["en", "zh"],
-    #     supports_tools=True,
-    #     default_temperature=0,
-    # ),
-    "medgemma-4b-it-llama-tool": ModelSpec(
-        id="medgemma-4b-it-llama-tool",
+    "medgemma-4b-it-ESI1": ModelSpec(
+        id="medgemma-4b-it-ESI1",
         provider="llama",
         model_category="default",
-        provider_model_id="medgemma-tool",
+        provider_model_id="esi1-agent",
         description=(
             "MedGemma 4B Instruction Tuned - Optimized for medical text understanding and generation Q_8 Quantization"
         ),
@@ -132,57 +140,89 @@ _MODEL_REGISTRY: dict[str, ModelSpec] = {
         supports_tools=True,
         default_temperature=0,
     ),
-    "ii-medical-8b": ModelSpec(
-        id="ii-medical-8b",
-        provider="hf_router",
+    "medgemma-4b-it-ESI2": ModelSpec(
+        id="medgemma-4b-it-ESI2",
+        provider="llama",
         model_category="default",
-        provider_model_id="Intelligent-Internet/II-Medical-8B-1706:featherless-ai",
-        description="II-Medical-8B via Hugging Face Router (Featherless AI).",
-        context_length=16378,
+        provider_model_id="esi2-agent",
+        description=(
+            "MedGemma 4B Instruction Tuned - Optimized for medical text understanding and generation Q_8 Quantization"
+        ),
+        context_length=8192,
         max_tokens=4096,
+        pricing=ModelPricing(input_per_1k=0.00015, output_per_1k=0.00060),
         capabilities=[
             "medical_text_analysis",
+            "symptom_analysis",
             "medical_qa",
             "clinical_reasoning",
-            "step_by_step_reasoning",
         ],
         languages=["en", "zh"],
         supports_tools=True,
-        default_temperature=0.6,
-        pricing=ModelPricing(),
+        default_temperature=0,
     ),
-    "esi1": ModelSpec(
-        id="esi1",
+    "medgemma-4b-it-ESI345": ModelSpec(
+        id="medgemma-4b-it-ESI345",
         provider="llama",
         model_category="default",
-        description="Llama Server ESI-1 adapter profile.",
-        supports_tools=True,
-        default_temperature=0,
-        pricing=ModelPricing(input_per_1k=0.00015, output_per_1k=0.00060),
+        provider_model_id="esi3-agent",
+        description=(
+            "MedGemma 4B Instruction Tuned - Optimized for medical text understanding and generation Q_8 Quantization"
+        ),
         context_length=8192,
         max_tokens=4096,
+        pricing=ModelPricing(input_per_1k=0.00015, output_per_1k=0.00060),
+        capabilities=[
+            "medical_text_analysis",
+            "symptom_analysis",
+            "medical_qa",
+            "clinical_reasoning",
+        ],
+        languages=["en", "zh"],
+        supports_tools=True,
+        default_temperature=0,
     ),
-    "esi2": ModelSpec(
-        id="esi2",
+    "medgemma-4b-it-llama-tool": ModelSpec(
+        id="medgemma-4b-it-llama-tool",
         provider="llama",
         model_category="default",
-        description="Llama Server ESI-2 adapter profile.",
-        supports_tools=True,
-        default_temperature=0,
-        pricing=ModelPricing(input_per_1k=0.00015, output_per_1k=0.00060),
+        provider_model_id="medgemma-tool-050",
+        description=(
+            "MedGemma 4B Instruction Tuned - Optimized for medical text understanding and generation Q_8 Quantization"
+        ),
         context_length=8192,
         max_tokens=4096,
+        pricing=ModelPricing(input_per_1k=0.00015, output_per_1k=0.00060),
+        capabilities=[
+            "medical_text_analysis",
+            "symptom_analysis",
+            "medical_qa",
+            "clinical_reasoning",
+        ],
+        languages=["en", "zh"],
+        supports_tools=True,
+        default_temperature=0,
     ),
-    "esi345": ModelSpec(
-        id="esi345",
+    "medgemma-4b-it-Finetuned": ModelSpec(
+        id="medgemma-4b-it-Finetuned",
         provider="llama",
         model_category="default",
-        description="Llama Server ESI-345 adapter profile.",
-        supports_tools=True,
-        default_temperature=0,
-        pricing=ModelPricing(input_per_1k=0.00015, output_per_1k=0.00060),
+        provider_model_id="medgemma-tool",
+        description=(
+            "MedGemma 4B finetuned multi-agent routing entry served through the shared llama endpoint."
+        ),
         context_length=8192,
         max_tokens=4096,
+        pricing=ModelPricing(input_per_1k=0.00015, output_per_1k=0.00060),
+        capabilities=[
+            "medical_text_analysis",
+            "symptom_analysis",
+            "medical_qa",
+            "clinical_reasoning",
+        ],
+        languages=["en", "zh"],
+        supports_tools=True,
+        default_temperature=0,
     ),
 }
 
@@ -238,8 +278,6 @@ def get_chat_model(model_id: str) -> BaseChatModel:
         return _build_dr7_chat_model(spec)
     if spec.provider == "llama":
         return build_llama_model(spec)
-    if spec.provider == "hf_router":
-        return _build_hf_router_chat_model(spec)
     raise RuntimeError(f"Unsupported model provider: {spec.provider}")
 
 
@@ -285,42 +323,20 @@ def _build_dr7_chat_model(spec: ModelSpec) -> BaseChatModel:
     )
 
 
-def _build_hf_router_chat_model(spec: ModelSpec) -> BaseChatModel:
-    if spec.provider != "hf_router":
-        raise RuntimeError(f"Cannot build HF Router model for provider '{spec.provider}'.")
-    if not settings.HF_TOKEN:
-        raise RuntimeError("HF_TOKEN is not set. Add it to `.env` to use HF Router models.")
-
-    from app.agentic.models.hf_router_chat import HuggingFaceRouterChatModel
-
-    return HuggingFaceRouterChatModel(
-        model=spec.provider_model_id or spec.id,
-        base_url=settings.HF_ROUTER_BASE_URL,
-        api_key=settings.HF_TOKEN,
-        temperature=spec.default_temperature,
-        max_tokens=spec.max_tokens,
-    )
-
-
 def build_llama_model(spec: ModelSpec) -> BaseChatModel:
     if spec.provider != "llama":
         raise RuntimeError(f"Cannot build llama model for provider '{spec.provider}'.")
     from app.agentic.models.llama_server_chat import LlamaServerChat
 
-    adapter_by_model_id: dict[str, str] = {
-        "esi1": "esi1",
-        "esi2": "esi2",
-        "esi345": "esi345",
-    }
-    adapter = adapter_by_model_id.get(spec.id)
-    message_layout = "single_user" if spec.model_category == "single_user_message" else "chat"
+    agent_model_id_overrides: dict[str, str] = {}
+    if spec.id == "medgemma-4b-it-Finetuned":
+        agent_model_id_overrides = FINETUNED_MULTI_AGENT_MODEL_ID_OVERRIDES
 
     return LlamaServerChat(
         model=spec.provider_model_id or spec.id,
         base_url=settings.LLAMA_SERVER_BASE_URL,
         api_key=settings.LLAMA_SERVER_API_KEY or "",
-        adapter=adapter,
-        message_layout=message_layout,
+        agent_model_id_overrides=agent_model_id_overrides,
         serialize_requests=bool(settings.LLAMA_SERVER_SERIAL_REQUESTS),
         temperature=spec.default_temperature,
         max_tokens=spec.max_tokens,

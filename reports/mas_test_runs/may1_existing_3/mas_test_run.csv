@@ -1,0 +1,2 @@
+report_kind,report_id,mas_test_run_id,workflow_id,model_name,name,status,selected_case_count,case_run_count,succeeded_case_runs,failed_case_runs,success_rate,started_at,finished_at,duration_s,metrics_json
+swarm_run_group,may1_existing_3,,,,,,3,0,0,0,0.000,,,,

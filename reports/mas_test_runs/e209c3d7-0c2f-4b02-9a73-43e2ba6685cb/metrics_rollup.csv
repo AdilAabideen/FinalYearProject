@@ -1,0 +1,7 @@
+group_type,group_key,run_count,failed_count,succeeded_count,avg_input_tokens,avg_output_tokens,avg_llm_calls,avg_tool_calls,most_common_failure
+agent_name,doctor_agent,49,0,49,1559.63,105.24,1.00,1.00,
+agent_name,esi1_agent,50,0,50,13291.56,526.34,4.70,4.96,
+agent_name,esi2_agent,19,0,19,13089.42,493.68,4.84,4.74,
+agent_name,esi345_agent,16,0,16,12488.44,540.44,4.50,4.81,
+agent_name,vitals_agent,50,1,49,19078.04,677.12,6.38,6.20,schema_validation_error
+failure_class,schema_validation_error,1,1,0,,,,,schema_validation_error

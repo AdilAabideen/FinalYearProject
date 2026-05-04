@@ -55,7 +55,33 @@ def test_ut_handoff_003_defaults_missing_lists_for_esi2_handoffs():
 
 
 @pytest.mark.unit
-def test_ut_handoff_004_wraps_vitals_string_into_list_and_coerces_bool():
+def test_ut_handoff_004_accepts_stale_esi2_alias_fields():
+    to_esi345 = ESI2ToESI345Payload.model_validate(
+        {
+            "esi1_result": "not_esi2",
+            "reason": "High-risk criteria are not met.",
+        }
+    )
+    to_doctor = ESI2ToDoctorPayload.model_validate(
+        {
+            "decision": "esi2",
+            "reason": "The patient is high-risk.",
+            "critical_concerns": [],
+        }
+    )
+    to_doctor_missing_flag = ESI2ToDoctorPayload.model_validate(
+        {
+            "reason": "The patient is high-risk.",
+            "critical_concerns": [],
+        }
+    )
+    assert to_esi345.is_esi2 is False
+    assert to_doctor.is_esi2 is True
+    assert to_doctor_missing_flag.is_esi2 is True
+
+
+@pytest.mark.unit
+def test_ut_handoff_005_wraps_vitals_string_into_list_and_coerces_bool():
     payload = VitalsToDoctorPayload.model_validate(
         {
             "consider_uptriage": "false",
@@ -69,7 +95,7 @@ def test_ut_handoff_004_wraps_vitals_string_into_list_and_coerces_bool():
 
 
 @pytest.mark.unit
-def test_ut_handoff_005_accepts_esi345_justification_alias():
+def test_ut_handoff_006_accepts_esi345_justification_alias():
     payload = ESI345ToDoctorPayload.model_validate(
         {
             "esi_level": 4,
