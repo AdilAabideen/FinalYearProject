@@ -33,8 +33,8 @@ from app.agentic.telemetry import (
 from app.agentic.telemetry.usage_extractor import extract_provider_usage
 
 
-class SSEHandrolledAgent:
-    """Lightweight hand-rolled tool agent with create_react_agent-like stream outputs.
+class AgentKernel:
+    """Lightweight agent kernel with create_react_agent-like stream outputs.
 
     Stream yields `(mode, data)` tuples where:
     - mode == "updates" -> {node_name: {"messages": [message, ...]}}
@@ -681,3 +681,7 @@ class SSEHandrolledAgent:
                 raise value
             else:
                 break
+
+
+# Backward-compatible alias while the codebase migrates to the paper-facing name.
+SSEHandrolledAgent = AgentKernel

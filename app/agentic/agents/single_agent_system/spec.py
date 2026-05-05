@@ -8,7 +8,7 @@ from typing import Optional
 
 from langchain_core.messages import AIMessage, ToolMessage
 
-from app.agentic.HandRolledAgent import SSEHandrolledAgent
+from app.agentic.HandRolledAgent import AgentKernel
 from app.agentic.agents.base.spec import AgentSpec
 from app.agentic.model_registry import get_chat_model, resolve_model_spec
 from app.agentic.runtime import AgentRuntime, RuntimeConfig
@@ -23,7 +23,7 @@ from .tools import TOOLS
 def build_single_agent(runtime: AgentRuntime, runtime_config: Optional[RuntimeConfig] = None):
     """Build the single-agent system."""
     try:
-        return SSEHandrolledAgent(
+        return AgentKernel(
             model=runtime.model,
             tools=TOOLS,
             system_prompt=SYSTEM_PROMPT,
@@ -37,7 +37,7 @@ def build_single_agent(runtime: AgentRuntime, runtime_config: Optional[RuntimeCo
 SINGLE_AGENT_SPEC = AgentSpec(
     name="single_agent",
     title="Single Agent",
-    description="Master Agent",
+    description="Single Agent Baseline built with Frontier LLMs built for the dissertation ablation study",
     input_model=SingleAgentInput,
     output_model=SingleAgentOutput,
     tools=TOOLS,

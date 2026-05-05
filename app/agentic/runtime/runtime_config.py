@@ -18,10 +18,10 @@ class RuntimeConfig:
     max_malformed_tool_retries_per_tool: int = 1
     allow_plain_json_final_output: bool = True
     drop_extra_tool_calls: bool = True
-    scratchpad_include_final_assistant_output: bool = False
-    scratchpad_include_raw_provider_debug: bool = False
-    scratchpad_verbose: bool = False
-    scratchpad_log_token_estimates: bool = True
+    short_term_memory_include_final_assistant_output: bool = False
+    short_term_memory_include_raw_provider_debug: bool = False
+    short_term_memory_verbose: bool = False
+    short_term_memory_log_token_estimates: bool = True
 
     def __post_init__(self) -> None:
         if self.max_tool_calls_per_turn < 1:

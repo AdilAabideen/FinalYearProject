@@ -1,6 +1,6 @@
 # Agent Metrics and Reliability Telemetry
 
-This document explains how runtime telemetry is produced by `SSEHandrolledAgent`, persisted by API services/repositories, and exposed through metrics endpoints.
+This document explains how runtime telemetry is produced by `AgentKernel`, persisted by API services/repositories, and exposed through metrics endpoints.
 
 ## Overview
 
@@ -18,7 +18,7 @@ The runtime emits and persists five telemetry streams:
 
 ```mermaid
 flowchart LR
-  A[SSEHandrolledAgent loop] --> B[LLM call]
+  A[AgentKernel loop] --> B[LLM call]
   B --> C{Provider token usage available?}
   C -->|Yes| D[Emit LLM metric usage_source=provider]
   C -->|No| E[Fallback token estimation]

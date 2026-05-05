@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Literal
+from typing import Literal, Union
 
 from pydantic import BaseModel, Field, model_validator
 
@@ -26,7 +26,7 @@ class VitalsRecommendation(BaseModel):
         default_factory=list,
         description="A list of vitals that are abnormal or physiologically concerning",
     )
-    confidence: float | Literal["low", "medium", "high"] = Field(
+    confidence: Union[float, Literal["low", "medium", "high"]] = Field(
         description="The confidence in the recommendation of the agent"
     )
 

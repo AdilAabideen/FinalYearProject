@@ -8,7 +8,7 @@ from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, System
 from .finalization_policy import FinalizationPolicy
 from .handoff_policy import HandoffPolicy
 from .runtime_config import RuntimeConfig
-from .scratchpad import Scratchpad, ScratchpadConfig
+from .short_term_memory import ShortTermMemory, ShortTermMemoryConfig
 from .runtime_types import (
     BoundModel,
     BuildAIMessageWithToolCalls,
@@ -76,11 +76,11 @@ class AgentRunner:
         self,
         *,
         human_msg: HumanMessage,
-        scratchpad: Scratchpad,
+        short_term_memory: ShortTermMemory,
         retry_feedback: HumanMessage | None = None,
     ) -> list[BaseMessage]:
         call_messages: list[BaseMessage] = [SystemMessage(content=self.render_system_prompt()), human_msg]
-        call_messages.extend(scratchpad.messages())
+        call_messages.extend(short_term_memory.messages())
         if retry_feedback is not None:
             call_messages.append(retry_feedback)
         return call_messages
@@ -243,12 +243,12 @@ class AgentRunner:
         modes = self._resolve_modes(stream_mode)
 
         human_msg = HumanMessage(content=self.payload_to_human_content(payload))
-        scratchpad = Scratchpad(
-            config=ScratchpadConfig(
-                include_final_assistant_output=self.runtime_config.scratchpad_include_final_assistant_output,
-                include_raw_provider_debug=self.runtime_config.scratchpad_include_raw_provider_debug,
-                verbose=self.runtime_config.scratchpad_verbose,
-                log_token_estimates=self.runtime_config.scratchpad_log_token_estimates,
+        short_term_memory = ShortTermMemory(
+            config=ShortTermMemoryConfig(
+                include_final_assistant_output=self.runtime_config.short_term_memory_include_final_assistant_output,
+                include_raw_provider_debug=self.runtime_config.short_term_memory_include_raw_provider_debug,
+                verbose=self.runtime_config.short_term_memory_verbose,
+                log_token_estimates=self.runtime_config.short_term_memory_log_token_estimates,
             )
         )
         streamed_messages: list[BaseMessage] = []
@@ -265,7 +265,7 @@ class AgentRunner:
 
             call_messages = self._build_call_messages(
                 human_msg=human_msg,
-                scratchpad=scratchpad,
+                short_term_memory=short_term_memory,
                 retry_feedback=pending_retry_feedback,
             )
             pending_retry_feedback = None
@@ -288,7 +288,7 @@ class AgentRunner:
 
             streamed_messages.append(ai_msg)
             if tool_calls:
-                scratchpad.append_assistant_tool_call(ai_msg)
+                short_term_memory.append_assistant_tool_call(ai_msg)
             self._emit_tool_call_events(tool_calls)
 
             if self._should_emit(modes, "updates"):
@@ -328,7 +328,7 @@ class AgentRunner:
                         continue
 
                 self._emit_assistant_event_from_text(str(ai_msg.content or ""))
-                scratchpad.append_final_assistant(ai_msg)
+                short_term_memory.append_final_assistant(ai_msg)
 
                 decision = self.finalization_policy.maybe_finalize_from_assistant_no_tools(ai_msg)
                 if decision.finalized:
@@ -362,7 +362,7 @@ class AgentRunner:
                     yield "values", self.values_state(streamed_messages, iteration, False, None)
             tool_msgs = [tool_msgs_by_index[idx] for idx in range(len(tool_calls)) if idx in tool_msgs_by_index]
             for tm in tool_msgs:
-                scratchpad.append_tool_result(tm)
+                short_term_memory.append_tool_result(tm)
 
             for tc, tm in zip(tool_calls, tool_msgs):
                 handoff_decision = self.handoff_policy.maybe_handoff_from_tool_result(tc, tm)
@@ -408,7 +408,7 @@ class AgentRunner:
                             content=invalid.output_text or json.dumps(final_output, ensure_ascii=False)
                         )
                         streamed_messages.append(final_msg)
-                        scratchpad.append_final_assistant(final_msg)
+                        short_term_memory.append_final_assistant(final_msg)
                         self._emit_assistant_event_from_text(str(final_msg.content or ""))
                         if self._should_emit(modes, "updates"):
                             yield "updates", {self.agent_node_name: {"messages": [final_msg]}}
@@ -420,7 +420,7 @@ class AgentRunner:
                 final_text = decision.output_text or json.dumps(final_output, ensure_ascii=False)
                 final_msg = AIMessage(content=final_text)
                 streamed_messages.append(final_msg)
-                scratchpad.append_final_assistant(final_msg)
+                short_term_memory.append_final_assistant(final_msg)
                 self._emit_assistant_event_from_text(final_text)
                 if self._should_emit(modes, "updates"):
                     yield "updates", {self.agent_node_name: {"messages": [final_msg]}}
@@ -432,7 +432,7 @@ class AgentRunner:
             final_output = fallback.output
             final_msg = AIMessage(content=fallback.output_text or json.dumps(final_output, ensure_ascii=False))
             streamed_messages.append(final_msg)
-            scratchpad.append_final_assistant(final_msg)
+            short_term_memory.append_final_assistant(final_msg)
             self._emit_assistant_event_from_text(str(final_msg.content or ""))
             if self._should_emit(modes, "updates"):
                 yield "updates", {self.agent_node_name: {"messages": [final_msg]}}

@@ -10,8 +10,8 @@ from app.agentic.telemetry import TokenEstimator
 
 
 @dataclass(frozen=True)
-class ScratchpadConfig:
-    """Policy toggles for scratchpad contents."""
+class ShortTermMemoryConfig:
+    """Policy toggles for short-term memory contents."""
 
     include_final_assistant_output: bool = False
     include_raw_provider_debug: bool = False
@@ -19,13 +19,13 @@ class ScratchpadConfig:
     log_token_estimates: bool = True
     log_message_preview: bool = True
     log_message_max_chars: int = 4000
-    log_prefix: str = "[scratchpad]"
+    log_prefix: str = "[short_term_memory]"
     on_message_appended: Callable[[dict[str, Any]], None] | None = None
 
 
-class Scratchpad:
+class ShortTermMemory:
     """
-    Explicit scratchpad state contract for runtime context accumulation.
+    Explicit short-term memory state contract for runtime context accumulation.
 
     Contract:
     - Include assistant tool-call messages.
@@ -44,11 +44,11 @@ class Scratchpad:
     def __init__(
         self,
         *,
-        config: ScratchpadConfig | None = None,
+        config: ShortTermMemoryConfig | None = None,
         token_estimator: TokenEstimator | None = None,
         log_fn: Callable[[str], None] | None = None,
     ) -> None:
-        self.config = config or ScratchpadConfig()
+        self.config = config or ShortTermMemoryConfig()
         self._messages: list[BaseMessage] = []
         self._token_estimator = token_estimator or TokenEstimator()
         self._log_fn = log_fn or print
@@ -86,11 +86,11 @@ class Scratchpad:
         return cloned
 
     def messages(self) -> list[BaseMessage]:
-        """Return a shallow copy of current scratchpad messages."""
+        """Return a shallow copy of current short-term memory messages."""
         return list(self._messages)
 
     def clear(self) -> None:
-        """Clear scratchpad state."""
+        """Clear short-term memory state."""
         self._messages.clear()
         if self.config.verbose:
             self._log_fn(f"{self.config.log_prefix} cleared messages=0")
@@ -143,12 +143,12 @@ class Scratchpad:
             total_tokens = self._token_estimator.estimate_messages_tokens(self._messages)
 
         payload = {
-            "event": "scratchpad_message_appended",
+            "event": "short_term_memory_message_appended",
             "kind": kind,
             "role": self._message_role(message),
             "message_count": len(self._messages),
             "message_tokens_estimate": msg_tokens,
-            "scratchpad_tokens_estimate": total_tokens,
+            "short_term_memory_tokens_estimate": total_tokens,
             "provider_preview": self._provider_preview(message),
         }
 
@@ -183,7 +183,7 @@ class Scratchpad:
                 [message],
                 allow_tool_messages=True,
                 tool_message_error="tool messages enabled for preview rendering",
-                unsupported_type_label="scratchpad-preview",
+                unsupported_type_label="short-term-memory-preview",
             )
         except Exception:
             return None

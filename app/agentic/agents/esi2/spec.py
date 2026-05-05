@@ -7,8 +7,6 @@ import uuid
 from typing import Optional
 
 from langchain_core.messages import AIMessage, ToolMessage
-from langgraph.prebuilt import create_react_agent
-
 from app.agentic.agents.base.spec import AgentSpec
 from app.agentic.handoff import create_handoff_tools
 from app.agentic.model_registry import get_chat_model, resolve_model_spec
@@ -20,7 +18,7 @@ from .tools import TOOLS
 from .evaluator import ESI2AcuityEvaluator
 from .handoffs import HANDOFFS
 
-from app.agentic.HandRolledAgent import SSEHandrolledAgent
+from app.agentic.HandRolledAgent import AgentKernel
 from .schema import ES2AgentInput, ES2AgentOutput
 
 
@@ -30,7 +28,7 @@ def build_esi2_agent(runtime: AgentRuntime, runtime_config: Optional[RuntimeConf
         handoff_tools = create_handoff_tools("esi2_agent", HANDOFFS)
         handoff_tool_names = [tool.name for tool in handoff_tools]
         tools = [*TOOLS, *handoff_tools] if runtime_config and runtime_config.multi_agent else TOOLS
-        return SSEHandrolledAgent(
+        return AgentKernel(
             model=runtime.model,
             tools=tools,
             system_prompt=SYSTEM_PROMPT,

@@ -6,7 +6,7 @@ import pytest
 from langchain_core.messages import AIMessage
 from pydantic import BaseModel
 
-from app.agentic.HandRolledAgent import SSEHandrolledAgent
+from app.agentic.HandRolledAgent import AgentKernel
 from app.agentic.runtime.runtime_config import RuntimeConfig
 from tests.doubles.fake_emitters import Collector
 from tests.doubles.fake_provider import FakeChatModel
@@ -26,7 +26,7 @@ def final_answer(recommendation: dict) -> dict:
     return {"recommendation": recommendation}
 
 
-async def _collect_stream(agent: SSEHandrolledAgent, payload):
+async def _collect_stream(agent: AgentKernel, payload):
     items = []
     async for mode, data in agent.astream(payload, stream_mode=("updates", "values")):
         items.append((mode, data))
@@ -42,7 +42,7 @@ def test_it_run_001_one_step_tool_call_then_final_answer_tool_succeeds():
             AIMessage(content="", tool_calls=[{"id": "call_2", "name": "final_answer", "args": {"recommendation": {"value": "abc"}}}]),
         ]
     )
-    agent = SSEHandrolledAgent(model=model, tools=[lookup_value, final_answer], response_format=OutputSchema)
+    agent = AgentKernel(model=model, tools=[lookup_value, final_answer], response_format=OutputSchema)
     output = asyncio.run(agent.ainvoke("hello"))
     assert output == {"recommendation": {"value": "abc"}, "ok": True}
 
@@ -56,7 +56,7 @@ def test_it_run_003_text_recovered_raw_json_tool_call_path_succeeds():
             AIMessage(content='{"tool_calls":[{"id":"call_2","name":"final_answer","arguments":{"recommendation":{"value":"text"}}}]}'),
         ]
     )
-    agent = SSEHandrolledAgent(model=model, tools=[lookup_value, final_answer], response_format=OutputSchema)
+    agent = AgentKernel(model=model, tools=[lookup_value, final_answer], response_format=OutputSchema)
     output = asyncio.run(agent.ainvoke("hello"))
     assert output["recommendation"]["value"] == "text"
 
@@ -70,7 +70,7 @@ def test_it_run_004_text_recovered_fenced_json_tool_call_path_succeeds():
             AIMessage(content='```json\n{"tool_calls":[{"id":"call_2","name":"final_answer","arguments":{"recommendation":{"value":"fenced"}}}]}\n```'),
         ]
     )
-    agent = SSEHandrolledAgent(model=model, tools=[lookup_value, final_answer], response_format=OutputSchema)
+    agent = AgentKernel(model=model, tools=[lookup_value, final_answer], response_format=OutputSchema)
     output = asyncio.run(agent.ainvoke("hello"))
     assert output["recommendation"]["value"] == "fenced"
 
@@ -86,7 +86,7 @@ def test_it_run_005_malformed_tool_call_triggers_retry_feedback_and_then_succeed
             AIMessage(content='{"tool_calls":[{"id":"call_2","name":"final_answer","arguments":{"recommendation":{"value":"retry"}}}]}'),
         ]
     )
-    agent = SSEHandrolledAgent(
+    agent = AgentKernel(
         model=model,
         tools=[lookup_value, final_answer],
         response_format=OutputSchema,
@@ -107,7 +107,7 @@ def test_it_run_005b_malformed_tool_call_retry_is_tracked_per_tool_name():
             AIMessage(content='{"tool_calls":[{"id":"call_2","name":"final_answer","arguments":{"recommendation":{"value":"per-tool"}}}]}'),
         ]
     )
-    agent = SSEHandrolledAgent(
+    agent = AgentKernel(
         model=model,
         tools=[lookup_value, final_answer],
         response_format=OutputSchema,
@@ -126,7 +126,7 @@ def test_it_run_005c_same_tool_only_gets_one_malformed_retry():
             AIMessage(content='{"tool_calls":[{"name":"lookup_value","arguments":'),
         ]
     )
-    agent = SSEHandrolledAgent(
+    agent = AgentKernel(
         model=model,
         tools=[lookup_value, final_answer],
         response_format=OutputSchema,
@@ -140,7 +140,7 @@ def test_it_run_005c_same_tool_only_gets_one_malformed_retry():
 @pytest.mark.runtime
 def test_it_run_006_no_tool_calls_and_plain_final_json_finalizes_when_policy_allows():
     model = FakeChatModel([AIMessage(content='{"recommendation":{"value":"plain"}}')])
-    agent = SSEHandrolledAgent(
+    agent = AgentKernel(
         model=model,
         tools=[],
         runtime_config=RuntimeConfig(require_final_answer_tool=False, allow_plain_json_final_output=True),
@@ -153,7 +153,7 @@ def test_it_run_006_no_tool_calls_and_plain_final_json_finalizes_when_policy_all
 @pytest.mark.runtime
 def test_it_run_007_no_tool_calls_in_strict_mode_yields_invalid_output_fallback():
     model = FakeChatModel([AIMessage(content='{"recommendation":{"value":"plain"}}')])
-    agent = SSEHandrolledAgent(
+    agent = AgentKernel(
         model=model,
         tools=[],
         runtime_config=RuntimeConfig(require_final_answer_tool=True, allow_plain_json_final_output=False),
@@ -171,7 +171,7 @@ def test_it_run_008_unknown_tool_call_produces_tool_error_and_no_crash():
             AIMessage(content='{"recommendation":{"value":"after-error"}}'),
         ]
     )
-    agent = SSEHandrolledAgent(
+    agent = AgentKernel(
         model=model,
         tools=[],
         runtime_config=RuntimeConfig(require_final_answer_tool=False, allow_plain_json_final_output=True),
@@ -193,7 +193,7 @@ def test_it_run_009_tool_exception_produces_tool_error_and_no_crash():
             AIMessage(content='{"recommendation":{"value":"after-error"}}'),
         ]
     )
-    agent = SSEHandrolledAgent(
+    agent = AgentKernel(
         model=model,
         tools=[broken_tool],
         runtime_config=RuntimeConfig(require_final_answer_tool=False, allow_plain_json_final_output=True),
@@ -206,7 +206,7 @@ def test_it_run_009_tool_exception_produces_tool_error_and_no_crash():
 @pytest.mark.runtime
 def test_it_run_010_values_stream_reflects_done_false_then_done_true():
     model = FakeChatModel([AIMessage(content='{"recommendation":{"value":"plain"}}')])
-    agent = SSEHandrolledAgent(
+    agent = AgentKernel(
         model=model,
         tools=[],
         runtime_config=RuntimeConfig(require_final_answer_tool=False, allow_plain_json_final_output=True),

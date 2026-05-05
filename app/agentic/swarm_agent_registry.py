@@ -2,7 +2,7 @@
 from __future__ import annotations
 from typing import Callable, Dict, Optional
 
-from app.agentic.HandRolledAgent import SSEHandrolledAgent
+from app.agentic.HandRolledAgent import AgentKernel
 from app.agentic.agents.doctor.spec import build_doctor_agent
 from app.agentic.agents.esi1.spec import build_es1_agent
 from app.agentic.agents.esi2.spec import build_esi2_agent
@@ -12,7 +12,7 @@ from app.agentic.runtime import AgentRuntime, RuntimeConfig
 from app.agentic.swarm_contract import AgentName
 
 
-SwarmAgentBuilder = Callable[[AgentRuntime, Optional[RuntimeConfig]], SSEHandrolledAgent]
+SwarmAgentBuilder = Callable[[AgentRuntime, Optional[RuntimeConfig]], AgentKernel]
 
 
 SWARM_AGENT_BUILDERS: Dict[AgentName, SwarmAgentBuilder] = {
@@ -28,7 +28,7 @@ def build_swarm_agent(
     agent_name: AgentName,
     runtime: AgentRuntime,
     runtime_config: Optional[RuntimeConfig] = None,
-) -> SSEHandrolledAgent:
+) -> AgentKernel:
     """Build one real swarm agent by graph agent name."""
     try:
         builder = SWARM_AGENT_BUILDERS[agent_name]
@@ -48,9 +48,9 @@ class SwarmAgentRegistry:
     ) -> None:
         self.runtime = runtime
         self.runtime_config = runtime_config
-        self._agents: Dict[AgentName, SSEHandrolledAgent] = {}
+        self._agents: Dict[AgentName, AgentKernel] = {}
 
-    def get(self, agent_name: AgentName) -> SSEHandrolledAgent:
+    def get(self, agent_name: AgentName) -> AgentKernel:
         if agent_name not in self._agents:
             self._agents[agent_name] = build_swarm_agent(
                 agent_name,

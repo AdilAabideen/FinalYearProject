@@ -6,7 +6,7 @@ import pytest
 from langchain_core.messages import AIMessage
 from pydantic import BaseModel
 
-from app.agentic.HandRolledAgent import SSEHandrolledAgent
+from app.agentic.HandRolledAgent import AgentKernel
 from app.agentic.agents.vitals.evaluator import VitalsUptriageEvaluator
 from app.agentic.protocols.tool_call_recovery import (
     looks_like_malformed_tool_call_content,
@@ -70,7 +70,7 @@ def test_reg_004_native_runtime_trace_yields_stable_final_output():
             AIMessage(content="", tool_calls=[{"id": "call_2", "name": "final_answer", "args": {"recommendation": {"value": "native"}}}]),
         ]
     )
-    agent = SSEHandrolledAgent(model=model, tools=[lookup_value, final_answer], response_format=RegressionOutput)
+    agent = AgentKernel(model=model, tools=[lookup_value, final_answer], response_format=RegressionOutput)
     assert asyncio.run(agent.ainvoke("case")) == {"recommendation": {"value": "native"}, "ok": True}
 
 
@@ -83,7 +83,7 @@ def test_reg_005_text_recovery_runtime_trace_yields_stable_final_output():
             AIMessage(content='{"tool_calls":[{"id":"call_2","name":"final_answer","arguments":{"recommendation":{"value":"text"}}}]}'),
         ]
     )
-    agent = SSEHandrolledAgent(model=model, tools=[lookup_value, final_answer], response_format=RegressionOutput)
+    agent = AgentKernel(model=model, tools=[lookup_value, final_answer], response_format=RegressionOutput)
     assert asyncio.run(agent.ainvoke("case")) == {"recommendation": {"value": "text"}, "ok": True}
 
 
@@ -91,7 +91,7 @@ def test_reg_005_text_recovery_runtime_trace_yields_stable_final_output():
 @pytest.mark.golden
 def test_reg_006_missing_final_output_path_yields_final_output_invalid():
     model = FakeChatModel([AIMessage(content='{"recommendation":{"value":"plain"}}')])
-    agent = SSEHandrolledAgent(
+    agent = AgentKernel(
         model=model,
         tools=[],
         runtime_config=RuntimeConfig(require_final_answer_tool=True, allow_plain_json_final_output=False),

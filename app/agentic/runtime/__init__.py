@@ -3,7 +3,7 @@ from .context import AgentRuntime, RuntimeContext
 from .finalization_policy import FinalizationDecision, FinalizationPolicy
 from .handoff_policy import HandoffDecision, HandoffPolicy
 from .runtime_config import RuntimeConfig
-from .scratchpad import Scratchpad, ScratchpadConfig
+from .short_term_memory import ShortTermMemory, ShortTermMemoryConfig
 from .tool_executor import ToolExecutionTrace, ToolExecutor
 
 __all__ = [
@@ -15,8 +15,8 @@ __all__ = [
     "HandoffDecision",
     "HandoffPolicy",
     "RuntimeConfig",
-    "Scratchpad",
-    "ScratchpadConfig",
+    "ShortTermMemory",
+    "ShortTermMemoryConfig",
     "ToolExecutionTrace",
     "ToolExecutor",
 ]
