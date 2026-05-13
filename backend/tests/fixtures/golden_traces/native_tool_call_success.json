@@ -1,0 +1,11 @@
+{
+  "tool_calls": [
+    {
+      "id": "call_native",
+      "name": "lookup_value",
+      "arguments": {
+        "value": "abc"
+      }
+    }
+  ]
+}

@@ -1,0 +1,3 @@
+{
+  "content": "{\"tool_calls\":[{\"id\":\"call_text\",\"name\":\"lookup_value\",\"arguments\":{\"value\":\"abc\"}}]}"
+}
