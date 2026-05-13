@@ -1,6 +1,4 @@
-# ESI Multi
-
-Finally, a project.
+# ESI Multi-Agents SLM V Single Agent LLM
 
 Multi-agent systems with small language models are a single-agent system with large language models.
 
@@ -12,6 +10,7 @@ This repository combines an Emergency Severity Index triage backend with a front
 - `frontend/` contains the React + TypeScript + Vite frontend
 - `training_notebooks/` contains notebook-based model training and experimentation assets
 - `Makefile` provides root-level commands for installing dependencies and running both services together
+- Please See each project Readme for detailed explanation
 
 ## What The Project Does
 
@@ -241,3 +240,4 @@ Operational run endpoints are mounted under:
 There is also a compatibility alias for:
 
 - `/api/swarm-runs`
+
