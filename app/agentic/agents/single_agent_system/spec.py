@@ -10,7 +10,7 @@ from typing import Optional
 
 from langchain_core.messages import AIMessage, ToolMessage
 
-from app.agentic.HandRolledAgent import AgentKernel
+from app.agentic.AgentRuntime import AgentKernel
 from app.agentic.agents.base.spec import AgentSpec
 from app.agentic.model_registry import get_chat_model, resolve_model_spec
 from app.agentic.runtime import AgentRuntime, RuntimeConfig

@@ -8,7 +8,7 @@ import pytest
 from langchain_core.messages import AIMessage
 from pydantic import BaseModel
 
-from app.agentic.HandRolledAgent import AgentKernel
+from app.agentic.AgentRuntime import AgentKernel
 from app.agentic.agents.vitals.evaluator import VitalsUptriageEvaluator
 from app.agentic.protocols.tool_call_recovery import (
     looks_like_malformed_tool_call_content,

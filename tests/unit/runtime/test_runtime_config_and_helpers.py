@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 from langchain_core.messages import AIMessage
 
-from app.agentic.HandRolledAgent import AgentKernel
+from app.agentic.AgentRuntime import AgentKernel
 from app.agentic.runtime.failure_taxonomy import FailureCategory
 from app.agentic.runtime.runtime_config import RuntimeConfig
 

@@ -20,7 +20,7 @@ from .tools import TOOLS
 from .evaluator import ES1AcuityEvaluator
 from .handoffs import HANDOFFS
 
-from app.agentic.HandRolledAgent import AgentKernel
+from app.agentic.AgentRuntime import AgentKernel
 from .schema import ES1AgentInput, ES1AgentOutput
 
 

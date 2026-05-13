@@ -8,7 +8,7 @@ import pytest
 from langchain_core.messages import AIMessage
 from pydantic import BaseModel
 
-from app.agentic.HandRolledAgent import AgentKernel
+from app.agentic.AgentRuntime import AgentKernel
 from app.agentic.runtime.runtime_config import RuntimeConfig
 from tests.doubles.fake_emitters import Collector
 from tests.doubles.fake_provider import FakeChatModel

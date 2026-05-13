@@ -21,7 +21,7 @@ from .handoffs import HANDOFFS
 from .prompt import HANDOFF_REQUIREMENTS, SINGLE_AGENT_OUTPUT_REQUIREMENTS, SYSTEM_PROMPT
 from .tools import TOOLS
 
-from app.agentic.HandRolledAgent import AgentKernel
+from app.agentic.AgentRuntime import AgentKernel
 
 
 def build_vitals_agent(runtime: AgentRuntime, runtime_config: Optional[RuntimeConfig] = None):

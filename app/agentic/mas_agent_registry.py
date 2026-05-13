@@ -4,7 +4,7 @@
 from __future__ import annotations
 from typing import Callable, Dict, Optional
 
-from app.agentic.HandRolledAgent import AgentKernel
+from app.agentic.AgentRuntime import AgentKernel
 from app.agentic.agents.doctor.spec import build_doctor_agent
 from app.agentic.agents.esi1.spec import build_es1_agent
 from app.agentic.agents.esi2.spec import build_esi2_agent
