@@ -1,5 +1,6 @@
+"""Models package exports."""
+
 from app.models.base import Base, TimestampMixin
-from app.models.medrecon import Medrecon
 from app.models.agent_run import AgentRun
 from app.models.agent_event import AgentEvent
 from app.models.agent_test_case import AgentTestCase
@@ -12,11 +13,11 @@ from app.models.agent_llm_call import AgentLLMCall
 from app.models.agent_tool_call import AgentToolCall
 from app.models.agent_run_metrics import AgentRunMetrics
 from app.models.agent_run_reliability_issue import AgentRunReliabilityIssue
-from app.models.swarm_event import SwarmEvent
-from app.models.swarm_final_output import SwarmFinalOutput
-from app.models.swarm_gate_evaluation import SwarmGateEvaluation
-from app.models.swarm_handoff import SwarmHandoff
-from app.models.swarm_run import SwarmRun
-from app.models.swarm_run_metrics import SwarmRunMetrics
+from app.models.mas_event import MASEvent
+from app.models.mas_final_output import MASFinalOutput
+from app.models.mas_gate_evaluation import MASGateEvaluation
+from app.models.mas_handoff import MASHandoff
+from app.models.mas_run import MASRun
+from app.models.mas_run_metrics import MASRunMetrics
 
 # Import all models here so Alembic can detect them

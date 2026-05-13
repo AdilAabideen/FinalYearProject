@@ -1,3 +1,5 @@
+"""Prompt module helpers."""
+
 SYSTEM_PROMPT = """
 <system_role>
 You are a specialist Emergency Department triage agent for ESI Decision Point B only.

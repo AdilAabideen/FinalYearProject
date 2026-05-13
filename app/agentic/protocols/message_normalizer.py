@@ -1,3 +1,5 @@
+"""Message Normalizer module helpers."""
+
 from __future__ import annotations
 
 import json
@@ -14,6 +16,7 @@ def normalize_chat_messages(messages: list[dict[str, str]]) -> list[dict[str, st
     - Merge consecutive turns that share the same role.
     - Preserve relative order of non-system turns.
     """
+    # Keep the output consistent.
     system_parts: list[str] = []
     normalized: list[dict[str, str]] = []
 
@@ -46,6 +49,7 @@ def normalize_chat_messages(messages: list[dict[str, str]]) -> list[dict[str, st
 
 def render_tool_message_as_user_content(msg: ToolMessage) -> str:
     """Render a ToolMessage into the normalized user-facing replay format."""
+    # Keep the main step clear.
     tool_name = getattr(msg, "name", None) or "tool"
     tool_status = getattr(msg, "status", None) or "success"
     tool_id = getattr(msg, "tool_call_id", None) or "unknown"
@@ -55,6 +59,7 @@ def render_tool_message_as_user_content(msg: ToolMessage) -> str:
 
 def render_ai_tool_calls_json(tool_calls: Sequence[Any]) -> str:
     """Render assistant tool calls as canonical JSON replay text."""
+    # Keep the main step clear.
     rendered_calls = [
         {
             "id": tc.get("id"),
@@ -68,6 +73,7 @@ def render_ai_tool_calls_json(tool_calls: Sequence[Any]) -> str:
 
 def render_ai_message_for_provider(msg: AIMessage) -> str:
     """Render assistant content plus any tool calls into one replayable text block."""
+    # Keep the main step clear.
     content = (getattr(msg, "content", None) or "").strip()
     tool_calls = getattr(msg, "tool_calls", None) or []
     if not tool_calls:
@@ -85,6 +91,7 @@ def to_provider_messages(
     unsupported_type_label: str,
 ) -> list[dict[str, str]]:
     """Render LangChain messages into provider chat-message dicts."""
+    # Keep the main step clear.
     out: list[dict[str, str]] = []
     for msg in messages:
         if isinstance(msg, SystemMessage):

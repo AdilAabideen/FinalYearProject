@@ -1,3 +1,5 @@
+"""Main module helpers."""
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.config import settings
@@ -29,24 +31,30 @@ app.include_router(api_router, prefix="/api")
 
 @app.on_event("startup")
 def _seed_test_data() -> None:
+    """Seed test data."""
+    # Keep the seed data explicit.
     from app.seed_agent_tests import (
         ensure_seed_single_agent_test_cases,
         ensure_seed_vitals_agent_test_cases,
     )
-    from app.seed_mas_tests import ensure_seed_esi_swarm_v1_mas_test_cases
+    from app.seed_mas_tests import ensure_seed_esi_mas_test_cases
 
     db = SessionLocal()
     try:
         ensure_seed_vitals_agent_test_cases(db)
         ensure_seed_single_agent_test_cases(db)
-        ensure_seed_esi_swarm_v1_mas_test_cases(db)
+        ensure_seed_esi_mas_test_cases(db)
     finally:
         db.close()
 
 @app.get("/")
 def root():
+    """Handle the value."""
+    # Keep the main step clear.
     return {"message": "Welcome to Emergency Severity Index Multi Agent V Monolithic Agent System"}
 
 @app.get("/health")
 def health_check():
+    """Handle check."""
+    # Keep the main step clear.
     return {"status": "healthy"}

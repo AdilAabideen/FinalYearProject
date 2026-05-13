@@ -1,6 +1,8 @@
+"""Compute Esi Danger Zone module helpers."""
+
 from typing import Optional, List, Dict, Any
 
-from langchain.tools import tool
+from langchain_core.tools import tool
 from pydantic import BaseModel, Field, field_validator
 
 
@@ -16,6 +18,8 @@ class ESI_Danger_Zone_Vitals(BaseModel):
     @field_validator("age_years")
     @classmethod
     def validate_age(cls, v: float) -> float:
+        """Validate age."""
+        # Fail fast on bad input.
         if v < 0:
             raise ValueError("age_years must be >= 0")
         return v
@@ -23,6 +27,8 @@ class ESI_Danger_Zone_Vitals(BaseModel):
     @field_validator("hr")
     @classmethod
     def validate_hr(cls, v: Optional[float]) -> Optional[float]:
+        """Validate hr."""
+        # Fail fast on bad input.
         if v is not None and v < 0:
             raise ValueError("hr must be >= 0")
         return v
@@ -30,6 +36,8 @@ class ESI_Danger_Zone_Vitals(BaseModel):
     @field_validator("rr")
     @classmethod
     def validate_rr(cls, v: Optional[float]) -> Optional[float]:
+        """Validate rr."""
+        # Fail fast on bad input.
         if v is not None and v < 0:
             raise ValueError("rr must be >= 0")
         return v
@@ -37,6 +45,8 @@ class ESI_Danger_Zone_Vitals(BaseModel):
     @field_validator("spo2")
     @classmethod
     def validate_spo2(cls, v: Optional[float]) -> Optional[float]:
+        """Validate spo2."""
+        # Fail fast on bad input.
         if v is not None and not (0 <= v <= 100):
             raise ValueError("spo2 must be between 0 and 100")
         return v
@@ -113,6 +123,8 @@ def compute_esi_danger_zone(
     violations: List[Dict[str, Any]] = []
 
     def add_upper_violation(vital: str, value: Optional[float], threshold: float) -> None:
+        """Handle upper violation."""
+        # Keep the main step clear.
         if value is None:
             missing_vitals.append(vital)
             return

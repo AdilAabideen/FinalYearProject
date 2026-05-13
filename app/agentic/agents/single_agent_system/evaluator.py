@@ -1,3 +1,5 @@
+"""Evaluator module helpers."""
+
 from __future__ import annotations
 
 from typing import Any, Dict, Optional, Sequence
@@ -6,14 +8,20 @@ from app.agentic.eval_types import EvalResult
 
 
 def _safe_div(num: int, denom: int) -> Optional[float]:
+    """Handle div."""
+    # Keep the main step clear.
     return None if denom == 0 else (num / denom)
 
 
 def _round_or_none(value: Optional[float], ndigits: int = 4) -> Optional[float]:
+    """Handle or none."""
+    # Keep the main step clear.
     return None if value is None else round(value, ndigits)
 
 
 def _coerce_to_int(value: Any) -> Optional[int]:
+    """Handle to int."""
+    # Keep the main step clear.
     if isinstance(value, bool):
         return None
     if isinstance(value, int):
@@ -39,6 +47,8 @@ class SingleAgentAcuityEvaluator:
     label_name = "single_agent_final_acuity"
 
     def validate_expected(self, expected_json: Dict[str, Any]) -> None:
+        """Validate expected."""
+        # Fail fast on bad input.
         if set(expected_json.keys()) != {"acuity"}:
             raise ValueError("expected_json must only contain: acuity")
         acuity = expected_json.get("acuity")
@@ -48,6 +58,8 @@ class SingleAgentAcuityEvaluator:
             raise ValueError("expected_json.acuity must be between 1 and 5")
 
     def _prediction(self, actual_json: Dict[str, Any]) -> Optional[int]:
+        """Handle the value."""
+        # Keep the main step clear.
         if "final_esi_level" in actual_json:
             return _coerce_to_int(actual_json.get("final_esi_level"))
         if "acuity" in actual_json:
@@ -61,6 +73,8 @@ class SingleAgentAcuityEvaluator:
         *,
         agent_status: str,
     ) -> EvalResult:
+        """Handle the value."""
+        # Keep the main step clear.
         self.validate_expected(expected_json)
         expected_acuity = int(expected_json["acuity"])
 
@@ -126,6 +140,8 @@ class SingleAgentAcuityEvaluator:
         )
 
     def aggregate(self, results: Sequence[EvalResult]) -> Dict[str, Any]:
+        """Handle the value."""
+        # Keep the main step clear.
         total = 0
         passed = 0
         exec_failed = 0

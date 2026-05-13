@@ -1,3 +1,5 @@
+"""Evaluator module helpers."""
+
 from __future__ import annotations
 
 from typing import Any, Dict, Literal, Optional, Sequence
@@ -9,14 +11,20 @@ Verdict = Literal["pass", "warning", "fail"]
 
 
 def _safe_div(num: int, denom: int) -> Optional[float]:
+    """Handle div."""
+    # Keep the main step clear.
     return None if denom == 0 else (num / denom)
 
 
 def _round_or_none(v: Optional[float], ndigits: int = 4) -> Optional[float]:
+    """Handle or none."""
+    # Keep the main step clear.
     return None if v is None else round(v, ndigits)
 
 
 def _coerce_to_int(value: Any) -> Optional[int]:
+    """Handle to int."""
+    # Keep the main step clear.
     if isinstance(value, bool):
         return None
     if isinstance(value, int):
@@ -49,6 +57,8 @@ class ESI345AcuityEvaluator:
     label_name = "esi345_acuity_resources"
 
     def validate_expected(self, expected_json: Dict[str, Any]) -> None:
+        """Validate expected."""
+        # Fail fast on bad input.
         if set(expected_json.keys()) != {"acuity", "resources_used"}:
             raise ValueError("expected_json must only contain: acuity, resources_used")
         acuity = expected_json.get("acuity")
@@ -63,10 +73,14 @@ class ESI345AcuityEvaluator:
             raise ValueError("expected_json.resources_used must be >= 0")
 
     def _targets(self, expected_json: Dict[str, Any]) -> tuple[int, int]:
+        """Handle the value."""
+        # Keep the main step clear.
         self.validate_expected(expected_json)
         return int(expected_json["acuity"]), int(expected_json["resources_used"])
 
     def _prediction(self, actual_json: Dict[str, Any]) -> tuple[Optional[int], Optional[int]]:
+        """Handle the value."""
+        # Keep the main step clear.
         acuity_pred = _coerce_to_int(actual_json.get("esi_level"))
         resources_pred = _coerce_to_int(actual_json.get("num_resources"))
         if resources_pred is not None and resources_pred < 0:
@@ -87,6 +101,8 @@ class ESI345AcuityEvaluator:
         agent_status: str,
         error: Optional[str] = None,
     ) -> EvalResult:
+        """Build result."""
+        # Build the next value.
         acuity_match = actual_acuity is not None and (actual_acuity == expected_acuity)
         resources_match = actual_resources is not None and (actual_resources == expected_resources)
         warning = verdict == "warning"
@@ -133,6 +149,8 @@ class ESI345AcuityEvaluator:
         *,
         agent_status: str,
     ) -> EvalResult:
+        """Handle the value."""
+        # Keep the main step clear.
         expected_acuity, expected_resources = self._targets(expected_json)
 
         if agent_status != "succeeded" or actual_json is None:
@@ -190,6 +208,8 @@ class ESI345AcuityEvaluator:
         )
 
     def aggregate(self, results: Sequence[EvalResult]) -> Dict[str, Any]:
+        """Handle the value."""
+        # Keep the main step clear.
         pass_count = 0
         warning_count = 0
         fail_count = 0

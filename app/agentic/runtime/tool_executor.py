@@ -1,3 +1,5 @@
+"""Tool Executor module helpers."""
+
 from __future__ import annotations
 
 import asyncio
@@ -45,12 +47,16 @@ class ToolExecutor:
         estimate_tool_result_tokens: Callable[[str], int],
         emit_trace: Callable[[ToolExecutionTrace], None] | None = None,
     ) -> None:
+        """Handle the value."""
+        # Keep the main step clear.
         self.tools_by_name = dict(tools_by_name)
         self._estimate_tool_result_tokens = estimate_tool_result_tokens
         self._emit_trace = emit_trace
 
     @staticmethod
     def _json_default(value: Any) -> Any:
+        """Handle default."""
+        # Keep the main step clear.
         if isinstance(value, BaseModel):
             return value.model_dump()
         if hasattr(value, "model_dump") and callable(value.model_dump):
@@ -66,6 +72,8 @@ class ToolExecutor:
 
     @classmethod
     def _tool_output_to_text(cls, value: Any) -> str:
+        """Handle output to text."""
+        # Keep the main step clear.
         if isinstance(value, BaseModel):
             return value.model_dump_json()
         if isinstance(value, (dict, list, tuple, int, float, bool)) or value is None:
@@ -74,6 +82,8 @@ class ToolExecutor:
 
     @staticmethod
     def _extract_call_fields(tool_call: ToolCallInput) -> tuple[str | None, str, dict[str, Any]]:
+        """Extract call fields."""
+        # Pull out the needed value.
         if isinstance(tool_call, NormalizedToolCall):
             name = tool_call.name
             call_id = tool_call.id
@@ -95,6 +105,8 @@ class ToolExecutor:
         run_id: str | None = None,
         agent_name: str | None = None,
     ) -> ToolMessage:
+        """Handle tool call."""
+        # Keep the main step clear.
         name, call_id, args = self._extract_call_fields(tool_call)
 
         started_at = datetime.utcnow()
@@ -176,7 +188,11 @@ class ToolExecutor:
         agent_name: str | None = None,
         timeout_s: float | None = None,
     ) -> AsyncGenerator[tuple[int, ToolMessage], None]:
+        """Handle tool calls batched."""
+        # Keep the main step clear.
         async def _run_indexed(idx: int, call: ToolCallInput) -> tuple[int, ToolMessage]:
+            """Run indexed."""
+            # Kick off the main step.
             msg = await self.execute_tool_call(
                 call,
                 iteration=iteration,

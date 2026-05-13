@@ -1,3 +1,5 @@
+"""Agent Runs schema types."""
+
 from __future__ import annotations
 
 from datetime import datetime
@@ -26,9 +28,9 @@ class AgentRunCreateRequest(BaseModel):
         default=None,
         description="Optional model id (e.g. 'gpt-4o-mini', 'medgemma-4b-it').",
     )
-    swarm_run_id: Optional[str] = Field(
+    mas_run_id: Optional[str] = Field(
         default=None,
-        description="Optional swarm execution identifier linking this run to a MAS run.",
+        description="Optional mas execution identifier linking this run to a MAS run.",
     )
     workflow_id: Optional[str] = Field(
         default=None,
@@ -40,7 +42,7 @@ class AgentRunCreateRequest(BaseModel):
     )
     sequence_index: Optional[int] = Field(
         default=None,
-        description="Optional execution order index of this agent within a swarm run.",
+        description="Optional execution order index of this agent within a mas run.",
     )
     parent_handoff_id: Optional[str] = Field(
         default=None,
@@ -52,7 +54,7 @@ class AgentRunCreateRequest(BaseModel):
     )
     is_final_agent: Optional[bool] = Field(
         default=None,
-        description="Optional marker indicating whether this agent is expected to finalize the swarm run.",
+        description="Optional marker indicating whether this agent is expected to finalize the mas run.",
     )
     input: dict[str, Any] = Field(description="JSON payload passed to the agent.")
 
@@ -157,7 +159,7 @@ class AgentRunMetricsSummary(BaseModel):
 
 class AgentRunRead(BaseModel):
     id: str
-    swarm_run_id: Optional[str] = None
+    mas_run_id: Optional[str] = None
     workflow_id: Optional[str] = None
     workflow_version: Optional[str] = None
     sequence_index: Optional[int] = None

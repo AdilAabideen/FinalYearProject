@@ -1,9 +1,11 @@
+"""Payload Builder module helpers."""
+
 from __future__ import annotations
 
 from typing import Any, Dict, List, Optional
 
-from app.agentic.swarm_contract import SwarmState
-from app.agentic.workflows.definitions.esi_swarm_v1.payload_builders import (
+from app.agentic.mas_contract import MASState
+from app.agentic.workflows.definitions.esi_mas.payload_builders import (
     unified_payload_builder,
 )
 
@@ -11,7 +13,9 @@ from app.agentic.workflows.definitions.esi_swarm_v1.payload_builders import (
 ACUITY_AGENTS = {"esi1_agent", "esi2_agent", "esi345_agent"}
 
 
-def _doctor_handoffs(state: SwarmState) -> List[Dict[str, Any]]:
+def _doctor_handoffs(state: MASState) -> List[Dict[str, Any]]:
+    """Handle handoffs."""
+    # Keep the main step clear.
     return [
         dict(item)
         for item in list(state.get("handoff_history") or [])
@@ -23,14 +27,17 @@ def _latest_handoff_from(
     handoffs: List[Dict[str, Any]],
     source_agents: set[str],
 ) -> Optional[Dict[str, Any]]:
+    """Handle handoff from."""
+    # Keep the main step clear.
     for item in reversed(handoffs):
         if item.get("from_agent") in source_agents:
             return item
     return None
 
 
-def build_payload(state: SwarmState) -> Dict[str, Any]:
-    """Build a compact doctor swarm payload."""
+def build_payload(state: MASState) -> Dict[str, Any]:
+    """Build a compact doctor mas payload."""
+    # Build the next value.
     doctor_handoffs = _doctor_handoffs(state)
     acuity_handoff = _latest_handoff_from(doctor_handoffs, ACUITY_AGENTS)
     vitals_handoff = _latest_handoff_from(doctor_handoffs, {"vitals_agent"})

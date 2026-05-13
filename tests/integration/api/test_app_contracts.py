@@ -1,3 +1,5 @@
+"""Test App Contracts test coverage."""
+
 from __future__ import annotations
 
 from datetime import datetime
@@ -9,6 +11,8 @@ from app.models.agent_run import AgentRun
 
 
 def _seed_run(db_session):
+    """Seed run."""
+    # Keep the seed data explicit.
     run = AgentRun(
         id="run_1",
         agent_name="vitals_agent",
@@ -57,6 +61,8 @@ def _seed_run(db_session):
 
 
 def _seed_run_with_runtime_decision_event(db_session):
+    """Seed run with runtime decision event."""
+    # Keep the seed data explicit.
     run = AgentRun(
         id="run_runtime_decision",
         agent_name="vitals_agent",
@@ -85,6 +91,8 @@ def _seed_run_with_runtime_decision_event(db_session):
 @pytest.mark.integration
 @pytest.mark.api
 def test_it_api_001_root_returns_welcome_message(client):
+    """Handle it api 001 root returns welcome message."""
+    # Keep the main step clear.
     response = client.get("/")
     assert response.status_code == 200
     assert "Welcome" in response.json()["message"]
@@ -93,6 +101,8 @@ def test_it_api_001_root_returns_welcome_message(client):
 @pytest.mark.integration
 @pytest.mark.api
 def test_it_api_002_health_returns_healthy_status(client):
+    """Handle it api 002 health returns healthy status."""
+    # Keep the main step clear.
     response = client.get("/health")
     assert response.status_code == 200
     assert response.json() == {"status": "healthy"}
@@ -101,6 +111,8 @@ def test_it_api_002_health_returns_healthy_status(client):
 @pytest.mark.integration
 @pytest.mark.api
 def test_it_api_003_get_models_returns_registered_models(client):
+    """Handle it api 003 get models returns registered models."""
+    # Keep the main step clear.
     response = client.get("/api/models")
     assert response.status_code == 200
     assert any(item["id"] == "gpt-4o-mini" for item in response.json())
@@ -109,6 +121,8 @@ def test_it_api_003_get_models_returns_registered_models(client):
 @pytest.mark.integration
 @pytest.mark.api
 def test_it_api_004_get_model_by_id_returns_one_model(client):
+    """Handle it api 004 get model by id returns one model."""
+    # Keep the main step clear.
     response = client.get("/api/models/gpt-4o-mini")
     assert response.status_code == 200
     assert response.json()["id"] == "gpt-4o-mini"
@@ -117,6 +131,8 @@ def test_it_api_004_get_model_by_id_returns_one_model(client):
 @pytest.mark.integration
 @pytest.mark.api
 def test_it_api_006_list_agent_runs_supports_filters(client, db_session):
+    """Handle it api 006 list agent runs supports filters."""
+    # Keep the main step clear.
     _seed_run(db_session)
     response = client.get("/api/agent-runs", params={"agent_name": "vitals_agent"})
     assert response.status_code == 200
@@ -126,6 +142,8 @@ def test_it_api_006_list_agent_runs_supports_filters(client, db_session):
 @pytest.mark.integration
 @pytest.mark.api
 def test_it_api_007_get_agent_run_returns_persisted_output(client, db_session):
+    """Handle it api 007 get agent run returns persisted output."""
+    # Keep the main step clear.
     _seed_run(db_session)
     response = client.get("/api/agent-runs/run_1")
     assert response.status_code == 200
@@ -135,6 +153,8 @@ def test_it_api_007_get_agent_run_returns_persisted_output(client, db_session):
 @pytest.mark.integration
 @pytest.mark.api
 def test_it_api_008_get_agent_run_metrics_returns_llm_and_tool_call_lists(client, db_session):
+    """Handle it api 008 get agent run metrics returns LLM and tool call lists."""
+    # Keep the main step clear.
     _seed_run(db_session)
     response = client.get("/api/agent-runs/run_1/metrics")
     assert response.status_code == 200
@@ -144,6 +164,8 @@ def test_it_api_008_get_agent_run_metrics_returns_llm_and_tool_call_lists(client
 @pytest.mark.integration
 @pytest.mark.api
 def test_it_api_009_list_events_paginates_by_after_seq(client, db_session):
+    """Handle it api 009 list events paginates by after seq."""
+    # Keep the main step clear.
     _seed_run(db_session)
     response = client.get("/api/agent-runs/run_1/events", params={"after_seq": 0, "limit": 10})
     assert response.status_code == 200
@@ -153,6 +175,8 @@ def test_it_api_009_list_events_paginates_by_after_seq(client, db_session):
 @pytest.mark.integration
 @pytest.mark.api
 def test_it_api_010_stream_events_supports_runtime_decision_event_type(client, db_session):
+    """Handle it api 010 stream events supports runtime decision event type."""
+    # Keep the main step clear.
     _seed_run_with_runtime_decision_event(db_session)
 
     with client.stream(

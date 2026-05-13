@@ -1,3 +1,5 @@
+"""Tool Call Recovery module helpers."""
+
 from __future__ import annotations
 
 import json
@@ -15,6 +17,8 @@ from .tool_protocol import normalize_tool_calls_typed
 
 
 def _extract_raw_calls(parsed: Any) -> list[Any]:
+    """Extract raw calls."""
+    # Pull out the needed value.
     if isinstance(parsed, dict) and isinstance(parsed.get("tool_calls"), list):
         return list(parsed["tool_calls"])
     if isinstance(parsed, dict) and isinstance(parsed.get("name", parsed.get("tool_name")), str):
@@ -29,6 +33,8 @@ def recover_from_raw_json_text(
     *,
     allowed_tool_names: AllowedToolNames = None,
 ) -> ToolCallParseResult:
+    """Handle from raw json text."""
+    # Keep the main step clear.
     stripped = (content or "").strip()
     if not stripped:
         return ToolCallParseResult()
@@ -58,6 +64,8 @@ def recover_from_fenced_json_text(
     *,
     allowed_tool_names: AllowedToolNames = None,
 ) -> ToolCallParseResult:
+    """Handle from fenced json text."""
+    # Keep the main step clear.
     stripped = (content or "").strip()
     if not (stripped.startswith("```") and stripped.endswith("```")):
         return ToolCallParseResult()
@@ -91,6 +99,8 @@ def recover_from_jsonl_text(
     *,
     allowed_tool_names: AllowedToolNames = None,
 ) -> ToolCallParseResult:
+    """Handle from jsonl text."""
+    # Keep the main step clear.
     stripped = (content or "").strip()
     if not stripped:
         return ToolCallParseResult()
@@ -137,6 +147,7 @@ def _extract_balanced_json_segment(
     start_index: int,
 ) -> str | None:
     """Extract first balanced JSON-like segment from `start_index`."""
+    # Pull out the needed value.
     if start_index < 0 or start_index >= len(text):
         return None
     if text[start_index] != open_char:
@@ -180,6 +191,7 @@ def _extract_tool_call_objects_from_unbalanced_array(text: str, *, array_start: 
     where the outer array/object wrapper is truncated but the inner call object(s)
     are still structurally intact.
     """
+    # Pull out the needed value.
     if array_start < 0 or array_start >= len(text) or text[array_start] != "[":
         return []
 
@@ -224,6 +236,7 @@ def recover_from_partial_json_text(
 
     Useful when output contains valid tool-call JSON plus trailing garbage.
     """
+    # Keep the main step clear.
     stripped = (content or "").strip()
     if not stripped:
         return ToolCallParseResult()
@@ -272,6 +285,7 @@ def recover_from_tool_calls_array_text(
     Useful when the model emits malformed object wrappers but the `tool_calls` array
     itself is still syntactically valid.
     """
+    # Keep the main step clear.
     stripped = (content or "").strip()
     if not stripped:
         return ToolCallParseResult()
@@ -325,6 +339,8 @@ def recover_tool_calls_from_content(
     *,
     allowed_tool_names: AllowedToolNames = None,
 ) -> ToolCallParseResult:
+    """Handle tool calls from content."""
+    # Keep the main step clear.
     fenced_result = recover_from_fenced_json_text(content, allowed_tool_names=allowed_tool_names)
     if fenced_result.succeeded:
         return fenced_result
@@ -362,6 +378,7 @@ def looks_like_malformed_tool_call_content(
     Returns True only when content strongly suggests tool-call intent but could not be
     parsed/recovered into normalized calls.
     """
+    # Keep the main step clear.
     text = (content or "").strip()
     if not text:
         return False
@@ -398,6 +415,7 @@ def extract_tool_calls_with_priority(
     5) text recovery from JSONL
     """
 
+    # Pull out the needed value.
     native_calls = normalize_tool_calls_typed(
         list(getattr(message, "tool_calls", []) or []),
         allowed_tool_names=allowed_tool_names,
@@ -456,6 +474,8 @@ def extract_tool_calls_with_priority(
 def to_legacy_recovery_output(
     result: ToolCallParseResult,
 ) -> tuple[list[dict[str, Any]], bool]:
+    """Handle legacy recovery output."""
+    # Keep the main step clear.
     calls = [
         {
             "id": call.id,

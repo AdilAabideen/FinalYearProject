@@ -1,3 +1,5 @@
+"""Runtime Types module helpers."""
+
 from __future__ import annotations
 
 from typing import Any, Awaitable, Callable, Dict, List, Literal, Mapping, Optional, Protocol, Sequence, Tuple, Union
@@ -31,25 +33,21 @@ ToolCallItems: TypeAlias = List[ToolCallItem]
 
 class BoundModel(Protocol):
     """Model contract required by AgentRunner."""
-
     def ainvoke(self, messages: list[BaseMessage]) -> Awaitable[AIMessage]: ...
 
 
 class CurrentTelemetryContext(Protocol):
     """Return run-level telemetry identity."""
-
     def __call__(self) -> TelemetryContext: ...
 
 
 class RenderSystemPrompt(Protocol):
     """Render current system prompt."""
-
     def __call__(self) -> str: ...
 
 
 class PayloadToHumanContent(Protocol):
     """Convert runtime payload into user message text."""
-
     def __call__(self, payload: Any) -> str: ...
 
 
@@ -68,13 +66,11 @@ class InvokeWithTelemetry(Protocol):
 
 class NormalizeToolCall(Protocol):
     """Normalize one raw tool call object."""
-
     def __call__(self, obj: Mapping[str, Any]) -> NormalizedToolCallDict | None: ...
 
 
 class RecoverToolCalls(Protocol):
     """Recover tool calls from assistant text."""
-
     def __call__(self, content: str) -> ToolCallList: ...
 
 
@@ -92,19 +88,16 @@ class BuildAIMessageWithToolCalls(Protocol):
 
 class LimitToolCalls(Protocol):
     """Split retained vs dropped tool calls."""
-
     def __call__(self, tool_calls: ToolCallItems) -> tuple[ToolCallItems, ToolCallItems]: ...
 
 
 class JSONFromText(Protocol):
     """Parse JSON from text; return parsed value and raw stripped text."""
-
     def __call__(self, text: str) -> tuple[Any | None, str]: ...
 
 
 class ParsedToPayloadJSON(Protocol):
     """Convert parsed object into event payload JSON shape."""
-
     def __call__(self, parsed: Any) -> dict[str, Any] | None: ...
 
 

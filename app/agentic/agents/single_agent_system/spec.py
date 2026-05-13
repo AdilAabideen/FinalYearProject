@@ -1,3 +1,5 @@
+"""Spec module helpers."""
+
 from __future__ import annotations
 
 import json
@@ -8,7 +10,7 @@ from typing import Optional
 
 from langchain_core.messages import AIMessage, ToolMessage
 
-from app.agentic.HandRolledAgent import SSEHandrolledAgent
+from app.agentic.AgentRuntime import AgentKernel
 from app.agentic.agents.base.spec import AgentSpec
 from app.agentic.model_registry import get_chat_model, resolve_model_spec
 from app.agentic.runtime import AgentRuntime, RuntimeConfig
@@ -22,8 +24,9 @@ from .tools import TOOLS
 
 def build_single_agent(runtime: AgentRuntime, runtime_config: Optional[RuntimeConfig] = None):
     """Build the single-agent system."""
+    # Build the next value.
     try:
-        return SSEHandrolledAgent(
+        return AgentKernel(
             model=runtime.model,
             tools=TOOLS,
             system_prompt=SYSTEM_PROMPT,
@@ -37,7 +40,7 @@ def build_single_agent(runtime: AgentRuntime, runtime_config: Optional[RuntimeCo
 SINGLE_AGENT_SPEC = AgentSpec(
     name="single_agent",
     title="Single Agent",
-    description="Master Agent",
+    description="Single Agent Baseline built with Frontier LLMs built for the dissertation ablation study",
     input_model=SingleAgentInput,
     output_model=SingleAgentOutput,
     tools=TOOLS,
@@ -47,6 +50,8 @@ SINGLE_AGENT_SPEC = AgentSpec(
 
 
 def _maybe_pretty_json(text: str) -> str:
+    """Handle pretty json."""
+    # Keep the main step clear.
     stripped = text.strip()
     if not stripped:
         return ""
@@ -59,6 +64,7 @@ def _maybe_pretty_json(text: str) -> str:
 
 def run_single_agent(input: SingleAgentInput, *, verbose: bool = True):
     """Run the single-agent system with optional verbose stream logging."""
+    # Kick off the main step.
     try:
         model_id = settings.OPENAI_MODEL
         model_spec = resolve_model_spec(model_id)
@@ -92,11 +98,15 @@ def run_single_agent(input: SingleAgentInput, *, verbose: bool = True):
         GRAY = "\x1b[90m"
 
         def _c(text: str, *codes: str) -> str:
+            """Handle the value."""
+            # Keep the main step clear.
             if not use_color or not codes:
                 return text
             return "".join(codes) + text + RESET
 
         def _status_color(status: str) -> str:
+            """Handle color."""
+            # Keep the main step clear.
             normalized = (status or "").strip().lower()
             if normalized in {"error", "failed", "failure"}:
                 return RED
@@ -107,9 +117,13 @@ def run_single_agent(input: SingleAgentInput, *, verbose: bool = True):
         prefix = _c(f"[single-agent:{run_id}] ", DIM, GRAY)
 
         def _log(line: str) -> None:
+            """Handle the value."""
+            # Keep the main step clear.
             print(f"{prefix}{line}", flush=True)
 
         def _log_block(header: str, body: str) -> None:
+            """Handle block."""
+            # Keep the main step clear.
             _log(header)
             if body:
                 for ln in body.splitlines():

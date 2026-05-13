@@ -1,46 +1,92 @@
+"""Test Runtime Config And Helpers test coverage."""
+
 from __future__ import annotations
 
 import pytest
+from langchain_core.messages import AIMessage
 
-from app.agentic.HandRolledAgent import SSEHandrolledAgent
+from app.agentic.AgentRuntime import AgentKernel
 from app.agentic.runtime.failure_taxonomy import FailureCategory
 from app.agentic.runtime.runtime_config import RuntimeConfig
 
 
+def _noop_tool() -> dict:
+    """Return an empty payload."""
+    # Keep the main step clear.
+    return {}
+
+
+class _PermissiveGenericModel:
+    def __init__(self) -> None:
+        """Handle the value."""
+        # Keep the main step clear.
+        self.bound_kwargs = None
+
+    def bind_tools(self, tools, tool_choice="any", **kwargs):
+        """Handle tools."""
+        # Keep the main step clear.
+        self.bound_kwargs = dict(kwargs)
+        return self
+
+    async def ainvoke(self, _messages):
+        """Handle the value."""
+        # Keep the main step clear.
+        return AIMessage(content='{"value":"ok"}')
+
+
+class _RuntimeHintAwareModel(_PermissiveGenericModel):
+    def _llm_type(self) -> str:
+        """Handle type."""
+        # Keep the main step clear.
+        return "vllm-chat"
+
+
 @pytest.mark.unit
 def test_ut_run_028_runtime_config_rejects_max_tool_calls_per_turn_below_one():
+    """Handle ut run 028 runtime config rejects max tool calls per turn below one."""
+    # Keep the main step clear.
     with pytest.raises(ValueError):
         RuntimeConfig(max_tool_calls_per_turn=0)
 
 
 @pytest.mark.unit
 def test_ut_run_029_runtime_config_rejects_negative_malformed_retry_count():
+    """Handle ut run 029 runtime config rejects negative malformed retry count."""
+    # Keep the main step clear.
     with pytest.raises(ValueError):
         RuntimeConfig(max_malformed_tool_retries_per_tool=-1)
 
 
 @pytest.mark.unit
 def test_ut_run_030_failure_taxonomy_values_remain_stable():
+    """Handle ut run 030 failure taxonomy values remain stable."""
+    # Keep the main step clear.
     assert FailureCategory.UNKNOWN_TOOL.value == "unknown_tool"
     assert FailureCategory.FINAL_OUTPUT_INVALID.value == "final_output_invalid"
 
 
 @pytest.mark.unit
 def test_ut_run_031_payload_to_human_content_extracts_plain_string_input():
-    assert SSEHandrolledAgent._payload_to_human_content("hello") == "hello"
+    """Handle ut run 031 payload to human content extracts plain string input."""
+    # Keep the main step clear.
+    assert AgentKernel._payload_to_human_content("hello") == "hello"
 
 
 @pytest.mark.unit
 def test_ut_run_033_payload_to_human_content_extracts_latest_user_message_from_dict_messages():
+    """Handle ut run 033 payload to human content extracts latest user message from dict messages."""
+    # Keep the main step clear.
     payload = {"messages": [{"role": "user", "content": "first"}, {"role": "user", "content": "latest"}]}
-    assert SSEHandrolledAgent._payload_to_human_content(payload) == "latest"
+    assert AgentKernel._payload_to_human_content(payload) == "latest"
 
 
 @pytest.mark.unit
 def test_ut_run_034_limit_tool_calls_splits_kept_and_dropped_calls_correctly():
-    agent = object.__new__(SSEHandrolledAgent)
+    """Handle ut run 034 limit tool calls splits kept and dropped calls correctly."""
+    # Keep the main step clear.
+    agent = object.__new__(AgentKernel)
     agent.max_tool_calls = 2
-    kept, dropped = SSEHandrolledAgent._limit_tool_calls(
+    kept, dropped = AgentKernel._limit_tool_calls(
         agent,
         [
             {"id": "1"},
@@ -54,4 +100,34 @@ def test_ut_run_034_limit_tool_calls_splits_kept_and_dropped_calls_correctly():
 
 @pytest.mark.unit
 def test_ut_run_035_parsed_to_payload_json_wraps_scalar_values_under_value():
-    assert SSEHandrolledAgent._parsed_to_payload_json("x") == {"value": "x"}
+    """Handle ut run 035 parsed to payload json wraps scalar values under value."""
+    # Keep the main step clear.
+    assert AgentKernel._parsed_to_payload_json("x") == {"value": "x"}
+
+
+@pytest.mark.unit
+def test_ut_run_036_bind_model_tools_omits_runtime_hints_for_generic_models():
+    """Handle ut run 036 bind model tools omits runtime hints for generic models."""
+    # Keep the main step clear.
+    model = _PermissiveGenericModel()
+    AgentKernel(model=model, tools=[_noop_tool])
+    assert model.bound_kwargs == {}
+
+
+@pytest.mark.unit
+def test_ut_run_037_bind_model_tools_includes_runtime_hints_for_supported_wrappers():
+    """Handle ut run 037 bind model tools includes runtime hints for supported wrappers."""
+    # Keep the main step clear.
+    model = _RuntimeHintAwareModel()
+    agent = AgentKernel(
+        model=model,
+        tools=[_noop_tool],
+        agent_node_name="demo_agent",
+        handoff_tool_names=["handoff_to_other"],
+        runtime_config=RuntimeConfig(multi_agent=True),
+    )
+    assert model.bound_kwargs == {
+        "agent_name": agent.agent_node_name,
+        "multi_agent": True,
+        "handoff_names": ["handoff_to_other"],
+    }

@@ -1,3 +1,5 @@
+"""Seed Agent Tests module helpers."""
+
 from __future__ import annotations
 
 import json
@@ -7,13 +9,15 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from app.models.agent_test_case import AgentTestCase
+from app.models.agent_test_case_run import AgentTestCaseRun
+from app.models.agent_test_run import AgentTestRun
 
 SINGLE_AGENT_NAME = "single_agent"
-SINGLE_AGENT_RAW_CASES_PATH = Path(__file__).with_name("seed_mas_tests_esi_swarm_v1.jsonish")
+SINGLE_AGENT_RAW_CASES_PATH = Path(__file__).with_name("seed_mas_tests_esi_mas.jsonish")
 
 
 def ensure_seed_vitals_agent_test_cases(db: Session) -> None:
@@ -23,6 +27,7 @@ def ensure_seed_vitals_agent_test_cases(db: Session) -> None:
     This is only for convenience in dev; it will not overwrite existing rows.
     """
 
+    # Keep the main step clear.
     existing = db.execute(
         select(AgentTestCase).where(AgentTestCase.agent_name == "vitals_agent").limit(1)
     ).scalar_one_or_none()
@@ -32,6 +37,8 @@ def ensure_seed_vitals_agent_test_cases(db: Session) -> None:
     now = datetime.now(timezone.utc).replace(tzinfo=None)
 
     def base_input(**overrides):
+        """Handle input."""
+        # Keep the main step clear.
         payload = {
             "temperature": 98.6,
             "heartrate": 80.0,
@@ -161,6 +168,8 @@ def ensure_seed_vitals_agent_test_cases(db: Session) -> None:
 
 
 def _load_single_agent_raw_cases() -> list[dict[str, Any]]:
+    """Load single agent raw cases."""
+    # Read the current value.
     raw = SINGLE_AGENT_RAW_CASES_PATH.read_text(encoding="utf-8")
     normalized = raw.replace(
         '"arrival_transport"MBULANCE",',
@@ -171,6 +180,8 @@ def _load_single_agent_raw_cases() -> list[dict[str, Any]]:
 
 
 def _normalize_single_agent_input(payload: dict[str, Any]) -> dict[str, Any]:
+    """Normalize single agent input."""
+    # Keep the output consistent.
     normalized = dict(payload)
 
     if "arrival_transport" not in normalized and "rival_transport" in normalized:
@@ -182,6 +193,8 @@ def _normalize_single_agent_input(payload: dict[str, Any]) -> dict[str, Any]:
 
 
 def _load_single_agent_seed_rows() -> list[dict[str, Any]]:
+    """Load single agent seed rows."""
+    # Read the current value.
     rows = _load_single_agent_raw_cases()
     prepared: list[dict[str, Any]] = []
 
@@ -206,34 +219,40 @@ def _load_single_agent_seed_rows() -> list[dict[str, Any]]:
 
 
 def ensure_seed_single_agent_test_cases(db: Session) -> None:
+    """Handle seed single agent test cases."""
+    # Keep the main step clear.
     now = datetime.now(timezone.utc).replace(tzinfo=None)
-    existing_rows = db.execute(
-        select(AgentTestCase).where(AgentTestCase.agent_name == SINGLE_AGENT_NAME)
+    rows = _load_single_agent_seed_rows()
+
+    case_ids = db.execute(
+        select(AgentTestCase.id).where(AgentTestCase.agent_name == SINGLE_AGENT_NAME)
     ).scalars().all()
-    existing_by_name = {row.name: row for row in existing_rows}
+    run_ids = db.execute(
+        select(AgentTestRun.id).where(AgentTestRun.agent_name == SINGLE_AGENT_NAME)
+    ).scalars().all()
 
-    for item in _load_single_agent_seed_rows():
-        existing = existing_by_name.get(item["name"])
-        if existing is None:
-            db.add(
-                AgentTestCase(
-                    id=str(uuid.uuid4()),
-                    agent_name=SINGLE_AGENT_NAME,
-                    name=item["name"],
-                    enabled=True,
-                    input_json=item["input_json"],
-                    expected_json=item["expected_json"],
-                    notes=item["notes"],
-                    created_at=now,
-                    updated_at=now,
-                )
+    if run_ids:
+        db.execute(delete(AgentTestCaseRun).where(AgentTestCaseRun.test_run_id.in_(run_ids)))
+        db.execute(delete(AgentTestRun).where(AgentTestRun.id.in_(run_ids)))
+    if case_ids:
+        db.execute(delete(AgentTestCaseRun).where(AgentTestCaseRun.test_case_id.in_(case_ids)))
+        db.execute(delete(AgentTestCase).where(AgentTestCase.id.in_(case_ids)))
+    if run_ids or case_ids:
+        db.commit()
+
+    for item in rows:
+        db.add(
+            AgentTestCase(
+                id=str(uuid.uuid4()),
+                agent_name=SINGLE_AGENT_NAME,
+                name=item["name"],
+                enabled=True,
+                input_json=item["input_json"],
+                expected_json=item["expected_json"],
+                notes=item["notes"],
+                created_at=now,
+                updated_at=now,
             )
-            continue
-
-        existing.enabled = True
-        existing.input_json = item["input_json"]
-        existing.expected_json = item["expected_json"]
-        existing.notes = item["notes"]
-        existing.updated_at = now
+        )
 
     db.commit()

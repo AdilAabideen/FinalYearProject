@@ -1,3 +1,5 @@
+"""Spec module helpers."""
+
 from __future__ import annotations
 
 import json
@@ -7,8 +9,6 @@ import uuid
 from typing import Optional
 
 from langchain_core.messages import AIMessage, ToolMessage
-from langgraph.prebuilt import create_react_agent
-
 from app.agentic.agents.base.spec import AgentSpec
 from app.agentic.handoff import create_handoff_tools
 from app.agentic.model_registry import get_chat_model, resolve_model_spec
@@ -20,17 +20,18 @@ from .tools import TOOLS
 from .evaluator import ESI2AcuityEvaluator
 from .handoffs import HANDOFFS
 
-from app.agentic.HandRolledAgent import SSEHandrolledAgent
+from app.agentic.AgentRuntime import AgentKernel
 from .schema import ES2AgentInput, ES2AgentOutput
 
 
 def build_esi2_agent(runtime: AgentRuntime, runtime_config: Optional[RuntimeConfig] = None):
     """Build the ESI2 agent."""
+    # Build the next value.
     try:
         handoff_tools = create_handoff_tools("esi2_agent", HANDOFFS)
         handoff_tool_names = [tool.name for tool in handoff_tools]
         tools = [*TOOLS, *handoff_tools] if runtime_config and runtime_config.multi_agent else TOOLS
-        return SSEHandrolledAgent(
+        return AgentKernel(
             model=runtime.model,
             tools=tools,
             system_prompt=SYSTEM_PROMPT,
@@ -58,6 +59,8 @@ ESI2_AGENT_SPEC = AgentSpec(
 
 
 def _maybe_pretty_json(text: str) -> str:
+    """Handle pretty json."""
+    # Keep the main step clear.
     stripped = text.strip()
     if not stripped:
         return ""
@@ -70,6 +73,7 @@ def _maybe_pretty_json(text: str) -> str:
 
 def run_esi2_agent(input: ES2AgentInput, *, verbose: bool = True):
     """Run the vitals LangGraph agent with optional verbose stream logging."""
+    # Kick off the main step.
     try:
         model_id = settings.OPENAI_MODEL
         model_spec = resolve_model_spec(model_id)
@@ -103,11 +107,15 @@ def run_esi2_agent(input: ES2AgentInput, *, verbose: bool = True):
         GRAY = "\x1b[90m"
 
         def _c(text: str, *codes: str) -> str:
+            """Handle the value."""
+            # Keep the main step clear.
             if not use_color or not codes:
                 return text
             return "".join(codes) + text + RESET
 
         def _status_color(status: str) -> str:
+            """Handle color."""
+            # Keep the main step clear.
             normalized = (status or "").strip().lower()
             if normalized in {"error", "failed", "failure"}:
                 return RED
@@ -118,9 +126,13 @@ def run_esi2_agent(input: ES2AgentInput, *, verbose: bool = True):
         prefix = _c(f"[vitals-agent:{run_id}] ", DIM, GRAY)
 
         def _log(line: str) -> None:
+            """Handle the value."""
+            # Keep the main step clear.
             print(f"{prefix}{line}", flush=True)
 
         def _log_block(header: str, body: str) -> None:
+            """Handle block."""
+            # Keep the main step clear.
             _log(header)
             if body:
                 for ln in body.splitlines():

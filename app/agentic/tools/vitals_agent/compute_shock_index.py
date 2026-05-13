@@ -1,7 +1,9 @@
+"""Compute Shock Index module helpers."""
+
 from typing import Optional, Dict, Any
 
 from pydantic import BaseModel, Field, field_validator
-from langchain.tools import tool
+from langchain_core.tools import tool
 
 
 class ShockIndexInput(BaseModel):
@@ -11,6 +13,8 @@ class ShockIndexInput(BaseModel):
     @field_validator("hr")
     @classmethod
     def validate_hr(cls, v: Optional[float]) -> Optional[float]:
+        """Validate hr."""
+        # Fail fast on bad input.
         if v is not None and v < 0:
             raise ValueError("hr must be >= 0")
         return v
@@ -18,6 +22,8 @@ class ShockIndexInput(BaseModel):
     @field_validator("sbp")
     @classmethod
     def validate_sbp(cls, v: Optional[float]) -> Optional[float]:
+        """Validate sbp."""
+        # Fail fast on bad input.
         if v is not None and v <= 0:
             raise ValueError("sbp must be > 0")
         return v
@@ -41,6 +47,7 @@ def compute_shock_index(
     - hard:   SI >= 1.0
     """
 
+    # Derive the needed value.
     missing = []
     if hr is None:
         missing.append("HR")

@@ -1,3 +1,5 @@
+"""Seed Mas Tests module helpers."""
+
 from __future__ import annotations
 
 import json
@@ -18,11 +20,13 @@ from app.models.mas_test_case_run import MasTestCaseRun
 from app.models.mas_test_run import MasTestRun
 
 
-WORKFLOW_ID = "esi_swarm_v1"
-RAW_CASES_PATH = Path(__file__).with_name("seed_mas_tests_esi_swarm_v1.jsonish")
+WORKFLOW_ID = "esi_mas"
+RAW_CASES_PATH = Path(__file__).with_name("seed_mas_tests_esi_mas.jsonish")
 
 
 def _load_raw_cases() -> list[dict]:
+    """Load raw cases."""
+    # Read the current value.
     raw = RAW_CASES_PATH.read_text(encoding="utf-8")
     normalized = raw
     normalized = normalized.replace('"arrival_transport"MBULANCE",', '"arrival_transport": "AMBULANCE",')
@@ -30,7 +34,9 @@ def _load_raw_cases() -> list[dict]:
     return json.loads(normalized)
 
 
-def ensure_seed_esi_swarm_v1_mas_test_cases(db: Session) -> None:
+def ensure_seed_esi_mas_test_cases(db: Session) -> None:
+    """Handle seed ESI MAS test cases."""
+    # Keep the main step clear.
     now = datetime.now(timezone.utc).replace(tzinfo=None)
     rows = _load_raw_cases()
 
@@ -68,4 +74,3 @@ def ensure_seed_esi_swarm_v1_mas_test_cases(db: Session) -> None:
             )
         )
     db.commit()
-

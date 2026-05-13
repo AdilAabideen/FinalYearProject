@@ -1,3 +1,5 @@
+"""Mas Tests Repository repository helpers."""
+
 from __future__ import annotations
 
 from typing import Optional
@@ -19,6 +21,8 @@ def list_test_cases(
     offset: int,
     order: str,
 ) -> list[MasTestCase]:
+    """List test cases."""
+    # Read the current list.
     stmt = select(MasTestCase)
     if workflow_id:
         stmt = stmt.where(MasTestCase.workflow_id == workflow_id)
@@ -32,50 +36,22 @@ def list_test_cases(
 
     stmt = stmt.offset(offset).limit(limit)
     return db.execute(stmt).scalars().all()
-
-
-def get_test_case(db: Session, case_id: str) -> Optional[MasTestCase]:
-    return db.get(MasTestCase, case_id)
-
-
-def save_test_case(db: Session, case: MasTestCase, *, refresh: bool = False) -> None:
-    db.add(case)
-    db.commit()
-    if refresh:
-        db.refresh(case)
-
-
 def get_test_cases_by_ids(db: Session, case_ids: list[str]) -> list[MasTestCase]:
+    """Return test cases by ids."""
+    # Read the current value.
     stmt = select(MasTestCase).where(MasTestCase.id.in_(case_ids))
     return db.execute(stmt).scalars().all()
 
 
-def list_test_runs(
-    db: Session,
-    *,
-    workflow_id: Optional[str],
-    limit: int,
-    offset: int,
-    order: str,
-) -> list[MasTestRun]:
-    stmt = select(MasTestRun)
-    if workflow_id:
-        stmt = stmt.where(MasTestRun.workflow_id == workflow_id)
-
-    if order == "asc":
-        stmt = stmt.order_by(MasTestRun.created_at.asc(), MasTestRun.id.asc())
-    else:
-        stmt = stmt.order_by(MasTestRun.created_at.desc(), MasTestRun.id.desc())
-
-    stmt = stmt.offset(offset).limit(limit)
-    return db.execute(stmt).scalars().all()
-
-
 def get_test_run(db: Session, run_id: str) -> Optional[MasTestRun]:
+    """Return test run."""
+    # Read the current value.
     return db.get(MasTestRun, run_id)
 
 
 def save_test_run(db: Session, run: MasTestRun, *, refresh: bool = False) -> None:
+    """Save test run."""
+    # Keep stored state current.
     db.add(run)
     db.commit()
     if refresh:
@@ -83,16 +59,22 @@ def save_test_run(db: Session, run: MasTestRun, *, refresh: bool = False) -> Non
 
 
 def get_case_runs_for_test_run(db: Session, run_id: str) -> list[MasTestCaseRun]:
+    """Return case runs for test run."""
+    # Read the current value.
     stmt = select(MasTestCaseRun).where(MasTestCaseRun.test_run_id == run_id)
     return db.execute(stmt).scalars().all()
 
 
 def get_case_runs_by_case_id(db: Session, run_id: str) -> dict[str, MasTestCaseRun]:
+    """Return case runs by case id."""
+    # Read the current value.
     rows = get_case_runs_for_test_run(db, run_id)
     return {row.test_case_id: row for row in rows}
 
 
 def save_test_case_run(db: Session, case_run: MasTestCaseRun, *, refresh: bool = False) -> None:
+    """Save test case run."""
+    # Keep stored state current.
     db.add(case_run)
     db.commit()
     if refresh:
@@ -104,6 +86,8 @@ def create_test_run_with_case_runs(
     run: MasTestRun,
     case_runs: list[MasTestCaseRun],
 ) -> None:
+    """Create test run with case runs."""
+    # Build the new value.
     db.add(run)
     for case_run in case_runs:
         db.add(case_run)

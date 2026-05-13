@@ -1,3 +1,5 @@
+"""Mas Catalog Service service helpers."""
+
 from __future__ import annotations
 
 from fastapi import HTTPException
@@ -24,6 +26,8 @@ from app.schemas.mas_catalog import (
 
 
 def _build_metadata(workflow: WorkflowDefinition) -> MASWorkflowMetadataRead:
+    """Build metadata."""
+    # Build the next value.
     return MASWorkflowMetadataRead(
         workflow_id=workflow.metadata.workflow_id,
         name=workflow.metadata.name,
@@ -33,6 +37,8 @@ def _build_metadata(workflow: WorkflowDefinition) -> MASWorkflowMetadataRead:
 
 
 def _build_source(source: SourceDefinition) -> MASSourceRead:
+    """Build source."""
+    # Build the next value.
     return MASSourceRead(
         source_id=source.source_id,
         name=source.name,
@@ -43,6 +49,8 @@ def _build_source(source: SourceDefinition) -> MASSourceRead:
 
 
 def _build_gate(gate: GateNodeDefinition) -> MASGateRead:
+    """Build gate."""
+    # Build the next value.
     return MASGateRead(
         gate_id=gate.gate_id,
         name=gate.name,
@@ -55,6 +63,8 @@ def _build_gate(gate: GateNodeDefinition) -> MASGateRead:
 
 
 def list_mas_catalog() -> list[MASCatalogSummary]:
+    """List mas catalog."""
+    # Read the current list.
     workflows = list_workflow_definitions()
     return [
         MASCatalogSummary(
@@ -73,6 +83,8 @@ def list_mas_catalog() -> list[MASCatalogSummary]:
 
 
 def get_mas_catalog(workflow_id: str) -> MASCatalogDetail:
+    """Return mas catalog."""
+    # Read the current value.
     try:
         workflow_spec = get_workflow_spec(workflow_id)
     except ValueError:

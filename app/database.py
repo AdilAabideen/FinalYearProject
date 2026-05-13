@@ -1,3 +1,5 @@
+"""Database module helpers."""
+
 from sqlalchemy import create_engine, event, inspect, text
 from sqlalchemy.orm import sessionmaker
 from app.config import settings
@@ -18,6 +20,8 @@ engine = create_engine(
 if "sqlite" in settings.DATABASE_URL:
     @event.listens_for(engine, "connect")
     def _set_sqlite_pragma(dbapi_connection, connection_record) -> None:  # type: ignore[no-redef]
+        """Handle sqlite pragma."""
+        # Keep the main step clear.
         cursor = dbapi_connection.cursor()
         cursor.execute("PRAGMA foreign_keys=ON")
         cursor.close()
@@ -33,6 +37,7 @@ def ensure_runtime_schema_upgrades() -> None:
     """
     Apply additive runtime schema upgrades for environments without migrations.
     """
+    # Keep the main step clear.
     inspector = inspect(engine)
     table_names = set(inspector.get_table_names())
     with engine.begin() as conn:
@@ -72,7 +77,7 @@ def ensure_runtime_schema_upgrades() -> None:
         if "agent_runs" in table_names:
             agent_runs_existing = {col["name"] for col in inspector.get_columns("agent_runs")}
             agent_runs_required: dict[str, str] = {
-                "swarm_run_id": "VARCHAR",
+                "mas_run_id": "VARCHAR",
                 "workflow_id": "VARCHAR",
                 "workflow_version": "VARCHAR",
                 "sequence_index": "INTEGER",
@@ -85,8 +90,8 @@ def ensure_runtime_schema_upgrades() -> None:
                     conn.execute(text(f"ALTER TABLE agent_runs ADD COLUMN {name} {sql_type}"))
             conn.execute(
                 text(
-                    "CREATE INDEX IF NOT EXISTS idx_agent_runs_swarm_run_created_at "
-                    "ON agent_runs (swarm_run_id, created_at)"
+                    "CREATE INDEX IF NOT EXISTS idx_agent_runs_mas_run_created_at "
+                    "ON agent_runs (mas_run_id, created_at)"
                 )
             )
             conn.execute(
@@ -144,11 +149,11 @@ def ensure_runtime_schema_upgrades() -> None:
                 text("CREATE INDEX ix_agent_run_reliability_issues_tool_call_id ON agent_run_reliability_issues (tool_call_id)")
             )
 
-        if "swarm_runs" not in table_names:
+        if "mas_runs" not in table_names:
             conn.execute(
                 text(
                     """
-                    CREATE TABLE swarm_runs (
+                    CREATE TABLE mas_runs (
                         id VARCHAR NOT NULL PRIMARY KEY,
                         workflow_id VARCHAR NOT NULL,
                         workflow_version VARCHAR,
@@ -171,17 +176,17 @@ def ensure_runtime_schema_upgrades() -> None:
             )
             conn.execute(
                 text(
-                    "CREATE INDEX idx_swarm_runs_workflow_created_at ON swarm_runs (workflow_id, created_at)"
+                    "CREATE INDEX idx_mas_runs_workflow_created_at ON mas_runs (workflow_id, created_at)"
                 )
             )
             conn.execute(
                 text(
-                    "CREATE INDEX idx_swarm_runs_status_created_at ON swarm_runs (status, created_at)"
+                    "CREATE INDEX idx_mas_runs_status_created_at ON mas_runs (status, created_at)"
                 )
             )
         else:
-            swarm_runs_existing = {col["name"] for col in inspector.get_columns("swarm_runs")}
-            swarm_runs_required: dict[str, str] = {
+            mas_runs_existing = {col["name"] for col in inspector.get_columns("mas_runs")}
+            mas_runs_required: dict[str, str] = {
                 "workflow_id": "VARCHAR NOT NULL DEFAULT ''",
                 "workflow_version": "VARCHAR",
                 "status": "VARCHAR NOT NULL DEFAULT 'created'",
@@ -196,35 +201,35 @@ def ensure_runtime_schema_upgrades() -> None:
                 "finished_at": "DATETIME",
                 "duration_ms": "INTEGER",
             }
-            for name, sql_type in swarm_runs_required.items():
-                if name not in swarm_runs_existing:
-                    conn.execute(text(f"ALTER TABLE swarm_runs ADD COLUMN {name} {sql_type}"))
+            for name, sql_type in mas_runs_required.items():
+                if name not in mas_runs_existing:
+                    conn.execute(text(f"ALTER TABLE mas_runs ADD COLUMN {name} {sql_type}"))
             conn.execute(
                 text(
-                    "CREATE INDEX IF NOT EXISTS idx_swarm_runs_workflow_created_at "
-                    "ON swarm_runs (workflow_id, created_at)"
+                    "CREATE INDEX IF NOT EXISTS idx_mas_runs_workflow_created_at "
+                    "ON mas_runs (workflow_id, created_at)"
                 )
             )
             conn.execute(
                 text(
-                    "CREATE INDEX IF NOT EXISTS idx_swarm_runs_status_created_at "
-                    "ON swarm_runs (status, created_at)"
+                    "CREATE INDEX IF NOT EXISTS idx_mas_runs_status_created_at "
+                    "ON mas_runs (status, created_at)"
                 )
             )
-            conn.execute(text("DROP INDEX IF EXISTS idx_swarm_runs_case_id_created_at"))
-            if "case_id" in swarm_runs_existing:
+            conn.execute(text("DROP INDEX IF EXISTS idx_mas_runs_case_id_created_at"))
+            if "case_id" in mas_runs_existing:
                 try:
-                    conn.execute(text("ALTER TABLE swarm_runs DROP COLUMN case_id"))
+                    conn.execute(text("ALTER TABLE mas_runs DROP COLUMN case_id"))
                 except Exception:
                     pass
 
-        if "swarm_handoffs" not in table_names:
+        if "mas_handoffs" not in table_names:
             conn.execute(
                 text(
                     """
-                    CREATE TABLE swarm_handoffs (
+                    CREATE TABLE mas_handoffs (
                         id VARCHAR NOT NULL PRIMARY KEY,
-                        swarm_run_id VARCHAR NOT NULL,
+                        mas_run_id VARCHAR NOT NULL,
                         from_agent_run_id VARCHAR NOT NULL,
                         from_agent_name VARCHAR NOT NULL,
                         to_agent_name VARCHAR NOT NULL,
@@ -244,32 +249,32 @@ def ensure_runtime_schema_upgrades() -> None:
             )
             conn.execute(
                 text(
-                    "CREATE INDEX idx_swarm_handoffs_swarm_created_at "
-                    "ON swarm_handoffs (swarm_run_id, created_at)"
+                    "CREATE INDEX idx_mas_handoffs_mas_created_at "
+                    "ON mas_handoffs (mas_run_id, created_at)"
                 )
             )
             conn.execute(
                 text(
-                    "CREATE INDEX idx_swarm_handoffs_from_run_created_at "
-                    "ON swarm_handoffs (from_agent_run_id, created_at)"
+                    "CREATE INDEX idx_mas_handoffs_from_run_created_at "
+                    "ON mas_handoffs (from_agent_run_id, created_at)"
                 )
             )
             conn.execute(
                 text(
-                    "CREATE INDEX idx_swarm_handoffs_to_agent_created_at "
-                    "ON swarm_handoffs (to_agent_name, created_at)"
+                    "CREATE INDEX idx_mas_handoffs_to_agent_created_at "
+                    "ON mas_handoffs (to_agent_name, created_at)"
                 )
             )
             conn.execute(
                 text(
-                    "CREATE INDEX idx_swarm_handoffs_status_created_at "
-                    "ON swarm_handoffs (status, created_at)"
+                    "CREATE INDEX idx_mas_handoffs_status_created_at "
+                    "ON mas_handoffs (status, created_at)"
                 )
             )
         else:
-            swarm_handoffs_existing = {col["name"] for col in inspector.get_columns("swarm_handoffs")}
-            swarm_handoffs_required: dict[str, str] = {
-                "swarm_run_id": "VARCHAR NOT NULL DEFAULT ''",
+            mas_handoffs_existing = {col["name"] for col in inspector.get_columns("mas_handoffs")}
+            mas_handoffs_required: dict[str, str] = {
+                "mas_run_id": "VARCHAR NOT NULL DEFAULT ''",
                 "from_agent_run_id": "VARCHAR NOT NULL DEFAULT ''",
                 "from_agent_name": "VARCHAR NOT NULL DEFAULT ''",
                 "to_agent_name": "VARCHAR NOT NULL DEFAULT ''",
@@ -282,41 +287,41 @@ def ensure_runtime_schema_upgrades() -> None:
                 "latency_ms": "INTEGER",
                 "metadata_json": "JSON",
             }
-            for name, sql_type in swarm_handoffs_required.items():
-                if name not in swarm_handoffs_existing:
-                    conn.execute(text(f"ALTER TABLE swarm_handoffs ADD COLUMN {name} {sql_type}"))
+            for name, sql_type in mas_handoffs_required.items():
+                if name not in mas_handoffs_existing:
+                    conn.execute(text(f"ALTER TABLE mas_handoffs ADD COLUMN {name} {sql_type}"))
             conn.execute(
                 text(
-                    "CREATE INDEX IF NOT EXISTS idx_swarm_handoffs_swarm_created_at "
-                    "ON swarm_handoffs (swarm_run_id, created_at)"
+                    "CREATE INDEX IF NOT EXISTS idx_mas_handoffs_mas_created_at "
+                    "ON mas_handoffs (mas_run_id, created_at)"
                 )
             )
             conn.execute(
                 text(
-                    "CREATE INDEX IF NOT EXISTS idx_swarm_handoffs_from_run_created_at "
-                    "ON swarm_handoffs (from_agent_run_id, created_at)"
+                    "CREATE INDEX IF NOT EXISTS idx_mas_handoffs_from_run_created_at "
+                    "ON mas_handoffs (from_agent_run_id, created_at)"
                 )
             )
             conn.execute(
                 text(
-                    "CREATE INDEX IF NOT EXISTS idx_swarm_handoffs_to_agent_created_at "
-                    "ON swarm_handoffs (to_agent_name, created_at)"
+                    "CREATE INDEX IF NOT EXISTS idx_mas_handoffs_to_agent_created_at "
+                    "ON mas_handoffs (to_agent_name, created_at)"
                 )
             )
             conn.execute(
                 text(
-                    "CREATE INDEX IF NOT EXISTS idx_swarm_handoffs_status_created_at "
-                    "ON swarm_handoffs (status, created_at)"
+                    "CREATE INDEX IF NOT EXISTS idx_mas_handoffs_status_created_at "
+                    "ON mas_handoffs (status, created_at)"
                 )
             )
 
-        if "swarm_gate_evaluations" not in table_names:
+        if "mas_gate_evaluations" not in table_names:
             conn.execute(
                 text(
                     """
-                    CREATE TABLE swarm_gate_evaluations (
+                    CREATE TABLE mas_gate_evaluations (
                         id VARCHAR NOT NULL PRIMARY KEY,
-                        swarm_run_id VARCHAR NOT NULL,
+                        mas_run_id VARCHAR NOT NULL,
                         gate_id VARCHAR NOT NULL,
                         ready BOOLEAN NOT NULL,
                         satisfied_sources_json JSON NOT NULL,
@@ -332,26 +337,26 @@ def ensure_runtime_schema_upgrades() -> None:
             )
             conn.execute(
                 text(
-                    "CREATE INDEX idx_swarm_gate_evals_swarm_created_at "
-                    "ON swarm_gate_evaluations (swarm_run_id, created_at)"
+                    "CREATE INDEX idx_mas_gate_evals_mas_created_at "
+                    "ON mas_gate_evaluations (mas_run_id, created_at)"
                 )
             )
             conn.execute(
                 text(
-                    "CREATE INDEX idx_swarm_gate_evals_gate_created_at "
-                    "ON swarm_gate_evaluations (gate_id, created_at)"
+                    "CREATE INDEX idx_mas_gate_evals_gate_created_at "
+                    "ON mas_gate_evaluations (gate_id, created_at)"
                 )
             )
             conn.execute(
                 text(
-                    "CREATE INDEX idx_swarm_gate_evals_ready_created_at "
-                    "ON swarm_gate_evaluations (ready, created_at)"
+                    "CREATE INDEX idx_mas_gate_evals_ready_created_at "
+                    "ON mas_gate_evaluations (ready, created_at)"
                 )
             )
         else:
-            swarm_gate_evals_existing = {col["name"] for col in inspector.get_columns("swarm_gate_evaluations")}
-            swarm_gate_evals_required: dict[str, str] = {
-                "swarm_run_id": "VARCHAR NOT NULL DEFAULT ''",
+            mas_gate_evals_existing = {col["name"] for col in inspector.get_columns("mas_gate_evaluations")}
+            mas_gate_evals_required: dict[str, str] = {
+                "mas_run_id": "VARCHAR NOT NULL DEFAULT ''",
                 "gate_id": "VARCHAR NOT NULL DEFAULT ''",
                 "ready": "BOOLEAN NOT NULL DEFAULT 0",
                 "satisfied_sources_json": "JSON",
@@ -360,35 +365,35 @@ def ensure_runtime_schema_upgrades() -> None:
                 "handoffs_to_target_json": "JSON",
                 "metadata_json": "JSON",
             }
-            for name, sql_type in swarm_gate_evals_required.items():
-                if name not in swarm_gate_evals_existing:
-                    conn.execute(text(f"ALTER TABLE swarm_gate_evaluations ADD COLUMN {name} {sql_type}"))
+            for name, sql_type in mas_gate_evals_required.items():
+                if name not in mas_gate_evals_existing:
+                    conn.execute(text(f"ALTER TABLE mas_gate_evaluations ADD COLUMN {name} {sql_type}"))
             conn.execute(
                 text(
-                    "CREATE INDEX IF NOT EXISTS idx_swarm_gate_evals_swarm_created_at "
-                    "ON swarm_gate_evaluations (swarm_run_id, created_at)"
+                    "CREATE INDEX IF NOT EXISTS idx_mas_gate_evals_mas_created_at "
+                    "ON mas_gate_evaluations (mas_run_id, created_at)"
                 )
             )
             conn.execute(
                 text(
-                    "CREATE INDEX IF NOT EXISTS idx_swarm_gate_evals_gate_created_at "
-                    "ON swarm_gate_evaluations (gate_id, created_at)"
+                    "CREATE INDEX IF NOT EXISTS idx_mas_gate_evals_gate_created_at "
+                    "ON mas_gate_evaluations (gate_id, created_at)"
                 )
             )
             conn.execute(
                 text(
-                    "CREATE INDEX IF NOT EXISTS idx_swarm_gate_evals_ready_created_at "
-                    "ON swarm_gate_evaluations (ready, created_at)"
+                    "CREATE INDEX IF NOT EXISTS idx_mas_gate_evals_ready_created_at "
+                    "ON mas_gate_evaluations (ready, created_at)"
                 )
             )
 
-        if "swarm_final_outputs" not in table_names:
+        if "mas_final_outputs" not in table_names:
             conn.execute(
                 text(
                     """
-                    CREATE TABLE swarm_final_outputs (
+                    CREATE TABLE mas_final_outputs (
                         id VARCHAR NOT NULL PRIMARY KEY,
-                        swarm_run_id VARCHAR NOT NULL,
+                        mas_run_id VARCHAR NOT NULL,
                         final_agent_run_id VARCHAR NOT NULL,
                         workflow_id VARCHAR,
                         workflow_version VARCHAR,
@@ -402,49 +407,49 @@ def ensure_runtime_schema_upgrades() -> None:
             )
             conn.execute(
                 text(
-                    "CREATE INDEX idx_swarm_final_outputs_swarm_created_at "
-                    "ON swarm_final_outputs (swarm_run_id, created_at)"
+                    "CREATE INDEX idx_mas_final_outputs_mas_created_at "
+                    "ON mas_final_outputs (mas_run_id, created_at)"
                 )
             )
             conn.execute(
                 text(
-                    "CREATE INDEX idx_swarm_final_outputs_agent_created_at "
-                    "ON swarm_final_outputs (final_agent_run_id, created_at)"
+                    "CREATE INDEX idx_mas_final_outputs_agent_created_at "
+                    "ON mas_final_outputs (final_agent_run_id, created_at)"
                 )
             )
         else:
-            swarm_final_outputs_existing = {col["name"] for col in inspector.get_columns("swarm_final_outputs")}
-            swarm_final_outputs_required: dict[str, str] = {
-                "swarm_run_id": "VARCHAR NOT NULL DEFAULT ''",
+            mas_final_outputs_existing = {col["name"] for col in inspector.get_columns("mas_final_outputs")}
+            mas_final_outputs_required: dict[str, str] = {
+                "mas_run_id": "VARCHAR NOT NULL DEFAULT ''",
                 "final_agent_run_id": "VARCHAR NOT NULL DEFAULT ''",
                 "workflow_id": "VARCHAR",
                 "workflow_version": "VARCHAR",
                 "output_json": "JSON",
                 "metadata_json": "JSON",
             }
-            for name, sql_type in swarm_final_outputs_required.items():
-                if name not in swarm_final_outputs_existing:
-                    conn.execute(text(f"ALTER TABLE swarm_final_outputs ADD COLUMN {name} {sql_type}"))
+            for name, sql_type in mas_final_outputs_required.items():
+                if name not in mas_final_outputs_existing:
+                    conn.execute(text(f"ALTER TABLE mas_final_outputs ADD COLUMN {name} {sql_type}"))
             conn.execute(
                 text(
-                    "CREATE INDEX IF NOT EXISTS idx_swarm_final_outputs_swarm_created_at "
-                    "ON swarm_final_outputs (swarm_run_id, created_at)"
+                    "CREATE INDEX IF NOT EXISTS idx_mas_final_outputs_mas_created_at "
+                    "ON mas_final_outputs (mas_run_id, created_at)"
                 )
             )
             conn.execute(
                 text(
-                    "CREATE INDEX IF NOT EXISTS idx_swarm_final_outputs_agent_created_at "
-                    "ON swarm_final_outputs (final_agent_run_id, created_at)"
+                    "CREATE INDEX IF NOT EXISTS idx_mas_final_outputs_agent_created_at "
+                    "ON mas_final_outputs (final_agent_run_id, created_at)"
                 )
             )
 
-        if "swarm_events" not in table_names:
+        if "mas_events" not in table_names:
             conn.execute(
                 text(
                     """
-                    CREATE TABLE swarm_events (
+                    CREATE TABLE mas_events (
                         id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
-                        swarm_run_id VARCHAR NOT NULL,
+                        mas_run_id VARCHAR NOT NULL,
                         seq INTEGER NOT NULL,
                         event_type VARCHAR NOT NULL,
                         workflow_id VARCHAR,
@@ -463,26 +468,26 @@ def ensure_runtime_schema_upgrades() -> None:
             )
             conn.execute(
                 text(
-                    "CREATE UNIQUE INDEX uq_swarm_events_run_seq "
-                    "ON swarm_events (swarm_run_id, seq)"
+                    "CREATE UNIQUE INDEX uq_mas_events_run_seq "
+                    "ON mas_events (mas_run_id, seq)"
                 )
             )
             conn.execute(
                 text(
-                    "CREATE INDEX idx_swarm_events_run_seq "
-                    "ON swarm_events (swarm_run_id, seq)"
+                    "CREATE INDEX idx_mas_events_run_seq "
+                    "ON mas_events (mas_run_id, seq)"
                 )
             )
             conn.execute(
                 text(
-                    "CREATE INDEX idx_swarm_events_type_created_at "
-                    "ON swarm_events (event_type, created_at)"
+                    "CREATE INDEX idx_mas_events_type_created_at "
+                    "ON mas_events (event_type, created_at)"
                 )
             )
         else:
-            swarm_events_existing = {col["name"] for col in inspector.get_columns("swarm_events")}
-            swarm_events_required: dict[str, str] = {
-                "swarm_run_id": "VARCHAR NOT NULL DEFAULT ''",
+            mas_events_existing = {col["name"] for col in inspector.get_columns("mas_events")}
+            mas_events_required: dict[str, str] = {
+                "mas_run_id": "VARCHAR NOT NULL DEFAULT ''",
                 "seq": "INTEGER NOT NULL DEFAULT 0",
                 "event_type": "VARCHAR NOT NULL DEFAULT ''",
                 "workflow_id": "VARCHAR",
@@ -495,34 +500,34 @@ def ensure_runtime_schema_upgrades() -> None:
                 "payload_json": "JSON",
                 "payload_text": "TEXT",
             }
-            for name, sql_type in swarm_events_required.items():
-                if name not in swarm_events_existing:
-                    conn.execute(text(f"ALTER TABLE swarm_events ADD COLUMN {name} {sql_type}"))
+            for name, sql_type in mas_events_required.items():
+                if name not in mas_events_existing:
+                    conn.execute(text(f"ALTER TABLE mas_events ADD COLUMN {name} {sql_type}"))
             conn.execute(
                 text(
-                    "CREATE UNIQUE INDEX IF NOT EXISTS uq_swarm_events_run_seq "
-                    "ON swarm_events (swarm_run_id, seq)"
+                    "CREATE UNIQUE INDEX IF NOT EXISTS uq_mas_events_run_seq "
+                    "ON mas_events (mas_run_id, seq)"
                 )
             )
             conn.execute(
                 text(
-                    "CREATE INDEX IF NOT EXISTS idx_swarm_events_run_seq "
-                    "ON swarm_events (swarm_run_id, seq)"
+                    "CREATE INDEX IF NOT EXISTS idx_mas_events_run_seq "
+                    "ON mas_events (mas_run_id, seq)"
                 )
             )
             conn.execute(
                 text(
-                    "CREATE INDEX IF NOT EXISTS idx_swarm_events_type_created_at "
-                    "ON swarm_events (event_type, created_at)"
+                    "CREATE INDEX IF NOT EXISTS idx_mas_events_type_created_at "
+                    "ON mas_events (event_type, created_at)"
                 )
             )
 
-        if "swarm_run_metrics" not in table_names:
+        if "mas_run_metrics" not in table_names:
             conn.execute(
                 text(
                     """
-                    CREATE TABLE swarm_run_metrics (
-                        swarm_run_id VARCHAR NOT NULL PRIMARY KEY,
+                    CREATE TABLE mas_run_metrics (
+                        mas_run_id VARCHAR NOT NULL PRIMARY KEY,
                         status VARCHAR NOT NULL,
                         duration_ms INTEGER,
                         agent_run_count INTEGER NOT NULL DEFAULT 0,
@@ -544,20 +549,20 @@ def ensure_runtime_schema_upgrades() -> None:
                         finalization_failure_count INTEGER NOT NULL DEFAULT 0,
                         created_at DATETIME NOT NULL,
                         updated_at DATETIME,
-                        FOREIGN KEY(swarm_run_id) REFERENCES swarm_runs(id) ON DELETE CASCADE
+                        FOREIGN KEY(mas_run_id) REFERENCES mas_runs(id) ON DELETE CASCADE
                     )
                     """
                 )
             )
             conn.execute(
                 text(
-                    "CREATE INDEX idx_swarm_run_metrics_status_created "
-                    "ON swarm_run_metrics (status, created_at)"
+                    "CREATE INDEX idx_mas_run_metrics_status_created "
+                    "ON mas_run_metrics (status, created_at)"
                 )
             )
         else:
-            swarm_run_metrics_existing = {col["name"] for col in inspector.get_columns("swarm_run_metrics")}
-            swarm_run_metrics_required: dict[str, str] = {
+            mas_run_metrics_existing = {col["name"] for col in inspector.get_columns("mas_run_metrics")}
+            mas_run_metrics_required: dict[str, str] = {
                 "status": "VARCHAR NOT NULL DEFAULT 'created'",
                 "duration_ms": "INTEGER",
                 "agent_run_count": "INTEGER NOT NULL DEFAULT 0",
@@ -578,13 +583,13 @@ def ensure_runtime_schema_upgrades() -> None:
                 "reliability_error_count": "INTEGER NOT NULL DEFAULT 0",
                 "finalization_failure_count": "INTEGER NOT NULL DEFAULT 0",
             }
-            for name, sql_type in swarm_run_metrics_required.items():
-                if name not in swarm_run_metrics_existing:
-                    conn.execute(text(f"ALTER TABLE swarm_run_metrics ADD COLUMN {name} {sql_type}"))
+            for name, sql_type in mas_run_metrics_required.items():
+                if name not in mas_run_metrics_existing:
+                    conn.execute(text(f"ALTER TABLE mas_run_metrics ADD COLUMN {name} {sql_type}"))
             conn.execute(
                 text(
-                    "CREATE INDEX IF NOT EXISTS idx_swarm_run_metrics_status_created "
-                    "ON swarm_run_metrics (status, created_at)"
+                    "CREATE INDEX IF NOT EXISTS idx_mas_run_metrics_status_created "
+                    "ON mas_run_metrics (status, created_at)"
                 )
             )
 
@@ -698,7 +703,7 @@ def ensure_runtime_schema_upgrades() -> None:
                         id VARCHAR NOT NULL PRIMARY KEY,
                         test_run_id VARCHAR NOT NULL,
                         test_case_id VARCHAR NOT NULL,
-                        swarm_run_id VARCHAR,
+                        mas_run_id VARCHAR,
                         status VARCHAR NOT NULL,
                         passed BOOLEAN,
                         score FLOAT,
@@ -711,7 +716,7 @@ def ensure_runtime_schema_upgrades() -> None:
                         updated_at DATETIME,
                         FOREIGN KEY(test_run_id) REFERENCES mas_test_runs(id) ON DELETE CASCADE,
                         FOREIGN KEY(test_case_id) REFERENCES mas_test_cases(id) ON DELETE RESTRICT,
-                        FOREIGN KEY(swarm_run_id) REFERENCES swarm_runs(id) ON DELETE RESTRICT
+                        FOREIGN KEY(mas_run_id) REFERENCES mas_runs(id) ON DELETE RESTRICT
                     )
                     """
                 )
@@ -733,7 +738,7 @@ def ensure_runtime_schema_upgrades() -> None:
             mas_test_case_runs_required: dict[str, str] = {
                 "test_run_id": "VARCHAR",
                 "test_case_id": "VARCHAR",
-                "swarm_run_id": "VARCHAR",
+                "mas_run_id": "VARCHAR",
                 "status": "VARCHAR NOT NULL DEFAULT 'created'",
                 "passed": "BOOLEAN",
                 "score": "FLOAT",
@@ -764,6 +769,7 @@ def get_db():
     FastAPI dependency that provides a database session.
     Automatically closes the session after the request.
     """
+    # Read the current value.
     db = SessionLocal()
     try:
         yield db

@@ -1,3 +1,5 @@
+"""Evaluator module helpers."""
+
 from __future__ import annotations
 
 from typing import Any, Dict, Optional, Sequence
@@ -16,6 +18,7 @@ class DoctorAlwaysPassEvaluator:
 
     def validate_expected(self, expected_json: Dict[str, Any]) -> None:
         # Intentionally permissive for now.
+        """Validate expected."""
         return None
 
     def evaluate(
@@ -25,6 +28,8 @@ class DoctorAlwaysPassEvaluator:
         *,
         agent_status: str,
     ) -> EvalResult:
+        """Handle the value."""
+        # Keep the main step clear.
         return EvalResult(
             passed=True,
             score=1.0,
@@ -38,6 +43,8 @@ class DoctorAlwaysPassEvaluator:
         )
 
     def aggregate(self, results: Sequence[EvalResult]) -> Dict[str, Any]:
+        """Handle the value."""
+        # Keep the main step clear.
         total = len(list(results))
         return {
             "label": self.label_name,

@@ -1,3 +1,5 @@
+"""Agent Metrics Repository repository helpers."""
+
 from __future__ import annotations
 
 from datetime import datetime
@@ -39,6 +41,8 @@ def append_llm_call(
     tool_names: Optional[list[str]],
     error_text: Optional[str] = None,
 ) -> None:
+    """Append llm call."""
+    # Keep the next value explicit.
     row = AgentLLMCall(
         run_id=run_id,
         call_index=call_index,
@@ -83,6 +87,8 @@ def append_tool_call(
     result_estimated_tokens: int,
     error_text: Optional[str] = None,
 ) -> None:
+    """Append tool call."""
+    # Keep the next value explicit.
     row = AgentToolCall(
         run_id=run_id,
         agent_name=agent_name,
@@ -119,6 +125,8 @@ def append_reliability_issue(
     tool_name: Optional[str],
     created_at: Optional[datetime] = None,
 ) -> None:
+    """Append reliability issue."""
+    # Keep the next value explicit.
     row = AgentRunReliabilityIssue(
         run_id=run_id,
         agent_name=agent_name,
@@ -162,6 +170,8 @@ def upsert_run_metrics(
     cost_usd_total: Optional[float],
     schema_valid: Optional[bool],
 ) -> None:
+    """Handle run metrics."""
+    # Keep the main step clear.
     row = db.get(AgentRunMetrics, run_id)
     if row is None:
         row = AgentRunMetrics(
@@ -212,10 +222,14 @@ def upsert_run_metrics(
 
 
 def get_run_metrics(db: Session, run_id: str) -> Optional[AgentRunMetrics]:
+    """Return run metrics."""
+    # Read the current value.
     return db.get(AgentRunMetrics, run_id)
 
 
 def list_run_metrics_for_run_ids(db: Session, run_ids: list[str]) -> list[AgentRunMetrics]:
+    """List run metrics for run ids."""
+    # Read the current list.
     if not run_ids:
         return []
     stmt = (
@@ -227,6 +241,8 @@ def list_run_metrics_for_run_ids(db: Session, run_ids: list[str]) -> list[AgentR
 
 
 def list_llm_calls(db: Session, run_id: str) -> list[AgentLLMCall]:
+    """List llm calls."""
+    # Read the current list.
     stmt = (
         select(AgentLLMCall)
         .where(AgentLLMCall.run_id == run_id)
@@ -236,6 +252,8 @@ def list_llm_calls(db: Session, run_id: str) -> list[AgentLLMCall]:
 
 
 def list_tool_calls(db: Session, run_id: str) -> list[AgentToolCall]:
+    """List tool calls."""
+    # Read the current list.
     stmt = (
         select(AgentToolCall)
         .where(AgentToolCall.run_id == run_id)
@@ -252,6 +270,8 @@ def list_reliability_issues(
     limit: int,
     offset: int,
 ) -> list[AgentRunReliabilityIssue]:
+    """List reliability issues."""
+    # Read the current list.
     stmt = select(AgentRunReliabilityIssue).where(AgentRunReliabilityIssue.run_id == run_id)
     if issue_code:
         stmt = stmt.where(AgentRunReliabilityIssue.issue_code == issue_code)
@@ -269,6 +289,8 @@ def count_reliability_issues_filtered(
     run_id: str,
     issue_code: Optional[str],
 ) -> int:
+    """Count reliability issues filtered."""
+    # Derive the needed value.
     stmt = select(func.count()).select_from(AgentRunReliabilityIssue).where(
         AgentRunReliabilityIssue.run_id == run_id
     )
@@ -278,6 +300,8 @@ def count_reliability_issues_filtered(
 
 
 def list_reliability_issue_category_counts(db: Session, run_id: str) -> list[tuple[str, str, int]]:
+    """List reliability issue category counts."""
+    # Read the current list.
     stmt = (
         select(
             AgentRunReliabilityIssue.issue_code,
@@ -305,6 +329,8 @@ def list_run_metrics(
     limit: int,
     offset: int,
 ) -> list[AgentRunMetrics]:
+    """List run metrics."""
+    # Read the current list.
     stmt = select(AgentRunMetrics)
     if agent_system:
         stmt = stmt.where(AgentRunMetrics.agent_system == agent_system)
@@ -325,6 +351,8 @@ def list_run_metrics(
 
 
 def list_run_metrics_by_run_ids(db: Session, run_ids: list[str]) -> list[AgentRunMetrics]:
+    """List run metrics by run ids."""
+    # Read the current list.
     if not run_ids:
         return []
     stmt = select(AgentRunMetrics).where(AgentRunMetrics.run_id.in_(run_ids))
@@ -332,6 +360,8 @@ def list_run_metrics_by_run_ids(db: Session, run_ids: list[str]) -> list[AgentRu
 
 
 def count_tool_events(db: Session, run_id: str) -> tuple[int, int]:
+    """Count tool events."""
+    # Derive the needed value.
     tool_calls_stmt = (
         select(func.count())
         .select_from(AgentEvent)
@@ -352,6 +382,8 @@ def count_tool_events(db: Session, run_id: str) -> tuple[int, int]:
 
 
 def count_reliability_issues(db: Session, run_id: str) -> tuple[int, int, int, int]:
+    """Count reliability issues."""
+    # Derive the needed value.
     total_stmt = (
         select(func.count())
         .select_from(AgentRunReliabilityIssue)

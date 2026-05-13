@@ -1,3 +1,5 @@
+"""Agent Runs Repository repository helpers."""
+
 from __future__ import annotations
 
 from datetime import datetime
@@ -12,10 +14,14 @@ from app.schemas.agent_runs import RunStatus
 
 
 def get_run(db: Session, run_id: str) -> Optional[AgentRun]:
+    """Return run."""
+    # Read the current value.
     return db.get(AgentRun, run_id)
 
 
 def save_run(db: Session, run: AgentRun, *, refresh: bool = False) -> None:
+    """Save run."""
+    # Keep stored state current.
     db.add(run)
     db.commit()
     if refresh:
@@ -31,6 +37,8 @@ def list_runs(
     offset: int,
     order: str,
 ) -> list[AgentRun]:
+    """List runs."""
+    # Read the current list.
     stmt = select(AgentRun)
 
     if agent_name:
@@ -47,16 +55,18 @@ def list_runs(
     return db.execute(stmt).scalars().all()
 
 
-def list_runs_for_swarm(
+def list_runs_for_mas(
     db: Session,
     *,
-    swarm_run_id: str,
+    mas_run_id: str,
     limit: int,
     offset: int,
 ) -> list[AgentRun]:
+    """List runs for MAS."""
+    # Read the current list.
     stmt = (
         select(AgentRun)
-        .where(AgentRun.swarm_run_id == swarm_run_id)
+        .where(AgentRun.mas_run_id == mas_run_id)
         .order_by(AgentRun.sequence_index.asc(), AgentRun.created_at.asc(), AgentRun.id.asc())
         .offset(offset)
         .limit(limit)
@@ -64,21 +74,25 @@ def list_runs_for_swarm(
     return db.execute(stmt).scalars().all()
 
 
-def list_all_runs_for_swarm(
+def list_all_runs_for_mas(
     db: Session,
     *,
-    swarm_run_id: str,
+    mas_run_id: str,
 ) -> list[AgentRun]:
+    """List all runs for MAS."""
+    # Read the current list.
     stmt = (
         select(AgentRun)
-        .where(AgentRun.swarm_run_id == swarm_run_id)
+        .where(AgentRun.mas_run_id == mas_run_id)
         .order_by(AgentRun.sequence_index.asc(), AgentRun.created_at.asc(), AgentRun.id.asc())
     )
     return db.execute(stmt).scalars().all()
 
 
-def count_runs_for_swarm(db: Session, *, swarm_run_id: str) -> int:
-    stmt = select(func.count()).select_from(AgentRun).where(AgentRun.swarm_run_id == swarm_run_id)
+def count_runs_for_mas(db: Session, *, mas_run_id: str) -> int:
+    """Count runs for MAS."""
+    # Derive the needed value.
+    stmt = select(func.count()).select_from(AgentRun).where(AgentRun.mas_run_id == mas_run_id)
     return int(db.execute(stmt).scalar_one())
 
 
@@ -97,6 +111,8 @@ def append_event(
     payload_text: Optional[str] = None,
     created_at: Optional[datetime] = None,
 ) -> None:
+    """Append event."""
+    # Keep the next value explicit.
     ev = AgentEvent(
         run_id=run_id,
         agent_name=agent_name,
@@ -115,6 +131,8 @@ def append_event(
 
 
 def get_last_event_seq(db: Session, run_id: str) -> int:
+    """Return last event seq."""
+    # Read the current value.
     stmt = (
         select(AgentEvent.seq)
         .where(AgentEvent.run_id == run_id)
@@ -132,6 +150,8 @@ def list_events_after(
     after_seq: int,
     limit: int,
 ) -> list[AgentEvent]:
+    """List events after."""
+    # Read the current list.
     stmt = (
         select(AgentEvent)
         .where(AgentEvent.run_id == run_id, AgentEvent.seq > after_seq)
@@ -142,4 +162,6 @@ def list_events_after(
 
 
 def rollback(db: Session) -> None:
+    """Handle the value."""
+    # Keep the main step clear.
     db.rollback()

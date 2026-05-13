@@ -13,9 +13,14 @@ app.db-journal
 app.db-shm
 app.db-wal
 
-docs/*
-!docs/agent_metrics.md
-
-.env
-
+docs/
+exports/
+reports/
+scripts/
+app/scripts/
+inference/
+app/inference/
+temp.txt
+agents.md
 model_artifacts/
+analytics/

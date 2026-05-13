@@ -1,3 +1,5 @@
+"""Telemetry package exports."""
+
 from .event_emitter import EventEmitter
 from .metrics_types import LLMCallMetric, ToolExecutionMetric
 from .telemetry_emitter import TelemetryEmitter

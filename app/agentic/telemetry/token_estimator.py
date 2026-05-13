@@ -1,3 +1,5 @@
+"""Token Estimator module helpers."""
+
 from __future__ import annotations
 
 import json
@@ -24,6 +26,8 @@ class TokenEstimator:
         encoding_name: str = DEFAULT_ENCODING,
         chars_per_token_fallback: int = CHARS_PER_TOKEN_FALLBACK,
     ) -> None:
+        """Handle the value."""
+        # Keep the main step clear.
         self.encoding_name = str(encoding_name or self.DEFAULT_ENCODING)
         self.chars_per_token_fallback = max(1, int(chars_per_token_fallback))
         self._encoder: Any | None = None
@@ -31,6 +35,7 @@ class TokenEstimator:
 
     def _get_encoder(self) -> Any | None:
         """Lazily initialize and cache a tokenizer encoder when available."""
+        # Read the current value.
         if self._encoder_checked:
             return self._encoder
 
@@ -46,6 +51,8 @@ class TokenEstimator:
         return self._encoder
 
     def estimate_text_tokens(self, text: str) -> int:
+        """Handle text tokens."""
+        # Keep the main step clear.
         content = text or ""
         if not content:
             return 0
@@ -60,23 +67,35 @@ class TokenEstimator:
         return max(1, len(content) // self.chars_per_token_fallback)
 
     def estimate_messages_tokens(self, messages: list[BaseMessage]) -> int:
+        """Handle messages tokens."""
+        # Keep the main step clear.
         serialized = [self.serialize_message_for_estimation(msg) for msg in messages]
         return self.estimate_text_tokens("\n".join(serialized))
 
     def estimate_ai_output_tokens(self, msg: AIMessage) -> int:
+        """Handle ai output tokens."""
+        # Keep the main step clear.
         return self.estimate_text_tokens(self.serialize_ai_output_for_estimation(msg))
 
     def estimate_tool_result_tokens(self, content: str) -> int:
+        """Handle tool result tokens."""
+        # Keep the main step clear.
         return self.estimate_text_tokens(content)
 
     def estimate_jsonable_output_tokens(self, value: Any) -> int:
+        """Handle jsonable output tokens."""
+        # Keep the main step clear.
         return self.estimate_text_tokens(self._json_dumps(self._to_jsonable(value)))
 
     def serialize_message_for_estimation(self, message: BaseMessage) -> str:
+        """Handle message for estimation."""
+        # Keep the main step clear.
         canonical = self._canonical_message(message)
         return self._json_dumps(canonical)
 
     def serialize_ai_output_for_estimation(self, message: AIMessage) -> str:
+        """Handle ai output for estimation."""
+        # Keep the main step clear.
         canonical: dict[str, Any] = {
             "content": self._normalize_content(getattr(message, "content", "")),
         }
@@ -86,10 +105,14 @@ class TokenEstimator:
 
     @staticmethod
     def _json_dumps(value: Any) -> str:
+        """Handle dumps."""
+        # Keep the main step clear.
         return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"), default=str)
 
     @staticmethod
     def _normalize_content(content: Any) -> Any:
+        """Normalize content."""
+        # Keep the output consistent.
         if isinstance(content, str):
             return content
 
@@ -119,6 +142,8 @@ class TokenEstimator:
         return str(content)
 
     def _canonical_message(self, message: BaseMessage) -> dict[str, Any]:
+        """Handle message."""
+        # Keep the main step clear.
         role = self._message_role(message)
         payload: dict[str, Any] = {
             "role": role,
@@ -141,6 +166,7 @@ class TokenEstimator:
 
     def _canonical_ai_extras(self, message: AIMessage) -> dict[str, Any]:
         """Canonicalize AI-specific fields shared across serializers."""
+        # Keep the main step clear.
         extras: dict[str, Any] = {}
 
         tool_calls = self._canonical_tool_calls(list(getattr(message, "tool_calls", []) or []))
@@ -155,6 +181,8 @@ class TokenEstimator:
 
     @staticmethod
     def _message_role(message: BaseMessage) -> str:
+        """Handle role."""
+        # Keep the main step clear.
         if isinstance(message, SystemMessage):
             return "system"
         if isinstance(message, HumanMessage):
@@ -167,6 +195,8 @@ class TokenEstimator:
 
     @staticmethod
     def _canonical_tool_calls(raw_calls: list[Any]) -> list[dict[str, Any]]:
+        """Handle tool calls."""
+        # Keep the main step clear.
         canonical: list[dict[str, Any]] = []
         for item in raw_calls:
             if not isinstance(item, Mapping):
@@ -202,6 +232,8 @@ class TokenEstimator:
         return canonical
 
     def _extract_function_call_fields(self, additional_kwargs: Mapping[str, Any]) -> dict[str, Any]:
+        """Extract function call fields."""
+        # Pull out the needed value.
         fields: dict[str, Any] = {}
 
         function_call = additional_kwargs.get("function_call")
@@ -221,6 +253,8 @@ class TokenEstimator:
 
     @staticmethod
     def _to_jsonable(value: Any) -> Any:
+        """Handle jsonable."""
+        # Keep the main step clear.
         if isinstance(value, BaseModel):
             return value.model_dump()
         if hasattr(value, "model_dump") and callable(value.model_dump):

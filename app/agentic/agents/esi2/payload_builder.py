@@ -1,21 +1,26 @@
+"""Payload Builder module helpers."""
+
 from __future__ import annotations
 
 from typing import Any, Dict
 
-from app.agentic.swarm_contract import SwarmState
-from app.agentic.workflows.definitions.esi_swarm_v1.payload_builders import (
+from app.agentic.mas_contract import MASState
+from app.agentic.workflows.definitions.esi_mas.payload_builders import (
     unified_payload_builder,
 )
 
 def clean_payload(payload):
+    """Handle payload."""
+    # Keep the main step clear.
     return {
         "Concerns" : payload.get("carry_forward_concerns"),
         "brief_reason" : payload.get("brief_reason")
     }
 
 
-def build_payload(state: SwarmState) -> Dict[str, Any]:
-    """Build a compact ESI2 swarm payload."""
+def build_payload(state: MASState) -> Dict[str, Any]:
+    """Build a compact ESI2 mas payload."""
+    # Build the next value.
     pending_handoff = dict(state.get("pending_handoff") or {})
     handoff_payload = dict(pending_handoff.get("payload") or {})
     case_info = unified_payload_builder("esi2_agent", dict(state.get("case_info") or {}))

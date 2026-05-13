@@ -1,3 +1,5 @@
+"""Evaluator module helpers."""
+
 from __future__ import annotations
 
 from typing import Any, Dict, Literal, Optional, Sequence
@@ -9,10 +11,14 @@ Confusion = Literal["tp", "tn", "fp", "fn"]
 
 
 def _safe_div(num: int, denom: int) -> Optional[float]:
+    """Handle div."""
+    # Keep the main step clear.
     return None if denom == 0 else (num / denom)
 
 
 def _round_or_none(v: Optional[float], ndigits: int = 4) -> Optional[float]:
+    """Handle or none."""
+    # Keep the main step clear.
     return None if v is None else round(v, ndigits)
 
 
@@ -20,6 +26,8 @@ class VitalsUptriageEvaluator:
     label_name = "recommendation.consider_uptriage"
 
     def validate_expected(self, expected_json: Dict[str, Any]) -> None:
+        """Validate expected."""
+        # Fail fast on bad input.
         if set(expected_json.keys()) != {"recommendation"}:
             raise ValueError(
                 "expected_json must only contain: recommendation.consider_uptriage"
@@ -35,10 +43,14 @@ class VitalsUptriageEvaluator:
             )
 
     def _y_true(self, expected_json: Dict[str, Any]) -> bool:
+        """Handle true."""
+        # Keep the main step clear.
         self.validate_expected(expected_json)
         return bool(expected_json["recommendation"]["consider_uptriage"])
 
     def _y_pred(self, actual_json: Dict[str, Any]) -> Optional[bool]:
+        """Handle pred."""
+        # Keep the main step clear.
         recommendation = actual_json.get("recommendation")
         if isinstance(recommendation, dict):
             val = recommendation.get("consider_uptriage")
@@ -53,6 +65,8 @@ class VitalsUptriageEvaluator:
         *,
         agent_status: str,
     ) -> EvalResult:
+        """Handle the value."""
+        # Keep the main step clear.
         y_true = self._y_true(expected_json)
 
         if agent_status != "succeeded" or actual_json is None:
@@ -112,6 +126,8 @@ class VitalsUptriageEvaluator:
         )
 
     def aggregate(self, results: Sequence[EvalResult]) -> Dict[str, Any]:
+        """Handle the value."""
+        # Keep the main step clear.
         tp = tn = fp = fn = 0
         exec_failed = 0
         invalid_pred = 0

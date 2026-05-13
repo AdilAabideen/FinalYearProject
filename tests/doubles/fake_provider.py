@@ -1,3 +1,5 @@
+"""Fake Provider test coverage."""
+
 from __future__ import annotations
 
 from collections import deque
@@ -6,9 +8,13 @@ from typing import Any
 
 class FakeBoundModel:
     def __init__(self, scripted: list[Any]) -> None:
+        """Handle the value."""
+        # Keep the main step clear.
         self._scripted = deque(scripted)
 
     async def ainvoke(self, _messages):
+        """Handle the value."""
+        # Keep the main step clear.
         if not self._scripted:
             raise AssertionError("FakeBoundModel exhausted")
         item = self._scripted.popleft()
@@ -19,16 +25,22 @@ class FakeBoundModel:
 
 class FakeChatModel:
     def __init__(self, scripted: list[Any]) -> None:
+        """Handle the value."""
+        # Keep the main step clear.
         self._scripted = deque(scripted)
         self.bound_tools = None
         self.bound_tool_choice = None
 
     def bind_tools(self, tools, tool_choice="any"):
+        """Handle tools."""
+        # Keep the main step clear.
         self.bound_tools = list(tools)
         self.bound_tool_choice = tool_choice
         return self
 
     async def ainvoke(self, _messages):
+        """Handle the value."""
+        # Keep the main step clear.
         if not self._scripted:
             raise AssertionError("FakeChatModel exhausted")
         item = self._scripted.popleft()

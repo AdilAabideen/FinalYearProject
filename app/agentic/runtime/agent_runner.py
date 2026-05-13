@@ -1,3 +1,5 @@
+"""Agent Runner module helpers."""
+
 from __future__ import annotations
 
 import json
@@ -8,7 +10,7 @@ from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, System
 from .finalization_policy import FinalizationPolicy
 from .handoff_policy import HandoffPolicy
 from .runtime_config import RuntimeConfig
-from .scratchpad import Scratchpad, ScratchpadConfig
+from .short_term_memory import ShortTermMemory, ShortTermMemoryConfig
 from .runtime_types import (
     BoundModel,
     BuildAIMessageWithToolCalls,
@@ -50,6 +52,8 @@ class AgentRunner:
         emit_event: EmitEvent,
         values_state: ValuesStateBuilder,
     ) -> None:
+        """Handle the value."""
+        # Keep the main step clear.
         self.bound_model = bound_model
         self.runtime_config = runtime_config
         self.agent_node_name = agent_node_name
@@ -70,29 +74,37 @@ class AgentRunner:
 
     @staticmethod
     def _resolve_modes(stream_mode: StreamModesInput) -> tuple[str, ...]:
+        """Resolve modes."""
+        # Pick the needed value.
         return (stream_mode,) if isinstance(stream_mode, str) else tuple(stream_mode or ("updates", "values"))
 
     def _build_call_messages(
         self,
         *,
         human_msg: HumanMessage,
-        scratchpad: Scratchpad,
+        short_term_memory: ShortTermMemory,
         retry_feedback: HumanMessage | None = None,
     ) -> list[BaseMessage]:
+        """Build call messages."""
+        # Build the next value.
         call_messages: list[BaseMessage] = [SystemMessage(content=self.render_system_prompt()), human_msg]
-        call_messages.extend(scratchpad.messages())
+        call_messages.extend(short_term_memory.messages())
         if retry_feedback is not None:
             call_messages.append(retry_feedback)
         return call_messages
 
     @staticmethod
     def _short_excerpt(text: str, *, max_chars: int = 400) -> str:
+        """Handle excerpt."""
+        # Keep the main step clear.
         value = str(text or "").strip()
         if len(value) <= max_chars:
             return value
         return value[:max_chars] + "...(truncated)"
 
     def _build_malformed_tool_retry_feedback(self, ai_msg: AIMessage) -> HumanMessage:
+        """Build malformed tool retry feedback."""
+        # Build the next value.
         excerpt = self._short_excerpt(str(getattr(ai_msg, "content", "") or ""))
         content = (
             "MALFORMED TOOL CALL DETECTED.\n"
@@ -109,6 +121,8 @@ class AgentRunner:
         return HumanMessage(content=content)
 
     def _expected_tool_for_retry(self, ai_msg: AIMessage) -> str | None:
+        """Handle tool for retry."""
+        # Keep the main step clear.
         content = str(getattr(ai_msg, "content", "") or "")
         lowered = content.lower()
 
@@ -127,6 +141,8 @@ class AgentRunner:
         return None
 
     def _retry_key_for_tool(self, tool_name: str | None) -> str:
+        """Handle key for tool."""
+        # Keep the main step clear.
         return str(tool_name or "__unknown_tool__")
 
     def _build_tool_specific_malformed_tool_retry_feedback(
@@ -135,6 +151,8 @@ class AgentRunner:
         *,
         tool_name: str | None,
     ) -> HumanMessage:
+        """Build tool specific malformed tool retry feedback."""
+        # Build the next value.
         if not tool_name:
             return self._build_malformed_tool_retry_feedback(ai_msg)
 
@@ -157,6 +175,8 @@ class AgentRunner:
         return HumanMessage(content=content)
 
     def _extract_normalized_tool_calls(self, ai_msg: AIMessage) -> list[dict[str, Any]]:
+        """Extract normalized tool calls."""
+        # Pull out the needed value.
         raw_tool_calls = list(getattr(ai_msg, "tool_calls", []) or [])
         normalized_calls: list[dict[str, Any]] = []
         for item in raw_tool_calls:
@@ -182,6 +202,8 @@ class AgentRunner:
         ai_msg: AIMessage,
         tool_calls: list[dict[str, Any]],
     ) -> tuple[AIMessage, list[dict[str, Any]]]:
+        """Handle tool call limit."""
+        # Keep the main step clear.
         limited_tool_calls, dropped_tool_calls = self.limit_tool_calls(tool_calls)
         if not (dropped_tool_calls and self.runtime_config.drop_extra_tool_calls):
             return ai_msg, tool_calls
@@ -197,6 +219,8 @@ class AgentRunner:
         return limited_ai_msg, limited_tool_calls
 
     def _emit_assistant_event_from_text(self, content: str) -> None:
+        """Emit assistant event from text."""
+        # Keep events flowing.
         stripped = str(content or "").strip()
         if not stripped:
             return
@@ -209,6 +233,8 @@ class AgentRunner:
         )
 
     def _emit_tool_call_events(self, tool_calls: list[dict[str, Any]]) -> None:
+        """Emit tool call events."""
+        # Keep events flowing.
         for tool_call in tool_calls:
             self.emit_event(
                 event_type="tool_call",
@@ -219,6 +245,8 @@ class AgentRunner:
             )
 
     def _emit_tool_result_event(self, tool_message: ToolMessage) -> None:
+        """Emit tool result event."""
+        # Keep events flowing.
         content = str(getattr(tool_message, "content", "") or "").strip()
         parsed, raw = self.json_from_text(content)
         self.emit_event(
@@ -233,6 +261,8 @@ class AgentRunner:
 
     @staticmethod
     def _should_emit(modes: tuple[str, ...], mode: str) -> bool:
+        """Handle emit."""
+        # Keep the main step clear.
         return mode in modes
 
     async def astream(
@@ -240,15 +270,17 @@ class AgentRunner:
         payload: Any,
         stream_mode: StreamModesInput = None,
     ) -> AsyncGenerator[tuple[str, Any], None]:
+        """Handle the value."""
+        # Keep the main step clear.
         modes = self._resolve_modes(stream_mode)
 
         human_msg = HumanMessage(content=self.payload_to_human_content(payload))
-        scratchpad = Scratchpad(
-            config=ScratchpadConfig(
-                include_final_assistant_output=self.runtime_config.scratchpad_include_final_assistant_output,
-                include_raw_provider_debug=self.runtime_config.scratchpad_include_raw_provider_debug,
-                verbose=self.runtime_config.scratchpad_verbose,
-                log_token_estimates=self.runtime_config.scratchpad_log_token_estimates,
+        short_term_memory = ShortTermMemory(
+            config=ShortTermMemoryConfig(
+                include_final_assistant_output=self.runtime_config.short_term_memory_include_final_assistant_output,
+                include_raw_provider_debug=self.runtime_config.short_term_memory_include_raw_provider_debug,
+                verbose=self.runtime_config.short_term_memory_verbose,
+                log_token_estimates=self.runtime_config.short_term_memory_log_token_estimates,
             )
         )
         streamed_messages: list[BaseMessage] = []
@@ -265,7 +297,7 @@ class AgentRunner:
 
             call_messages = self._build_call_messages(
                 human_msg=human_msg,
-                scratchpad=scratchpad,
+                short_term_memory=short_term_memory,
                 retry_feedback=pending_retry_feedback,
             )
             pending_retry_feedback = None
@@ -288,7 +320,7 @@ class AgentRunner:
 
             streamed_messages.append(ai_msg)
             if tool_calls:
-                scratchpad.append_assistant_tool_call(ai_msg)
+                short_term_memory.append_assistant_tool_call(ai_msg)
             self._emit_tool_call_events(tool_calls)
 
             if self._should_emit(modes, "updates"):
@@ -328,7 +360,7 @@ class AgentRunner:
                         continue
 
                 self._emit_assistant_event_from_text(str(ai_msg.content or ""))
-                scratchpad.append_final_assistant(ai_msg)
+                short_term_memory.append_final_assistant(ai_msg)
 
                 decision = self.finalization_policy.maybe_finalize_from_assistant_no_tools(ai_msg)
                 if decision.finalized:
@@ -362,7 +394,7 @@ class AgentRunner:
                     yield "values", self.values_state(streamed_messages, iteration, False, None)
             tool_msgs = [tool_msgs_by_index[idx] for idx in range(len(tool_calls)) if idx in tool_msgs_by_index]
             for tm in tool_msgs:
-                scratchpad.append_tool_result(tm)
+                short_term_memory.append_tool_result(tm)
 
             for tc, tm in zip(tool_calls, tool_msgs):
                 handoff_decision = self.handoff_policy.maybe_handoff_from_tool_result(tc, tm)
@@ -408,7 +440,7 @@ class AgentRunner:
                             content=invalid.output_text or json.dumps(final_output, ensure_ascii=False)
                         )
                         streamed_messages.append(final_msg)
-                        scratchpad.append_final_assistant(final_msg)
+                        short_term_memory.append_final_assistant(final_msg)
                         self._emit_assistant_event_from_text(str(final_msg.content or ""))
                         if self._should_emit(modes, "updates"):
                             yield "updates", {self.agent_node_name: {"messages": [final_msg]}}
@@ -420,7 +452,7 @@ class AgentRunner:
                 final_text = decision.output_text or json.dumps(final_output, ensure_ascii=False)
                 final_msg = AIMessage(content=final_text)
                 streamed_messages.append(final_msg)
-                scratchpad.append_final_assistant(final_msg)
+                short_term_memory.append_final_assistant(final_msg)
                 self._emit_assistant_event_from_text(final_text)
                 if self._should_emit(modes, "updates"):
                     yield "updates", {self.agent_node_name: {"messages": [final_msg]}}
@@ -432,7 +464,7 @@ class AgentRunner:
             final_output = fallback.output
             final_msg = AIMessage(content=fallback.output_text or json.dumps(final_output, ensure_ascii=False))
             streamed_messages.append(final_msg)
-            scratchpad.append_final_assistant(final_msg)
+            short_term_memory.append_final_assistant(final_msg)
             self._emit_assistant_event_from_text(str(final_msg.content or ""))
             if self._should_emit(modes, "updates"):
                 yield "updates", {self.agent_node_name: {"messages": [final_msg]}}

@@ -1,3 +1,5 @@
+"""Test Seed Agent Tests test coverage."""
+
 from __future__ import annotations
 
 import pytest
@@ -13,24 +15,28 @@ from app.seed_agent_tests import (
 
 @pytest.mark.unit
 def test_ut_seed_001_single_agent_seed_rows_normalize_known_bad_keys():
+    """Handle ut seed 001 single agent seed rows normalize known bad keys."""
+    # Keep the main step clear.
     rows = _load_single_agent_seed_rows()
 
     assert rows
     assert all(isinstance(row["expected_json"]["acuity"], int) for row in rows)
 
     medication_refill_case = next(
-        row for row in rows if row["input_json"].get("chiefcomplaint") == "Med refill"
+        row for row in rows if row["input_json"].get("chiefcomplaint") == "Medication refill request"
     )
-    assert medication_refill_case["input_json"]["heartrate"] == 97.0
+    assert medication_refill_case["input_json"]["heartrate"] == 74.0
 
-    cardiac_arrest_case = next(
-        row for row in rows if row["input_json"].get("chiefcomplaint") == "Cardiac arrest"
+    unresponsive_case = next(
+        row for row in rows if row["input_json"].get("chiefcomplaint") == "Unresponsive"
     )
-    assert cardiac_arrest_case["input_json"]["arrival_transport"] == "AMBULANCE"
+    assert unresponsive_case["input_json"]["arrival_transport"] == "AMBULANCE"
 
 
 @pytest.mark.unit
-def test_ut_seed_002_single_agent_seeder_upserts_cases(db_session):
+def test_ut_seed_002_single_agent_seeder_resets_cases(db_session):
+    """Handle ut seed 002 single agent seeder resets cases."""
+    # Keep the main step clear.
     ensure_seed_single_agent_test_cases(db_session)
     first_count = db_session.execute(
         select(AgentTestCase).where(AgentTestCase.agent_name == SINGLE_AGENT_NAME)
@@ -44,3 +50,4 @@ def test_ut_seed_002_single_agent_seeder_upserts_cases(db_session):
     ).scalars().all()
 
     assert len(second_count) == len(first_count)
+    assert {row.name for row in second_count} == {row.name for row in first_count}

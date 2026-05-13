@@ -1,6 +1,8 @@
+"""Schema module helpers."""
+
 from __future__ import annotations
 
-from typing import Literal
+from typing import Literal, Union
 
 from pydantic import BaseModel, Field, model_validator
 
@@ -26,7 +28,7 @@ class VitalsRecommendation(BaseModel):
         default_factory=list,
         description="A list of vitals that are abnormal or physiologically concerning",
     )
-    confidence: float | Literal["low", "medium", "high"] = Field(
+    confidence: Union[float, Literal["low", "medium", "high"]] = Field(
         description="The confidence in the recommendation of the agent"
     )
 
@@ -38,6 +40,8 @@ class VitalsAgentOutput(BaseModel):
     @model_validator(mode="before")
     @classmethod
     def _accept_flat_or_nested_payload(cls, value):
+        """Handle flat or nested payload."""
+        # Keep the main step clear.
         if not isinstance(value, dict):
             return value
 

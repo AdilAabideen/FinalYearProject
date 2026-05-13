@@ -1,3 +1,5 @@
+"""Schema module helpers."""
+
 from pydantic import BaseModel, Field, AliasChoices
 from typing import List, Literal, Optional, Any, Union
 
@@ -27,7 +29,7 @@ class SingleAgentInput(BaseModel):
     dbp: Optional[float] = Field(description="Measured diastolic blood pressure.")
 
 class SingleAgentOutput(BaseModel):
-    final_esi_level: Literal[1, 2, 3, 4, 5] = Field(
+    final_esi_level: Literal[1, 2, 3, 4, 5, "1", "2", "3", "4", "5"] = Field(
         ...,
         description="Final ESI level assigned by the single-agent ESI workflow."
     )
@@ -54,7 +56,7 @@ class SingleAgentOutput(BaseModel):
         description="True only if an initial ESI-3/4/5 resource-based result was changed to ESI-2 because of vital signs."
     )
 
-    initial_resource_based_esi_level: Optional[Literal[3, 4, 5]] = Field(
+    initial_resource_based_esi_level: Optional[Literal[3, 4, 5, "3", "4", "5"]] = Field(
         default=None,
         description="The initial ESI-3/4/5 level before vitals up-triage, if applicable."
     )

@@ -1,3 +1,5 @@
+"""Evaluator module helpers."""
+
 from __future__ import annotations
 
 from typing import Any, Dict, Literal, Optional, Sequence
@@ -9,14 +11,20 @@ Confusion = Literal["tp", "tn", "fp", "fn"]
 
 
 def _safe_div(num: int, denom: int) -> Optional[float]:
+    """Handle div."""
+    # Keep the main step clear.
     return None if denom == 0 else (num / denom)
 
 
 def _round_or_none(v: Optional[float], ndigits: int = 4) -> Optional[float]:
+    """Handle or none."""
+    # Keep the main step clear.
     return None if v is None else round(v, ndigits)
 
 
 def _coerce_to_bool(value: Any) -> Optional[bool]:
+    """Handle to bool."""
+    # Keep the main step clear.
     if isinstance(value, bool):
         return value
     if isinstance(value, (int, float)):
@@ -46,6 +54,8 @@ class ESI2AcuityEvaluator:
     label_name = "is_esi2_from_acuity"
 
     def validate_expected(self, expected_json: Dict[str, Any]) -> None:
+        """Validate expected."""
+        # Fail fast on bad input.
         if set(expected_json.keys()) != {"acuity"}:
             raise ValueError("expected_json must only contain: acuity")
         acuity = expected_json.get("acuity")
@@ -55,11 +65,14 @@ class ESI2AcuityEvaluator:
             raise ValueError("expected_json.acuity must be between 1 and 5")
 
     def _y_true(self, expected_json: Dict[str, Any]) -> bool:
+        """Handle true."""
+        # Keep the main step clear.
         self.validate_expected(expected_json)
         return int(expected_json["acuity"]) == 2
 
     def _y_pred(self, actual_json: Dict[str, Any]) -> Optional[bool]:
         # Primary output contract requested by user.
+        """Handle pred."""
         if "is_esi2" in actual_json:
             return _coerce_to_bool(actual_json.get("is_esi2"))
 
@@ -76,6 +89,8 @@ class ESI2AcuityEvaluator:
         *,
         agent_status: str,
     ) -> EvalResult:
+        """Handle the value."""
+        # Keep the main step clear.
         y_true = self._y_true(expected_json)
         expected_acuity = int(expected_json["acuity"])
 
@@ -156,6 +171,8 @@ class ESI2AcuityEvaluator:
         )
 
     def aggregate(self, results: Sequence[EvalResult]) -> Dict[str, Any]:
+        """Handle the value."""
+        # Keep the main step clear.
         tp = tn = fp = fn = 0
         exec_failed = 0
         invalid_pred = 0
