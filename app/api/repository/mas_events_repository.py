@@ -1,3 +1,5 @@
+"""Mas Events Repository repository helpers."""
+
 from __future__ import annotations
 
 from datetime import datetime
@@ -26,6 +28,8 @@ def append_event(
     payload_text: Optional[str] = None,
     created_at: Optional[datetime] = None,
 ) -> None:
+    """Append event."""
+    # Keep the next value explicit.
     ev = MASEvent(
         mas_run_id=mas_run_id,
         seq=seq,
@@ -46,6 +50,8 @@ def append_event(
 
 
 def get_last_event_seq(db: Session, mas_run_id: str) -> int:
+    """Return last event seq."""
+    # Read the current value.
     stmt = (
         select(MASEvent.seq)
         .where(MASEvent.mas_run_id == mas_run_id)
@@ -63,6 +69,8 @@ def list_events_after(
     after_seq: int,
     limit: int,
 ) -> list[MASEvent]:
+    """List events after."""
+    # Read the current list.
     stmt = (
         select(MASEvent)
         .where(MASEvent.mas_run_id == mas_run_id, MASEvent.seq > after_seq)
@@ -73,9 +81,13 @@ def list_events_after(
 
 
 def rollback(db: Session) -> None:
+    """Handle the value."""
+    # Keep the main step clear.
     db.rollback()
 
 
 def count_events_for_mas(db: Session, *, mas_run_id: str) -> int:
+    """Count events for MAS."""
+    # Derive the needed value.
     stmt = select(func.count()).select_from(MASEvent).where(MASEvent.mas_run_id == mas_run_id)
     return int(db.execute(stmt).scalar_one())

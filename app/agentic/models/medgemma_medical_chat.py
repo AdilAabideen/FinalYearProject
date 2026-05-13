@@ -1,3 +1,5 @@
+"""Medgemma Medical Chat ORM models."""
+
 from __future__ import annotations
 
 import time
@@ -24,7 +26,7 @@ from app.agentic.protocols import (
 )
 
 
-class Dr7MedicalChatModel(BaseChatModel):
+class MedGemmaMedicalChatModel(BaseChatModel):
     """
     Minimal LangChain ChatModel wrapper around Dr7's medical chat completions endpoint.
 
@@ -49,10 +51,14 @@ class Dr7MedicalChatModel(BaseChatModel):
     rate_limit_backoff_max_s: float = 40.0
 
     def _llm_type(self) -> str:
+        """Handle type."""
+        # Keep the main step clear.
         return "dr7-medical-chat"
 
     @property
     def _identifying_params(self) -> dict[str, Any]:
+        """Handle params."""
+        # Keep the main step clear.
         return {"model": self.model, "base_url": self.base_url}
 
     def bind_tools(
@@ -69,6 +75,7 @@ class Dr7MedicalChatModel(BaseChatModel):
         schemas are used to instruct the model to emit JSON tool calls that are then
         converted into `AIMessage.tool_calls`.
         """
+        # Keep the main step clear.
         formatted_tools = [convert_to_openai_tool(tool) for tool in tools]
         # LangGraph's `create_react_agent` binds tools with no tool_choice; for Dr7 we
         # default to requiring a tool call so it doesn't "answer in one go" without
@@ -83,9 +90,12 @@ class Dr7MedicalChatModel(BaseChatModel):
 
     def _normalize_dr7_messages(self, messages: list[dict[str, str]]) -> list[dict[str, str]]:
         """Normalize provider messages via shared protocol helper."""
+        # Keep the output consistent.
         return normalize_chat_messages(messages)
 
     def _compute_rate_limit_backoff_s(self, attempt_index: int, retry_after_header: Any = None) -> float:
+        """Compute rate limit backoff s."""
+        # Derive the needed value.
         if retry_after_header is not None:
             try:
                 retry_after_s = float(retry_after_header)
@@ -113,6 +123,8 @@ class Dr7MedicalChatModel(BaseChatModel):
         headers: dict[str, str],
         payload: dict[str, Any],
     ) -> httpx.Response:
+        """Handle with rate limit retry."""
+        # Keep the main step clear.
         max_retries = max(0, int(self.rate_limit_max_retries))
         with httpx.Client(timeout=self.timeout_s) as client:
             attempt_index = 0
@@ -137,6 +149,8 @@ class Dr7MedicalChatModel(BaseChatModel):
         run_manager: Optional[Any] = None,
         **kwargs: Any,
     ) -> ChatResult:
+        """Handle the value."""
+        # Keep the main step clear.
         bound_tools = kwargs.get("tools")
         tool_choice = kwargs.get("tool_choice")
         multi_agent = bool(kwargs.get("multi_agent"))
@@ -146,7 +160,7 @@ class Dr7MedicalChatModel(BaseChatModel):
         dr7_messages = to_provider_messages(
             messages,
             allow_tool_messages=bool(tools),
-            tool_message_error="Dr7MedicalChatModel does not support tool calling (ToolMessage present).",
+            tool_message_error="MedGemmaMedicalChatModel does not support tool calling (ToolMessage present).",
             unsupported_type_label="Dr7",
         )
         dr7_messages = inject_tool_instruction(

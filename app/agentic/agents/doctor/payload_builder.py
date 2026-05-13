@@ -1,3 +1,5 @@
+"""Payload Builder module helpers."""
+
 from __future__ import annotations
 
 from typing import Any, Dict, List, Optional
@@ -12,6 +14,8 @@ ACUITY_AGENTS = {"esi1_agent", "esi2_agent", "esi345_agent"}
 
 
 def _doctor_handoffs(state: MASState) -> List[Dict[str, Any]]:
+    """Handle handoffs."""
+    # Keep the main step clear.
     return [
         dict(item)
         for item in list(state.get("handoff_history") or [])
@@ -23,6 +27,8 @@ def _latest_handoff_from(
     handoffs: List[Dict[str, Any]],
     source_agents: set[str],
 ) -> Optional[Dict[str, Any]]:
+    """Handle handoff from."""
+    # Keep the main step clear.
     for item in reversed(handoffs):
         if item.get("from_agent") in source_agents:
             return item
@@ -31,6 +37,7 @@ def _latest_handoff_from(
 
 def build_payload(state: MASState) -> Dict[str, Any]:
     """Build a compact doctor mas payload."""
+    # Build the next value.
     doctor_handoffs = _doctor_handoffs(state)
     acuity_handoff = _latest_handoff_from(doctor_handoffs, ACUITY_AGENTS)
     vitals_handoff = _latest_handoff_from(doctor_handoffs, {"vitals_agent"})

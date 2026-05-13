@@ -1,3 +1,5 @@
+"""Gate Evaluator module helpers."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -31,6 +33,8 @@ class GateEvaluator:
         workflow: WorkflowDefinition,
         execution_tracker: "MASExecutionTracker | None" = None,
     ) -> None:
+        """Handle the value."""
+        # Keep the main step clear.
         self.workflow = workflow
         self.execution_tracker = execution_tracker
 
@@ -41,6 +45,8 @@ class GateEvaluator:
         state: MASState,
         persist: bool = True,
     ) -> GateEvaluationOutcome:
+        """Handle the value."""
+        # Keep the main step clear.
         gate = self.workflow.gates[gate_id]
         handoff_history = list(state.get("handoff_history", []))
         ready = self.workflow.is_gate_ready(gate_id, handoff_history)

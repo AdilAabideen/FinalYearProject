@@ -1,3 +1,5 @@
+"""Agents module helpers."""
+
 from __future__ import annotations
 
 from app.agentic.agents.base.spec import AgentSpec
@@ -22,12 +24,18 @@ AGENTS: dict[str, AgentSpec] = {
 
 
 def list_agent_specs() -> list[AgentSpec]:
+    """List agent specs."""
+    # Read the current list.
     return list(AGENTS.values())
 
 
 def supported_agent_names() -> set[str]:
+    """Handle agent names."""
+    # Keep the main step clear.
     return set(AGENTS.keys())
 
 
 def get_agent_spec(agent_name: str) -> AgentSpec:
+    """Return agent spec."""
+    # Read the current value.
     return AGENTS[agent_name]

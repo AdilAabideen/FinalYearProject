@@ -1,3 +1,5 @@
+"""Prompt module helpers."""
+
 SYSTEM_PROMPT = """
 <system_role>
 You are a specialist Emergency Department where you task is to decide which of the following the patient is:

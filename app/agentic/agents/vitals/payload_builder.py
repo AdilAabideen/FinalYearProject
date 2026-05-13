@@ -1,3 +1,5 @@
+"""Payload Builder module helpers."""
+
 from __future__ import annotations
 
 from typing import Any, Dict
@@ -10,6 +12,7 @@ from app.agentic.workflows.definitions.esi_mas.payload_builders import (
 
 def build_payload(state: MASState) -> Dict[str, Any]:
     """Build a compact vitals mas payload."""
+    # Build the next value.
     case_info = unified_payload_builder("vitals_agent", dict(state.get("case_info") or {}))
     llm_payload = {
         "task": "Evaluate this patient for vitals-only up-triage concerns.",

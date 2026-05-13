@@ -1,3 +1,5 @@
+"""Mas Result Normalizer module helpers."""
+
 # mas_result_normalizer
 from __future__ import annotations
 
@@ -14,6 +16,8 @@ from app.agentic.mas_contract import (
 
 
 def _to_plain_dict(value: Any) -> Optional[Dict[str, Any]]:
+    """Handle plain dict."""
+    # Keep the main step clear.
     if value is None:
         return None
     if isinstance(value, BaseModel):
@@ -24,6 +28,8 @@ def _to_plain_dict(value: Any) -> Optional[Dict[str, Any]]:
 
 
 def _extract_handoff(raw_result: Any) -> Optional[Any]:
+    """Extract handoff."""
+    # Pull out the needed value.
     raw_dict = _to_plain_dict(raw_result)
     if raw_dict is None:
         return None
@@ -31,6 +37,8 @@ def _extract_handoff(raw_result: Any) -> Optional[Any]:
 
 
 def _extract_output(raw_result: Any) -> Optional[Dict[str, Any]]:
+    """Extract output."""
+    # Pull out the needed value.
     raw_dict = _to_plain_dict(raw_result)
     if raw_dict is None:
         return None
@@ -57,6 +65,8 @@ def _error_result(
     details: Optional[str] = None,
     raw_result: Any = None,
 ) -> AgentExecutionResult:
+    """Handle result."""
+    # Keep the main step clear.
     output: Dict[str, Any] = {"error": error}
     if details:
         output["details"] = details
@@ -75,6 +85,7 @@ def _error_result(
 
 def normalize_agent_result(agent_name: AgentName, raw_result: Any) -> AgentExecutionResult:
     """Convert raw real-agent output into the graph execution contract."""
+    # Keep the output consistent.
     handoff_raw = _extract_handoff(raw_result)
     if handoff_raw is not None:
         try:

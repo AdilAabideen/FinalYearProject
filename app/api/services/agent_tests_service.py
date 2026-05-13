@@ -1,3 +1,5 @@
+"""Agent Tests Service service helpers."""
+
 from __future__ import annotations
 
 import json
@@ -14,17 +16,12 @@ from app.agentic.model_registry import validate_model_for_agent
 from app.agentic.agents.agents import get_agent_spec, supported_agent_names
 from app.config import settings
 from app.models.agent_run import AgentRun
-from app.models.agent_test_case import AgentTestCase
 from app.models.agent_test_case_run import AgentTestCaseRun
 from app.models.agent_test_run import AgentTestRun
 from app.schemas.agent_tests import (
     AgentTestCaseRunMetricRead,
-    AgentTestCaseCreateRequest,
     AgentTestCaseRead,
-    AgentTestCaseRunRead,
-    AgentTestCaseUpdateRequest,
     AgentTestRunBatchMetricsRead,
-    AgentTestRunDetailRead,
     AgentTestRunMetricsSummaryRead,
     AgentTestRunRead,
     AgentTestRunStartRequest,
@@ -35,6 +32,8 @@ from app.api.repository import agent_metrics_repository, agent_tests_repository
 
 
 def _get_spec_or_400(agent_name: str):
+    """Return spec or 400."""
+    # Read the current value.
     try:
         return get_agent_spec(agent_name)
     except KeyError:
@@ -49,12 +48,16 @@ def _evaluate_expected_subset(
     expected: dict[str, Any],
     actual: Optional[dict[str, Any]],
 ) -> tuple[bool, float, dict[str, Any]]:
+    """Handle expected subset."""
+    # Keep the main step clear.
     if actual is None:
         return False, 0.0, {"error": "actual_json_missing"}
 
     diffs: list[dict[str, Any]] = []
 
     def _walk(exp: Any, act: Any, path: str) -> None:
+        """Handle the value."""
+        # Keep the main step clear.
         if isinstance(exp, dict):
             if not isinstance(act, dict):
                 diffs.append({"path": path, "expected": exp, "actual": act})
@@ -96,6 +99,7 @@ def _build_case_diff_payload(
     Keeps evaluator-provided diff keys at top level for backward compatibility,
     while always exposing both expected and actual outputs for rendering.
     """
+    # Build the next value.
     payload: dict[str, Any] = {
         "expected_answer": expected_answer,
         "agent_answer": agent_answer,
@@ -119,6 +123,8 @@ def list_cases(
     order: str,
     db: Session,
 ) -> list[AgentTestCaseRead]:
+    """List cases."""
+    # Read the current list.
     rows = agent_tests_repository.list_test_cases(
         db,
         agent_name=agent_name,
@@ -130,73 +136,9 @@ def list_cases(
     return [AgentTestCaseRead.model_validate(r.__dict__) for r in rows]
 
 
-def create_case(payload: AgentTestCaseCreateRequest, db: Session) -> AgentTestCaseRead:
-    spec = _get_spec_or_400(payload.agent_name)
-    if spec.evaluator is not None:
-        try:
-            spec.evaluator.validate_expected(payload.expected_json)
-        except ValueError as e:
-            raise HTTPException(status_code=400, detail=str(e))
-
-    case_id = str(uuid.uuid4())
-    now = datetime.utcnow()
-    row = AgentTestCase(
-        id=case_id,
-        agent_name=payload.agent_name,
-        name=payload.name,
-        enabled=payload.enabled,
-        input_json=payload.input_json,
-        expected_json=payload.expected_json,
-        notes=payload.notes,
-        created_at=now,
-        updated_at=now,
-    )
-    agent_tests_repository.save_test_case(db, row, refresh=True)
-    return AgentTestCaseRead.model_validate(row.__dict__)
-
-
-def update_case(
-    case_id: str,
-    payload: AgentTestCaseUpdateRequest,
-    db: Session,
-) -> AgentTestCaseRead:
-    row = agent_tests_repository.get_test_case(db, case_id)
-    if row is None:
-        raise HTTPException(status_code=404, detail="Test case not found")
-
-    spec = _get_spec_or_400(row.agent_name)
-
-    if payload.name is not None:
-        row.name = payload.name
-    if payload.enabled is not None:
-        row.enabled = payload.enabled
-    if payload.input_json is not None:
-        row.input_json = payload.input_json
-    if payload.expected_json is not None:
-        if spec.evaluator is not None:
-            try:
-                spec.evaluator.validate_expected(payload.expected_json)
-            except ValueError as e:
-                raise HTTPException(status_code=400, detail=str(e))
-        row.expected_json = payload.expected_json
-    if payload.notes is not None:
-        row.notes = payload.notes
-
-    row.updated_at = datetime.utcnow()
-    agent_tests_repository.save_test_case(db, row, refresh=True)
-    return AgentTestCaseRead.model_validate(row.__dict__)
-
-
-def delete_case(case_id: str, db: Session) -> None:
-    row = agent_tests_repository.get_test_case(db, case_id)
-    if row is None:
-        raise HTTPException(status_code=404, detail="Test case not found")
-    row.enabled = False
-    row.updated_at = datetime.utcnow()
-    agent_tests_repository.save_test_case(db, row)
-
-
 def start_run(payload: AgentTestRunStartRequest, db: Session) -> AgentTestRunRead:
+    """Start run."""
+    # Kick off the main step.
     if not payload.case_ids:
         raise HTTPException(status_code=400, detail="case_ids must be non-empty")
 
@@ -274,46 +216,17 @@ def start_run(payload: AgentTestRunStartRequest, db: Session) -> AgentTestRunRea
     return AgentTestRunRead.model_validate(run.__dict__)
 
 
-def list_runs(
-    *,
-    agent_name: Optional[str],
-    limit: int,
-    offset: int,
-    order: str,
-    db: Session,
-) -> list[AgentTestRunRead]:
-    rows = agent_tests_repository.list_test_runs(
-        db,
-        agent_name=agent_name,
-        limit=limit,
-        offset=offset,
-        order=order,
-    )
-    return [AgentTestRunRead.model_validate(r.__dict__) for r in rows]
-
-
-def get_run(run_id: str, db: Session) -> AgentTestRunDetailRead:
-    run = agent_tests_repository.get_test_run(db, run_id)
-    if run is None:
-        raise HTTPException(status_code=404, detail="Test run not found")
-
-    case_runs = agent_tests_repository.get_case_runs_for_test_run(db, run_id)
-    by_case_id = {cr.test_case_id: cr for cr in case_runs}
-    ordered = [by_case_id[cid] for cid in run.selected_case_ids_json if cid in by_case_id]
-
-    return AgentTestRunDetailRead(
-        run=AgentTestRunRead.model_validate(run.__dict__),
-        case_runs=[AgentTestCaseRunRead.model_validate(cr.__dict__) for cr in ordered],
-    )
-
-
 def _avg_or_none(total: float, count: int, ndigits: int = 4) -> Optional[float]:
+    """Handle or none."""
+    # Keep the main step clear.
     if count <= 0:
         return None
     return round(total / count, ndigits)
 
 
 def get_run_metrics(run_id: str, db: Session) -> AgentTestRunBatchMetricsRead:
+    """Return run metrics."""
+    # Read the current value.
     run = agent_tests_repository.get_test_run(db, run_id)
     if run is None:
         raise HTTPException(status_code=404, detail="Test run not found")
@@ -457,6 +370,8 @@ def get_run_metrics(run_id: str, db: Session) -> AgentTestRunBatchMetricsRead:
 
 
 def stream_run(run_id: str, db: Session) -> StreamingResponse:
+    """Stream run."""
+    # Keep events flowing.
     run = agent_tests_repository.get_test_run(db, run_id)
     if run is None:
         raise HTTPException(status_code=404, detail="Test run not found")
@@ -494,6 +409,8 @@ def stream_run(run_id: str, db: Session) -> StreamingResponse:
         raise HTTPException(status_code=400, detail=str(e))
 
     def _sse(event: str, data: dict, event_id: Optional[int] = None) -> str:
+        """Handle the value."""
+        # Keep the main step clear.
         payload = json.dumps(data, ensure_ascii=False)
         lines = []
         if event_id is not None:
@@ -503,6 +420,8 @@ def stream_run(run_id: str, db: Session) -> StreamingResponse:
         return "\n".join(lines) + "\n\n"
 
     def _stream():
+        """Stream the value."""
+        # Keep events flowing.
         nonlocal run
 
         now = datetime.utcnow()

@@ -1,3 +1,5 @@
+"""Prompt Protocol module helpers."""
+
 from __future__ import annotations
 
 from typing import Optional, Sequence
@@ -5,6 +7,7 @@ from typing import Optional, Sequence
 
 def normalize_prompt_block(block: Optional[str]) -> str:
     """Trim a prompt block while preserving its internal formatting."""
+    # Keep the output consistent.
     if not isinstance(block, str):
         return ""
     return block.strip()
@@ -12,6 +15,7 @@ def normalize_prompt_block(block: Optional[str]) -> str:
 
 def join_prompt_sections(*sections: Optional[str]) -> str:
     """Join non-empty prompt sections with stable double-newline separators."""
+    # Keep the main step clear.
     normalized_sections = [
         normalize_prompt_block(section)
         for section in sections
@@ -35,6 +39,7 @@ def build_system_prompt(
     2. mode-specific addon
     3. optional extra sections
     """
+    # Build the next value.
     mode_addon = multi_agent_addon if multi_agent else single_agent_addon
     extras = [normalize_prompt_block(section) for section in list(extra_sections or [])]
     return join_prompt_sections(base_prompt, mode_addon, *extras)

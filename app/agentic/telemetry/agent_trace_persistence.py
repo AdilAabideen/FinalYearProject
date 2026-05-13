@@ -1,3 +1,5 @@
+"""Agent Trace Persistence module helpers."""
+
 from __future__ import annotations
 
 import json
@@ -25,11 +27,15 @@ def wire_agent_trace_persistence(
     model_spec: Any,
     start_seq: int = 0,
 ) -> None:
+    """Wire agent trace persistence."""
+    # Connect the main pieces.
     supports_callbacks = all(hasattr(agent, attr) for attr in ("set_event_context", "set_event_handlers"))
     if not supports_callbacks:
         raise RuntimeError("Agent does not support callback event persistence")
 
     def _persist_callback_event(item: dict[str, Any]) -> None:
+        """Persist callback event."""
+        # Keep stored state current.
         db = session_factory()
         try:
             agent_runs_repository.append_event(
@@ -50,6 +56,8 @@ def wire_agent_trace_persistence(
             db.close()
 
     def _persist_llm_call(item: dict[str, Any]) -> None:
+        """Persist llm call."""
+        # Keep stored state current.
         input_tokens = int(item.get("input_tokens") or 0)
         output_tokens = int(item.get("output_tokens") or 0)
         total_tokens = int(item.get("tokens_total") or (input_tokens + output_tokens))
@@ -92,6 +100,8 @@ def wire_agent_trace_persistence(
             db.close()
 
     def _persist_tool_call(item: dict[str, Any]) -> None:
+        """Persist tool call."""
+        # Keep stored state current.
         db = session_factory()
         try:
             agent_metrics_repository.append_tool_call(
@@ -121,6 +131,8 @@ def wire_agent_trace_persistence(
 
 
 def _safe_text(text: str) -> str:
+    """Handle text."""
+    # Keep the main step clear.
     raw = str(text)
     if len(raw) <= MAX_EVENT_TEXT_LEN:
         return raw
@@ -128,6 +140,8 @@ def _safe_text(text: str) -> str:
 
 
 def _normalize_payload_json(raw: Any) -> dict[str, Any] | None:
+    """Normalize payload json."""
+    # Keep the output consistent.
     if raw is None:
         return None
     if isinstance(raw, dict):
@@ -136,6 +150,8 @@ def _normalize_payload_json(raw: Any) -> dict[str, Any] | None:
 
 
 def _normalize_tool_names(raw: Any) -> list[str]:
+    """Normalize tool names."""
+    # Keep the output consistent.
     if isinstance(raw, list):
         return [str(name) for name in raw if name is not None]
     if isinstance(raw, str):
@@ -154,6 +170,8 @@ def _cost_from_tokens(
     input_tokens: int,
     output_tokens: int,
 ) -> float | None:
+    """Handle from tokens."""
+    # Keep the main step clear.
     pricing = getattr(model_spec, "pricing", None)
     if pricing is None:
         return None
@@ -167,6 +185,8 @@ def _cost_from_tokens(
 
 
 def _string_or_none(value: Any) -> str | None:
+    """Handle or none."""
+    # Keep the main step clear.
     if value is None:
         return None
     text = str(value).strip()
@@ -179,6 +199,8 @@ def persist_agent_run_metrics(
     run_id: str,
     agent_system: str,
 ) -> None:
+    """Persist agent run metrics."""
+    # Keep stored state current.
     db = session_factory()
     try:
         run = agent_runs_repository.get_run(db, run_id)
@@ -239,6 +261,8 @@ def persist_agent_run_metrics(
 
 
 def _schema_valid_for_run(run: AgentRun) -> bool | None:
+    """Handle valid for run."""
+    # Keep the main step clear.
     if run.output_json is None:
         return None
     try:

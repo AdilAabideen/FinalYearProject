@@ -1,3 +1,5 @@
+"""Finalization Policy module helpers."""
+
 from __future__ import annotations
 
 import json
@@ -30,12 +32,16 @@ class FinalizationPolicy:
         final_answer_tool_name: str | None = "final_answer",
         validate_output: Callable[[Any], Optional[str]] | None = None,
     ) -> None:
+        """Handle the value."""
+        # Keep the main step clear.
         self.config = config
         self.final_answer_tool_name = final_answer_tool_name
         self.validate_output = validate_output
 
     @staticmethod
     def _json_from_text(text: str) -> tuple[Any | None, str]:
+        """Handle from text."""
+        # Keep the main step clear.
         raw = (text or "").strip()
         if not raw:
             return None, raw
@@ -47,6 +53,8 @@ class FinalizationPolicy:
 
     @staticmethod
     def _normalize_final_output(value: Any) -> Any:
+        """Normalize final output."""
+        # Keep the output consistent.
         if not isinstance(value, dict):
             return value
 
@@ -61,11 +69,15 @@ class FinalizationPolicy:
 
     @staticmethod
     def _to_text(value: Any) -> str:
+        """Handle text."""
+        # Keep the main step clear.
         if isinstance(value, str):
             return value
         return json.dumps(value, ensure_ascii=False)
 
     def _schema_validation_error(self, value: Any) -> Optional[str]:
+        """Handle validation error."""
+        # Keep the main step clear.
         if self.validate_output is None:
             return None
         try:
@@ -76,6 +88,7 @@ class FinalizationPolicy:
     def maybe_finalize_from_assistant_no_tools(self, ai_message: AIMessage) -> FinalizationDecision:
         """Check assistant content finalization when no tool calls were emitted this turn."""
 
+        # Keep the main step clear.
         if self.config.require_final_answer_tool and not self.config.allow_plain_json_final_output:
             return FinalizationDecision(finalized=False, reason="final_answer_tool_required")
 
@@ -117,6 +130,7 @@ class FinalizationPolicy:
     ) -> FinalizationDecision:
         """Check finalization when a tool result arrives."""
 
+        # Keep the main step clear.
         tool_name = str(tool_call.get("name") or "")
         if not self.final_answer_tool_name:
             return FinalizationDecision(finalized=False, reason="final_answer_tool_disabled")
@@ -139,6 +153,7 @@ class FinalizationPolicy:
     def finalize_no_output(self) -> FinalizationDecision:
         """Deterministic fallback when no final output was produced."""
         
+        # Keep the main step clear.
         fallback = {"ok": False, "error": "no_output"}
         return FinalizationDecision(
             finalized=True,
@@ -155,6 +170,7 @@ class FinalizationPolicy:
         raw_output: Optional[str] = None,
     ) -> FinalizationDecision:
         """Deterministic fallback when output exists but is not policy-valid."""
+        # Keep the main step clear.
         payload: dict[str, Any] = {"ok": False, "error": "final_output_invalid", "reason": reason}
         if raw_output:
             payload["raw_output"] = raw_output

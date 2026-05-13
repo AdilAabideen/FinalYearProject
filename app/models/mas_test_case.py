@@ -1,3 +1,5 @@
+"""Mas Test Case ORM models."""
+
 from __future__ import annotations
 
 from sqlalchemy import JSON, Boolean, Index, String

@@ -1,3 +1,5 @@
+"""Usage Extractor module helpers."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -16,6 +18,7 @@ class UsageExtractionResult:
     @property
     def has_usage(self) -> bool:
         """True when any provider token field was present."""
+        # Keep the main step clear.
         return (
             self.input_tokens is not None
             or self.output_tokens is not None
@@ -24,6 +27,8 @@ class UsageExtractionResult:
 
 
 def _to_int_or_none(value: Any) -> Optional[int]:
+    """Handle int or none."""
+    # Keep the main step clear.
     if value is None:
         return None
     try:
@@ -39,6 +44,8 @@ def _build_usage_result(
     total_tokens: Any,
     usage_source: str,
 ) -> UsageExtractionResult:
+    """Build usage result."""
+    # Build the next value.
     in_tok = _to_int_or_none(input_tokens)
     out_tok = _to_int_or_none(output_tokens)
     tot_tok = _to_int_or_none(total_tokens)
@@ -72,6 +79,7 @@ def extract_provider_usage(obj: Any) -> UsageExtractionResult:
        - `completion_tokens` or `output_tokens`
        - `total_tokens`
     """
+    # Pull out the needed value.
     usage = getattr(obj, "usage_metadata", None)
     if isinstance(usage, Mapping):
         result = _build_usage_result(

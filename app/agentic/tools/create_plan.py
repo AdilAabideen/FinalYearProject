@@ -1,3 +1,5 @@
+"""Create Plan module helpers."""
+
 from __future__ import annotations
 
 from langchain.tools import tool
@@ -39,6 +41,7 @@ def create_plan(
     """
     Create a lightweight structured plan for the current case.
     """
+    # Build the new value.
     return {
         "objective": objective,
         "steps": [step.model_dump() for step in steps],

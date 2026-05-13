@@ -1,3 +1,5 @@
+"""Test Handoff Payload Coercion test coverage."""
+
 from __future__ import annotations
 
 import pytest
@@ -10,6 +12,8 @@ from app.agentic.agents.vitals.handoffs import VitalsToDoctorPayload
 
 @pytest.mark.unit
 def test_ut_handoff_001_coerces_string_bool_and_defaults_missing_list_for_esi1_false():
+    """Handle ut handoff 001 coerces string bool and defaults missing list for ESI1 false."""
+    # Keep the main step clear.
     payload = ESI1ToESI2Payload.model_validate(
         {
             "is_esi1": "false",
@@ -23,6 +27,8 @@ def test_ut_handoff_001_coerces_string_bool_and_defaults_missing_list_for_esi1_f
 
 @pytest.mark.unit
 def test_ut_handoff_002_wraps_string_into_list_for_esi1_true():
+    """Handle ut handoff 002 wraps string into list for ESI1 true."""
+    # Keep the main step clear.
     payload = ESI1ToDoctorPayload.model_validate(
         {
             "is_esi1": "true",
@@ -36,6 +42,8 @@ def test_ut_handoff_002_wraps_string_into_list_for_esi1_true():
 
 @pytest.mark.unit
 def test_ut_handoff_003_defaults_missing_lists_for_esi2_handoffs():
+    """Handle ut handoff 003 defaults missing lists for ESI2 handoffs."""
+    # Keep the main step clear.
     to_esi345 = ESI2ToESI345Payload.model_validate(
         {
             "is_esi2": "false",
@@ -56,6 +64,8 @@ def test_ut_handoff_003_defaults_missing_lists_for_esi2_handoffs():
 
 @pytest.mark.unit
 def test_ut_handoff_004_accepts_stale_esi2_alias_fields():
+    """Handle ut handoff 004 accepts stale ESI2 alias fields."""
+    # Keep the main step clear.
     to_esi345 = ESI2ToESI345Payload.model_validate(
         {
             "esi1_result": "not_esi2",
@@ -82,6 +92,8 @@ def test_ut_handoff_004_accepts_stale_esi2_alias_fields():
 
 @pytest.mark.unit
 def test_ut_handoff_005_wraps_vitals_string_into_list_and_coerces_bool():
+    """Handle ut handoff 005 wraps vitals string into list and coerces bool."""
+    # Keep the main step clear.
     payload = VitalsToDoctorPayload.model_validate(
         {
             "consider_uptriage": "false",
@@ -96,6 +108,8 @@ def test_ut_handoff_005_wraps_vitals_string_into_list_and_coerces_bool():
 
 @pytest.mark.unit
 def test_ut_handoff_006_accepts_esi345_justification_alias():
+    """Handle ut handoff 006 accepts ESI345 justification alias."""
+    # Keep the main step clear.
     payload = ESI345ToDoctorPayload.model_validate(
         {
             "esi_level": 4,

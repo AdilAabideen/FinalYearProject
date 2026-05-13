@@ -1,3 +1,5 @@
+"""Verify Mas Result Normalizer script helpers."""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -12,6 +14,8 @@ from app.agentic.mas_result_normalizer import normalize_agent_result
 
 
 def _valid_handoff_result():
+    """Handle handoff result."""
+    # Keep the main step clear.
     return {
         "handoff": {
             "handoff_name": "handoff_to_esi2_agent",
@@ -30,11 +34,15 @@ def _valid_handoff_result():
 
 
 def _assert(condition: bool, message: str) -> None:
+    """Handle the value."""
+    # Keep the main step clear.
     if not condition:
         raise AssertionError(message)
 
 
 def test_valid_handoff() -> None:
+    """Handle valid handoff."""
+    # Keep the main step clear.
     result = normalize_agent_result("esi1_agent", _valid_handoff_result())
     _assert(result.status == "handoff", "valid handoff should normalize to handoff status")
     _assert(result.handoff is not None, "valid handoff should include HandoffEnvelope")
@@ -43,6 +51,8 @@ def test_valid_handoff() -> None:
 
 
 def test_invalid_route() -> None:
+    """Handle invalid route."""
+    # Keep the main step clear.
     raw = _valid_handoff_result()
     raw["handoff"]["target_agent"] = "vitals_agent"
     result = normalize_agent_result("esi1_agent", raw)
@@ -52,6 +62,8 @@ def test_invalid_route() -> None:
 
 
 def test_source_mismatch() -> None:
+    """Handle source mismatch."""
+    # Keep the main step clear.
     raw = _valid_handoff_result()
     raw["handoff"]["from_agent"] = "esi2_agent"
     raw["handoff"]["target_agent"] = "esi345_agent"
@@ -62,6 +74,8 @@ def test_source_mismatch() -> None:
 
 
 def test_doctor_final_output() -> None:
+    """Handle doctor final output."""
+    # Keep the main step clear.
     raw = {
         "output": {
             "ok": True,
@@ -76,6 +90,8 @@ def test_doctor_final_output() -> None:
 
 
 def test_non_doctor_plain_output() -> None:
+    """Handle non doctor plain output."""
+    # Keep the main step clear.
     result = normalize_agent_result("esi2_agent", {"output": {"ok": True}})
     _assert(result.status == "error", "non-doctor plain output should normalize to error")
     _assert(result.output["error"] == "missing_handoff", "non-doctor error should be missing_handoff")
@@ -83,6 +99,8 @@ def test_non_doctor_plain_output() -> None:
 
 
 def main() -> None:
+    """Handle the value."""
+    # Keep the main step clear.
     test_valid_handoff()
     test_invalid_route()
     test_source_mismatch()

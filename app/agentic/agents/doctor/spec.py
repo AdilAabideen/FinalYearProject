@@ -1,3 +1,5 @@
+"""Spec module helpers."""
+
 from __future__ import annotations
 
 import json
@@ -22,6 +24,7 @@ from .tools import TOOLS
 
 def build_doctor_agent(runtime: AgentRuntime, runtime_config: Optional[RuntimeConfig] = None):
     """Build the doctor/supervisor agent."""
+    # Build the next value.
     try:
         return AgentKernel(
             model=runtime.model,
@@ -48,6 +51,8 @@ DOCTOR_AGENT_SPEC = AgentSpec(
 
 
 def _maybe_pretty_json(text: str) -> str:
+    """Handle pretty json."""
+    # Keep the main step clear.
     stripped = text.strip()
     if not stripped:
         return ""
@@ -60,6 +65,7 @@ def _maybe_pretty_json(text: str) -> str:
 
 def run_doctor_agent(input: DoctorAgentInput, *, verbose: bool = True):
     """Run the doctor agent with optional verbose stream logging."""
+    # Kick off the main step.
     try:
         model_id = settings.OPENAI_MODEL
         model_spec = resolve_model_spec(model_id)
@@ -93,11 +99,15 @@ def run_doctor_agent(input: DoctorAgentInput, *, verbose: bool = True):
         GRAY = "\x1b[90m"
 
         def _c(text: str, *codes: str) -> str:
+            """Handle the value."""
+            # Keep the main step clear.
             if not use_color or not codes:
                 return text
             return "".join(codes) + text + RESET
 
         def _status_color(status: str) -> str:
+            """Handle color."""
+            # Keep the main step clear.
             normalized = (status or "").strip().lower()
             if normalized in {"error", "failed", "failure"}:
                 return RED
@@ -108,9 +118,13 @@ def run_doctor_agent(input: DoctorAgentInput, *, verbose: bool = True):
         prefix = _c(f"[doctor-agent:{run_id}] ", DIM, GRAY)
 
         def _log(line: str) -> None:
+            """Handle the value."""
+            # Keep the main step clear.
             print(f"{prefix}{line}", flush=True)
 
         def _log_block(header: str, body: str) -> None:
+            """Handle block."""
+            # Keep the main step clear.
             _log(header)
             if body:
                 for ln in body.splitlines():

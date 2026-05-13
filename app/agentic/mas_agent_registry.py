@@ -1,3 +1,5 @@
+"""Mas Agent Registry module helpers."""
+
 # mas_agent_register.py
 from __future__ import annotations
 from typing import Callable, Dict, Optional
@@ -30,6 +32,7 @@ def build_mas_agent(
     runtime_config: Optional[RuntimeConfig] = None,
 ) -> AgentKernel:
     """Build one real mas agent by graph agent name."""
+    # Build the next value.
     try:
         builder = MAS_AGENT_BUILDERS[agent_name]
     except KeyError as exc:
@@ -46,11 +49,15 @@ class MASAgentRegistry:
         runtime: AgentRuntime,
         runtime_config: Optional[RuntimeConfig] = None,
     ) -> None:
+        """Handle the value."""
+        # Keep the main step clear.
         self.runtime = runtime
         self.runtime_config = runtime_config
         self._agents: Dict[AgentName, AgentKernel] = {}
 
     def get(self, agent_name: AgentName) -> AgentKernel:
+        """Return the value."""
+        # Read the current value.
         if agent_name not in self._agents:
             self._agents[agent_name] = build_mas_agent(
                 agent_name,
@@ -60,4 +67,6 @@ class MASAgentRegistry:
         return self._agents[agent_name]
 
     def clear(self) -> None:
+        """Handle the value."""
+        # Keep the main step clear.
         self._agents.clear()

@@ -1,3 +1,5 @@
+"""Print Workflow Definition script helpers."""
+
 from __future__ import annotations
 
 import json
@@ -13,10 +15,14 @@ from app.agentic.workflows.registry import get_workflow_definition
 
 
 def _json(data):
+    """Handle the value."""
+    # Keep the main step clear.
     return json.dumps(data, indent=2, sort_keys=True, default=str)
 
 
 def _print_mermaid(workflow) -> None:
+    """Print mermaid."""
+    # Keep the output explicit.
     print("\nMermaid diagram:")
     print("```mermaid")
     print("flowchart LR")
@@ -42,6 +48,8 @@ def _print_mermaid(workflow) -> None:
 
 
 def _print_text_topology(workflow) -> None:
+    """Print text topology."""
+    # Keep the output explicit.
     print("\nText topology:")
     print("START")
     for agent_name in workflow.start_agents:
@@ -53,6 +61,8 @@ def _print_text_topology(workflow) -> None:
 
 
 def main() -> None:
+    """Handle the value."""
+    # Keep the main step clear.
     workflow = get_workflow_definition("esi_mas")
 
     print("=== Workflow Definition ===")

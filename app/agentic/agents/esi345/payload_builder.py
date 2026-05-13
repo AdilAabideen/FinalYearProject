@@ -1,3 +1,5 @@
+"""Payload Builder module helpers."""
+
 from __future__ import annotations
 
 from typing import Any, Dict
@@ -8,6 +10,8 @@ from app.agentic.workflows.definitions.esi_mas.payload_builders import (
 )
 
 def clean_payload(payload):
+    """Handle payload."""
+    # Keep the main step clear.
     return {
         "carry_forward_concerns" : payload.get("carry_forward_concerns"),
         "brief_reason" : payload.get("reason")
@@ -16,6 +20,7 @@ def clean_payload(payload):
 
 def build_payload(state: MASState) -> Dict[str, Any]:
     """Build a compact ESI345 mas payload."""
+    # Build the next value.
     pending_handoff = dict(state.get("pending_handoff") or {})
     handoff_payload = dict(pending_handoff.get("payload") or {})
     case_info = unified_payload_builder("esi345_agent", dict(state.get("case_info") or {}))

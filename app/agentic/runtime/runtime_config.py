@@ -1,3 +1,5 @@
+"""Runtime Config module helpers."""
+
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass
@@ -24,6 +26,8 @@ class RuntimeConfig:
     short_term_memory_log_token_estimates: bool = True
 
     def __post_init__(self) -> None:
+        """Handle init."""
+        # Keep the main step clear.
         if self.max_tool_calls_per_turn < 1:
             raise ValueError("max_tool_calls_per_turn must be >= 1.")
         if self.max_malformed_tool_retries_per_tool < 0:
@@ -31,4 +35,5 @@ class RuntimeConfig:
 
     def to_dict(self) -> dict[str, object]:
         """Return a serializable dict for telemetry and experiment logging."""
+        # Keep the main step clear.
         return asdict(self)

@@ -1,3 +1,5 @@
+"""Schema module helpers."""
+
 from pydantic import BaseModel, Field, AliasChoices
 from typing import List, Literal, Optional, Any, Union
 

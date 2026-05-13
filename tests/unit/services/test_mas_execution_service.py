@@ -1,3 +1,5 @@
+"""Test Mas Execution Service service helpers."""
+
 from __future__ import annotations
 
 from fastapi import BackgroundTasks
@@ -8,9 +10,13 @@ from app.schemas.mas_execution import MASExecutionStartRequest
 
 
 def test_ut_srv_001_start_mas_execution_threads_explicit_model_id(monkeypatch):
+    """Handle ut srv 001 start MAS execution threads explicit model id."""
+    # Keep the main step clear.
     captured: dict[str, object] = {}
 
     def _fake_create_and_start_mas_run(*, workflow_id, input_payload, model_id, metadata=None):
+        """Handle create and start MAS run."""
+        # Keep the main step clear.
         captured["workflow_id"] = workflow_id
         captured["input_payload"] = input_payload
         captured["model_id"] = model_id
@@ -38,9 +44,13 @@ def test_ut_srv_001_start_mas_execution_threads_explicit_model_id(monkeypatch):
 
 
 def test_ut_srv_002_start_mas_execution_defaults_to_configured_model(monkeypatch):
+    """Handle ut srv 002 start MAS execution defaults to configured model."""
+    # Keep the main step clear.
     captured: dict[str, object] = {}
 
     def _fake_create_and_start_mas_run(*, workflow_id, input_payload, model_id, metadata=None):
+        """Handle create and start MAS run."""
+        # Keep the main step clear.
         captured["model_id"] = model_id
         return ("mas_2", {"chiefcomplaint": "pain"}, "schema", "v1")
 

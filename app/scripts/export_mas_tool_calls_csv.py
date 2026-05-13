@@ -1,3 +1,5 @@
+"""Export Mas Tool Calls Csv script helpers."""
+
 from __future__ import annotations
 
 import argparse
@@ -43,10 +45,14 @@ ACUITY_AGENT_NAMES = {"esi1_agent", "esi2_agent", "esi345_agent"}
 
 
 def _json_dumps(value: Any) -> str:
+    """Handle dumps."""
+    # Keep the main step clear.
     return json.dumps(value, ensure_ascii=False, separators=(",", ":"), default=str)
 
 
 def _normalize_id(raw: str) -> str:
+    """Normalize id."""
+    # Keep the output consistent.
     text = str(raw).strip()
     if not text:
         return text
@@ -57,6 +63,8 @@ def _normalize_id(raw: str) -> str:
 
 
 def _write_rows(output_path: Path, rows: list[dict[str, str]]) -> None:
+    """Handle rows."""
+    # Keep the main step clear.
     output_path.parent.mkdir(parents=True, exist_ok=True)
     with output_path.open("w", newline="", encoding="utf-8") as handle:
         writer = csv.DictWriter(handle, fieldnames=CSV_FIELDNAMES)
@@ -65,6 +73,8 @@ def _write_rows(output_path: Path, rows: list[dict[str, str]]) -> None:
 
 
 def _string_or_empty(value: Any) -> str:
+    """Handle or empty."""
+    # Keep the main step clear.
     if value is None:
         return ""
     return str(value)
@@ -75,6 +85,8 @@ def _case_input_for_agent(
     input_json: dict[str, Any] | None,
     agent_name: str,
 ) -> dict[str, Any]:
+    """Handle input for agent."""
+    # Keep the main step clear.
     payload = dict(input_json or {})
     if agent_name not in ACUITY_AGENT_NAMES:
         return payload
@@ -88,6 +100,8 @@ def _build_case_columns(
     input_json: dict[str, Any] | None,
     agent_name: str,
 ) -> dict[str, str]:
+    """Build case columns."""
+    # Build the next value.
     payload = _case_input_for_agent(input_json=input_json, agent_name=agent_name)
     return {"case_input_json": _json_dumps(payload) if payload else ""}
 
@@ -96,6 +110,8 @@ def _build_tool_output_json(
     *,
     tool_call_event: AgentEvent,
 ) -> str:
+    """Build tool output json."""
+    # Build the next value.
     call_payload = dict(tool_call_event.payload_json or {})
 
     record = {
@@ -110,6 +126,8 @@ def _build_tool_result_user_message(
     *,
     tool_result_event: AgentEvent | None,
 ) -> str:
+    """Build tool result user message."""
+    # Build the next value.
     if tool_result_event is None:
         return ""
 
@@ -134,6 +152,8 @@ def _find_tool_result_event(
     events: list[AgentEvent],
     tool_call_event: AgentEvent,
 ) -> AgentEvent | None:
+    """Handle tool result event."""
+    # Keep the main step clear.
     for event in events:
         if event.seq <= tool_call_event.seq:
             continue
@@ -149,6 +169,8 @@ def _find_tool_result_event(
 
 
 def _ordered_agent_runs_for_mas(db, mas_run_id: str) -> list[AgentRun]:
+    """Handle agent runs for MAS."""
+    # Keep the main step clear.
     return list(
         db.scalars(
             select(AgentRun)
@@ -167,6 +189,8 @@ def _collect_rows_for_agent_runs(
     mas_test_run_id: str | None = None,
     mas_test_case_run_id: str | None = None,
 ) -> list[dict[str, str]]:
+    """Handle rows for agent runs."""
+    # Keep the main step clear.
     rows: list[dict[str, str]] = []
 
     for agent_run in agent_runs:
@@ -212,6 +236,8 @@ def collect_mas_tool_call_rows(
     *,
     mas_run_id: str,
 ) -> tuple[list[dict[str, str]], int]:
+    """Handle mas tool call rows."""
+    # Keep the main step clear.
     db = SessionLocal()
     try:
         mas_run = db.scalar(select(MASRun).where(MASRun.id == mas_run_id))
@@ -234,6 +260,8 @@ def collect_mas_test_run_tool_call_rows(
     *,
     mas_test_run_id: str,
 ) -> tuple[list[dict[str, str]], int, int]:
+    """Handle mas test run tool call rows."""
+    # Keep the main step clear.
     db = SessionLocal()
     try:
         mas_test_run = db.scalar(select(MasTestRun).where(MasTestRun.id == mas_test_run_id))
@@ -288,6 +316,8 @@ def collect_rows_by_run_id(
     *,
     run_id: str,
 ) -> tuple[list[dict[str, str]], str, int]:
+    """Handle rows by run id."""
+    # Keep the main step clear.
     db = SessionLocal()
     try:
         normalized_id = _normalize_id(run_id)
@@ -308,6 +338,8 @@ def collect_rows_by_run_id(
 
 
 def _default_output_path(run_ids: list[str]) -> Path:
+    """Handle output path."""
+    # Keep the main step clear.
     if len(run_ids) == 1:
         suffix = run_ids[0]
     else:
@@ -316,6 +348,8 @@ def _default_output_path(run_ids: list[str]) -> Path:
 
 
 def main() -> int:
+    """Handle the value."""
+    # Keep the main step clear.
     parser = argparse.ArgumentParser(
         description=(
             "Export tool calls to CSV for either a mas run or a MAS test run. "

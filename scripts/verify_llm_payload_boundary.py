@@ -1,3 +1,5 @@
+"""Verify Llm Payload Boundary script helpers."""
+
 from __future__ import annotations
 
 import json
@@ -17,6 +19,8 @@ from app.agentic.mas_contract import MASState, make_initial_mas_state
 
 
 def _state_with_handoffs() -> MASState:
+    """Handle with handoffs."""
+    # Keep the main step clear.
     state = make_initial_mas_state(
         {
             "chief_complaint": "Chest pain and dizziness",
@@ -63,6 +67,8 @@ def _state_with_handoffs() -> MASState:
 
 
 def _assert_only_llm_payload_is_visible(name: str, payload: Dict[str, Any]) -> None:
+    """Handle only LLM payload is visible."""
+    # Keep the main step clear.
     human_content = SSEHandrolledAgent._payload_to_human_content(payload)
     visible = json.loads(human_content)
 
@@ -92,6 +98,8 @@ def _assert_only_llm_payload_is_visible(name: str, payload: Dict[str, Any]) -> N
 
 
 def main() -> None:
+    """Handle the value."""
+    # Keep the main step clear.
     state = _state_with_handoffs()
     checks = {
         "esi2_payload": build_esi2_payload(state),

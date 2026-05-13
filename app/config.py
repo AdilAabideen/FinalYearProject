@@ -1,3 +1,5 @@
+"""Config module helpers."""
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from pydantic import field_validator
 from pathlib import Path
@@ -18,14 +20,14 @@ class Settings(BaseSettings):
     DATABASE_URL: str = "sqlite:///app.db"
     SQLALCHEMY_ECHO: Union[bool, str] = False
 
-    # Neo4j settings
-    NEO4J_URI: Optional[str] = None
-    NEO4J_USER: Optional[str] = "neo4j"
-    NEO4J_PASSWORD: Optional[str] = None
 
     # LLM / Agentic settings (LangChain / LangGraph)
     OPENAI_API_KEY: Optional[str] = None
     OPENAI_MODEL: str = "gpt-4o-mini"
+    AZURE_OPENAI_API_KEY: Optional[str] = None
+    AZURE_OPENAI_ENDPOINT: Optional[str] = None
+    AZURE_OPENAI_API_VERSION: Optional[str] = None
+    AZURE_OPENAI_DEPLOYMENT_NAME: Optional[str] = None
     # Dr7 settings
     DR7_API_KEY: Optional[str] = None
     DR7_MEDICAL_BASE_URL: str = "https://dr7.ai/api/v1/medical"
@@ -44,11 +46,6 @@ class Settings(BaseSettings):
     # Agent runtime safety
     TEST_CASE_BACKOFF_S: float = 5.0
     MAS_TEST_CASE_BACKOFF_S: float = 20.0
-
-    #LangSmith settings
-    # LANGSMITH_API_KEY: Optional[str] = None
-    # LANGSMITH_PROJECT: Optional[str] = None
-    # LANGCHAIN_TRACING_V2: Union[bool, str] = False
     
     model_config = SettingsConfigDict(
         env_file=str(_REPO_ROOT / ".env"),
@@ -59,6 +56,8 @@ class Settings(BaseSettings):
     @field_validator('DEBUG', mode='before')
     @classmethod
     def parse_debug(cls, v):
+        """Parse debug."""
+        # Keep the output consistent.
         if isinstance(v, bool):
             return v
         if isinstance(v, str):
@@ -68,6 +67,8 @@ class Settings(BaseSettings):
     @field_validator('SQLALCHEMY_ECHO', mode='before')
     @classmethod
     def parse_echo(cls, v):
+        """Parse echo."""
+        # Keep the output consistent.
         if isinstance(v, bool):
             return v
         if isinstance(v, str):
@@ -77,20 +78,12 @@ class Settings(BaseSettings):
     @field_validator('LLAMA_SERVER_SERIAL_REQUESTS', mode='before')
     @classmethod
     def parse_llama_serial_requests(cls, v):
+        """Parse llama serial requests."""
+        # Keep the output consistent.
         if isinstance(v, bool):
             return v
         if isinstance(v, str):
             return v.lower() in ('true', '1', 'yes', 'on')
         return False
 
-    # @field_validator('LANGCHAIN_TRACING_V2', mode='before')
-    # @classmethod
-    # def parse_langchain_tracing(cls, v):
-    #     if isinstance(v, bool):
-    #         return v
-    #     if isinstance(v, str):
-    #         return v.lower() in ('true', '1', 'yes', 'on')
-    #     return False
-
 settings = Settings()
-

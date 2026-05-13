@@ -1,3 +1,5 @@
+"""Tool Protocol module helpers."""
+
 from __future__ import annotations
 
 import json
@@ -17,6 +19,7 @@ def build_tool_instruction(
     highlight_final_answer: bool = True,
 ) -> str:
     """Build a canonical prompt block describing tool-call contract and schemas."""
+    # Build the next value.
     handoff_names = list(handoff_names or [])
     prompt_tools: list[dict[str, Any]] = []
     for tool in tools:
@@ -108,6 +111,7 @@ def build_tool_instruction(
 
 def coerce_bound_tools(bound_tools: Any) -> list[dict[str, Any]]:
     """Keep only dict-like bound tools for prompt/tool-call processing."""
+    # Keep the main step clear.
     if not isinstance(bound_tools, list):
         return []
     return [tool for tool in bound_tools if isinstance(tool, dict)]
@@ -115,6 +119,7 @@ def coerce_bound_tools(bound_tools: Any) -> list[dict[str, Any]]:
 
 def extract_allowed_tool_names(tools: Sequence[dict[str, Any]]) -> AllowedToolNames:
     """Extract an allow-list of tool names from OpenAI-style tool schemas."""
+    # Pull out the needed value.
     allowed_tool_names: AllowedToolNames = {
         tool.get("function", {}).get("name")
         for tool in tools
@@ -134,6 +139,7 @@ def inject_tool_instruction(
     highlight_final_answer: bool = True,
 ) -> list[dict[str, str]]:
     """Inject tool instruction block into the leading system message."""
+    # Keep the main step clear.
     if not tools:
         return messages
 
@@ -163,6 +169,7 @@ def normalize_tool_calls(
     Keep this wrapper for compatibility while internal call-sites migrate to
     `normalize_tool_calls_typed`.
     """
+    # Keep the output consistent.
     typed_calls = normalize_tool_calls_typed(
         raw_tool_calls,
         allowed_tool_names=allowed_tool_names,
@@ -186,6 +193,7 @@ def normalize_tool_calls_typed(
     recovered: bool = False,
 ) -> list[NormalizedToolCall]:
     """Normalize provider/tool-call payloads into provider-agnostic dataclasses."""
+    # Keep the output consistent.
     if not isinstance(raw_tool_calls, list):
         return []
 

@@ -1,3 +1,5 @@
+"""Mas Contract module helpers."""
+
 #MAS Contract
 from __future__ import annotations
 
@@ -26,6 +28,8 @@ def merge_dicts(
     left: Optional[Dict[str, Any]],
     right: Optional[Dict[str, Any]],
 ) -> Dict[str, Any]:
+    """Handle dicts."""
+    # Keep the main step clear.
     merged: Dict[str, Any] = dict(left or {})
     merged.update(right or {})
     return merged
@@ -35,6 +39,8 @@ def merge_unique_lists(
     left: Optional[List[str]],
     right: Optional[List[str]],
 ) -> List[str]:
+    """Handle unique lists."""
+    # Keep the main step clear.
     values: List[str] = []
     for item in list(left or []) + list(right or []):
         if item not in values:
@@ -46,6 +52,8 @@ def take_latest_str(
     left: Optional[str],
     right: Optional[str],
 ) -> Optional[str]:
+    """Handle latest str."""
+    # Keep the main step clear.
     return right if right is not None else left
 
 
@@ -58,6 +66,8 @@ class HandoffEnvelope(BaseModel):
 
     @model_validator(mode="after")
     def validate_route(self) -> "HandoffEnvelope":
+        """Validate route."""
+        # Fail fast on bad input.
         allowed_targets = allowed_handoffs_for(self.from_agent)
         if self.target_agent not in allowed_targets:
             raise ValueError(
@@ -98,6 +108,8 @@ class AgentExecutionResult(BaseModel):
 
     @model_validator(mode="after")
     def validate_contract(self) -> "AgentExecutionResult":
+        """Validate contract."""
+        # Fail fast on bad input.
         if self.status == "handoff" and self.handoff is None:
             raise ValueError("status='handoff' requires a handoff envelope.")
         if self.status == "final":
@@ -141,18 +153,26 @@ allowed_handoffs: Dict[AgentName, FrozenSet[AgentName]] = {
 
 
 def allowed_handoffs_for(agent_name: AgentName) -> FrozenSet[AgentName]:
+    """Handle handoffs for."""
+    # Keep the main step clear.
     return allowed_handoffs.get(agent_name, frozenset())
 
 
 def agent_can_finalize(agent_name: AgentName) -> bool:
+    """Handle can finalize."""
+    # Keep the main step clear.
     return agent_name in finalizing_agents
 
 
 def agent_can_handoff(agent_name: AgentName) -> bool:
+    """Handle can handoff."""
+    # Keep the main step clear.
     return agent_name in handoff_tool_agents
 
 
 def is_parallel_start_agent(agent_name: AgentName) -> bool:
+    """Handle parallel start agent."""
+    # Keep the main step clear.
     return agent_name in parallel_start_agents
 
 
@@ -160,6 +180,8 @@ def make_initial_mas_state(
     case_info: Dict[str, Any],
     execution_context: Optional[Dict[str, Any]] = None,
 ) -> MASState:
+    """Handle initial MAS state."""
+    # Keep the main step clear.
     return {
         "case_info": dict(case_info),
         "execution_context": dict(execution_context or {}),

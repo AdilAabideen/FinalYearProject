@@ -1,3 +1,5 @@
+"""Workflow Definition module helpers."""
+
 from __future__ import annotations
 
 from app.agentic.workflows.workflow_definition import (

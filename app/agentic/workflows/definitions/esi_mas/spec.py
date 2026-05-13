@@ -1,3 +1,5 @@
+"""Spec module helpers."""
+
 from __future__ import annotations
 
 from app.agentic.workflows.definitions.esi_mas.agent_positions import AGENT_POSITIONS_MAP

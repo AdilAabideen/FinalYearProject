@@ -1,3 +1,5 @@
+"""Print Esi1 Handoff Context script helpers."""
+
 from __future__ import annotations
 
 import sys
@@ -21,6 +23,8 @@ from app.agentic.protocols.tool_protocol import build_tool_instruction
 
 
 def main() -> None:
+    """Handle the value."""
+    # Keep the main step clear.
     handoff_tools = create_handoff_tools("esi1_agent", HANDOFFS)
     openai_tools = [convert_to_openai_tool(tool) for tool in handoff_tools]
     handoff_names = [tool.name for tool in handoff_tools]

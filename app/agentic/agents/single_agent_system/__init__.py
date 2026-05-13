@@ -1,3 +1,5 @@
+"""Single Agent System package exports."""
+
 from .schema import SingleAgentInput, SingleAgentOutput
 from .spec import SINGLE_AGENT_SPEC, build_single_agent, run_single_agent
 

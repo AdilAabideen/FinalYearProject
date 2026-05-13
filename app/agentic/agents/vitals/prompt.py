@@ -1,3 +1,5 @@
+"""Prompt module helpers."""
+
 SYSTEM_PROMPT = """
 <system_role>
 You are the Vitals Agent for Emergency Department triage decision-support.

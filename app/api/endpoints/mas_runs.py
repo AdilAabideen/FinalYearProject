@@ -1,3 +1,5 @@
+"""Mas Runs API endpoints."""
+
 from __future__ import annotations
 
 from typing import Optional
@@ -30,11 +32,15 @@ router = APIRouter()
 
 @router.post("", response_model=MASRunCreateResponse)
 def create_mas_run(payload: MASRunCreateRequest, db: Session = Depends(get_db)):
+    """Create mas run."""
+    # Build the new value.
     return mas_runs_service.create_mas_run(payload, db)
 
 
 @router.post("/{mas_run_id}/start", response_model=MASRunRead)
 def start_mas_run(mas_run_id: str, db: Session = Depends(get_db)):
+    """Start mas run."""
+    # Kick off the main step.
     return mas_runs_service.start_mas_run(mas_run_id, db)
 
 
@@ -44,6 +50,8 @@ def update_mas_run(
     payload: MASRunUpdateRequest,
     db: Session = Depends(get_db),
 ):
+    """Update mas run."""
+    # Keep stored state current.
     return mas_runs_service.update_mas_run(
         mas_run_id,
         db,
@@ -62,6 +70,8 @@ def finalize_mas_run(
     payload: MASRunFinalizeRequest,
     db: Session = Depends(get_db),
 ):
+    """Handle mas run."""
+    # Keep the main step clear.
     return mas_runs_service.finalize_mas_run(
         mas_run_id,
         db,
@@ -80,6 +90,8 @@ def list_mas_events(
     limit: int = Query(default=200, ge=1, le=1000),
     db: Session = Depends(get_db),
 ):
+    """List mas events."""
+    # Read the current list.
     return mas_events_service.list_mas_events(mas_run_id, after_seq, limit, db)
 
 
@@ -91,16 +103,22 @@ def stream_mas_events(
     poll_interval_s: float = Query(default=0.25, ge=0.05, le=5.0),
     db: Session = Depends(get_db),
 ):
+    """Stream mas events."""
+    # Keep events flowing.
     return mas_events_service.stream_mas_events(mas_run_id, request, after_seq, poll_interval_s, db)
 
 
 @router.get("/{mas_run_id}/summary", response_model=MASSummaryRead)
 def get_mas_summary(mas_run_id: str, db: Session = Depends(get_db)):
+    """Return mas summary."""
+    # Read the current value.
     return mas_query_service.get_mas_summary(mas_run_id, db)
 
 
 @router.get("/{mas_run_id}/metrics", response_model=MASRunMetricsRead)
 def get_mas_metrics(mas_run_id: str, db: Session = Depends(get_db)):
+    """Return mas metrics."""
+    # Read the current value.
     return mas_query_service.get_mas_metrics(mas_run_id, db)
 
 
@@ -111,6 +129,8 @@ def list_mas_agents(
     offset: int = Query(default=0, ge=0),
     db: Session = Depends(get_db),
 ):
+    """List mas agents."""
+    # Read the current list.
     return mas_query_service.list_mas_agents(mas_run_id, db, limit=limit, offset=offset)
 
 
@@ -121,6 +141,8 @@ def list_mas_handoffs(
     offset: int = Query(default=0, ge=0),
     db: Session = Depends(get_db),
 ):
+    """List mas handoffs."""
+    # Read the current list.
     return mas_query_service.list_mas_handoffs(mas_run_id, db, limit=limit, offset=offset)
 
 
@@ -131,6 +153,8 @@ def list_mas_gate_evaluations(
     offset: int = Query(default=0, ge=0),
     db: Session = Depends(get_db),
 ):
+    """List mas gate evaluations."""
+    # Read the current list.
     return mas_query_service.list_mas_gate_evaluations(
         mas_run_id,
         db,
@@ -141,11 +165,15 @@ def list_mas_gate_evaluations(
 
 @router.get("/{mas_run_id}/final-output", response_model=MASFinalOutputRead)
 def get_mas_final_output(mas_run_id: str, db: Session = Depends(get_db)):
+    """Return mas final output."""
+    # Read the current value.
     return mas_query_service.get_mas_final_output(mas_run_id, db)
 
 
 @router.get("/{mas_run_id}", response_model=MASRunRead)
 def get_mas_run(mas_run_id: str, db: Session = Depends(get_db)):
+    """Return mas run."""
+    # Read the current value.
     return mas_runs_service.get_mas_run(mas_run_id, db)
 
 
@@ -158,6 +186,8 @@ def list_mas_runs(
     order: str = Query(default="desc", pattern="^(asc|desc)$"),
     db: Session = Depends(get_db),
 ):
+    """List mas runs."""
+    # Read the current list.
     return mas_runs_service.list_mas_runs(
         db,
         workflow_id=workflow_id,

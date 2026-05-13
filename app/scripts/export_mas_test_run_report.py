@@ -1,3 +1,5 @@
+"""Export Mas Test Run Report script helpers."""
+
 from __future__ import annotations
 
 import argparse
@@ -54,6 +56,8 @@ class ExportBundle:
 
 
 def _model_name_for_bundle(bundle: ExportBundle) -> str:
+    """Handle name for bundle."""
+    # Keep the main step clear.
     if bundle.mas_test_run and bundle.mas_test_run.model_name:
         return bundle.mas_test_run.model_name
     model_names = sorted({row.model_name for row in bundle.agent_runs if row.model_name})
@@ -65,10 +69,14 @@ def _model_name_for_bundle(bundle: ExportBundle) -> str:
 
 
 def _json_dumps(value: Any) -> str:
+    """Handle dumps."""
+    # Keep the main step clear.
     return json.dumps(value, ensure_ascii=False, default=str)
 
 
 def _preview(value: Any, limit: int = PREVIEW_LEN) -> str:
+    """Handle the value."""
+    # Keep the main step clear.
     if value is None:
         return ""
     if isinstance(value, str):
@@ -80,6 +88,8 @@ def _preview(value: Any, limit: int = PREVIEW_LEN) -> str:
 
 
 def _dt(value: Any) -> str:
+    """Handle the value."""
+    # Keep the main step clear.
     if value is None:
         return ""
     if isinstance(value, datetime):
@@ -88,12 +98,16 @@ def _dt(value: Any) -> str:
 
 
 def _duration_s(started_at: datetime | None, finished_at: datetime | None) -> str:
+    """Handle s."""
+    # Keep the main step clear.
     if started_at is None or finished_at is None:
         return ""
     return f"{(finished_at - started_at).total_seconds():.3f}"
 
 
 def _write_csv(path: Path, rows: list[dict[str, Any]], fieldnames: list[str] | None = None) -> None:
+    """Handle csv."""
+    # Keep the main step clear.
     path.parent.mkdir(parents=True, exist_ok=True)
     if fieldnames is None:
         keys: list[str] = []
@@ -112,12 +126,16 @@ def _write_csv(path: Path, rows: list[dict[str, Any]], fieldnames: list[str] | N
 
 
 def _safe_json(value: Any) -> Any:
+    """Handle json."""
+    # Keep the main step clear.
     if isinstance(value, (dict, list)):
         return value
     return value
 
 
 def _classify_agent_failure(agent_run: AgentRun) -> str:
+    """Handle agent failure."""
+    # Keep the main step clear.
     output = dict(agent_run.output_json or {})
     raw_result = dict(output.get("raw_result") or {})
     raw_output = raw_result.get("raw_output") or ""
@@ -148,6 +166,8 @@ def _classify_agent_failure(agent_run: AgentRun) -> str:
 
 
 def _collect_bundle(mas_test_run_id: str) -> ExportBundle:
+    """Handle bundle."""
+    # Keep the main step clear.
     ensure_runtime_schema_upgrades()
     db = SessionLocal()
     try:
@@ -247,6 +267,8 @@ def _collect_bundle_for_mas_runs(
     *,
     label: str | None = None,
 ) -> ExportBundle:
+    """Handle bundle for MAS runs."""
+    # Keep the main step clear.
     ensure_runtime_schema_upgrades()
     normalized_ids = [str(run_id).strip() for run_id in mas_run_ids if str(run_id).strip()]
     if not normalized_ids:
@@ -350,6 +372,8 @@ def _collect_bundle_for_mas_runs(
 
 
 def _build_mas_test_run_rows(bundle: ExportBundle) -> list[dict[str, Any]]:
+    """Build mas test run rows."""
+    # Build the next value.
     run = bundle.mas_test_run
     succeeded = sum(1 for row in bundle.case_runs if row.status == "succeeded")
     failed = sum(1 for row in bundle.case_runs if row.status == "failed")
@@ -378,6 +402,8 @@ def _build_mas_test_run_rows(bundle: ExportBundle) -> list[dict[str, Any]]:
 
 
 def _build_case_run_rows(bundle: ExportBundle) -> list[dict[str, Any]]:
+    """Build case run rows."""
+    # Build the next value.
     rows: list[dict[str, Any]] = []
     for row in bundle.case_runs:
         test_case = bundle.test_cases.get(row.test_case_id)
@@ -406,6 +432,8 @@ def _build_case_run_rows(bundle: ExportBundle) -> list[dict[str, Any]]:
 
 
 def _build_mas_run_rows(bundle: ExportBundle) -> list[dict[str, Any]]:
+    """Build mas run rows."""
+    # Build the next value.
     agent_runs_by_mas: dict[str, list[AgentRun]] = defaultdict(list)
     for row in bundle.agent_runs:
         if row.mas_run_id:
@@ -452,6 +480,8 @@ def _build_mas_run_rows(bundle: ExportBundle) -> list[dict[str, Any]]:
 
 
 def _build_mas_metric_rows(bundle: ExportBundle) -> list[dict[str, Any]]:
+    """Build mas metric rows."""
+    # Build the next value.
     rows: list[dict[str, Any]] = []
     for metric in bundle.mas_metrics.values():
         rows.append(
@@ -484,6 +514,8 @@ def _build_mas_metric_rows(bundle: ExportBundle) -> list[dict[str, Any]]:
 
 
 def _build_mas_event_rows(bundle: ExportBundle) -> list[dict[str, Any]]:
+    """Build mas event rows."""
+    # Build the next value.
     return [
         {
             "mas_run_id": row.mas_run_id,
@@ -506,6 +538,8 @@ def _build_mas_event_rows(bundle: ExportBundle) -> list[dict[str, Any]]:
 
 
 def _build_handoff_rows(bundle: ExportBundle) -> list[dict[str, Any]]:
+    """Build handoff rows."""
+    # Build the next value.
     return [
         {
             "handoff_id": row.id,
@@ -530,6 +564,8 @@ def _build_handoff_rows(bundle: ExportBundle) -> list[dict[str, Any]]:
 
 
 def _build_final_output_rows(bundle: ExportBundle) -> list[dict[str, Any]]:
+    """Build final output rows."""
+    # Build the next value.
     return [
         {
             "final_output_id": row.id,
@@ -548,6 +584,8 @@ def _build_final_output_rows(bundle: ExportBundle) -> list[dict[str, Any]]:
 
 
 def _build_agent_run_rows(bundle: ExportBundle) -> list[dict[str, Any]]:
+    """Build agent run rows."""
+    # Build the next value.
     events_by_run: dict[str, list[AgentEvent]] = defaultdict(list)
     for row in bundle.agent_events:
         events_by_run[row.run_id].append(row)
@@ -602,6 +640,8 @@ def _build_agent_run_rows(bundle: ExportBundle) -> list[dict[str, Any]]:
 
 
 def _build_agent_event_rows(bundle: ExportBundle) -> list[dict[str, Any]]:
+    """Build agent event rows."""
+    # Build the next value.
     return [
         {
             "agent_run_id": row.run_id,
@@ -622,6 +662,8 @@ def _build_agent_event_rows(bundle: ExportBundle) -> list[dict[str, Any]]:
 
 
 def _build_agent_llm_call_rows(bundle: ExportBundle) -> list[dict[str, Any]]:
+    """Build agent LLM call rows."""
+    # Build the next value.
     return [
         {
             "agent_run_id": row.run_id,
@@ -652,6 +694,8 @@ def _build_agent_llm_call_rows(bundle: ExportBundle) -> list[dict[str, Any]]:
 
 
 def _build_tool_call_rows(bundle: ExportBundle) -> list[dict[str, Any]]:
+    """Build tool call rows."""
+    # Build the next value.
     events_by_run: dict[str, list[AgentEvent]] = defaultdict(list)
     for row in bundle.agent_events:
         events_by_run[row.run_id].append(row)
@@ -702,6 +746,8 @@ def _build_tool_call_rows(bundle: ExportBundle) -> list[dict[str, Any]]:
 
 
 def _build_metrics_rollup_rows(bundle: ExportBundle) -> list[dict[str, Any]]:
+    """Build metrics rollup rows."""
+    # Build the next value.
     rows: list[dict[str, Any]] = []
 
     by_agent: dict[str, list[AgentRun]] = defaultdict(list)
@@ -758,6 +804,8 @@ def _build_metrics_rollup_rows(bundle: ExportBundle) -> list[dict[str, Any]]:
 
 
 def _build_summary_markdown(bundle: ExportBundle) -> str:
+    """Build summary markdown."""
+    # Build the next value.
     total_case_runs = len(bundle.case_runs)
     succeeded_case_runs = sum(1 for row in bundle.case_runs if row.status == "succeeded")
     failed_case_runs = sum(1 for row in bundle.case_runs if row.status == "failed")
@@ -841,6 +889,8 @@ def _build_summary_markdown(bundle: ExportBundle) -> str:
 
 
 def export_mas_test_run_report(mas_test_run_id: str, output_root: Path) -> Path:
+    """Handle mas test run report."""
+    # Keep the main step clear.
     bundle = _collect_bundle(mas_test_run_id)
     out_dir = output_root / bundle.report_id
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -867,6 +917,8 @@ def export_mas_run_group_report(
     *,
     label: str | None = None,
 ) -> Path:
+    """Handle mas run group report."""
+    # Keep the main step clear.
     bundle = _collect_bundle_for_mas_runs(mas_run_ids, label=label)
     out_dir = output_root / bundle.report_id
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -888,6 +940,8 @@ def export_mas_run_group_report(
 
 
 def main() -> int:
+    """Handle the value."""
+    # Keep the main step clear.
     parser = argparse.ArgumentParser(description="Export a MAS test run report or a mas-run-group report.")
     parser.add_argument("mas_test_run_id", nargs="?", help="MAS test run id to export")
     parser.add_argument(

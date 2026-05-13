@@ -1,19 +1,19 @@
 [
   {
     "input": {
-      "gender": "M",
-      "race": "WHITE",
+      "gender": "F",
+      "race": "UNKNOWN",
       "arrival_transport": "AMBULANCE",
-      "pain": "8",
-      "chiefcomplaint": "s/p Fall, Head injury",
-      "age": 79.03214573,
-      "tiragecase": "79-year-old white male with a history of depression, acute congestive heart failure, status post mitral valve repair with quadruple CABG, prostate cancer post-TURP, obstructive sleep apnea, hypertension, and Alzheimer's disease, presented to the ED with a chief complaint of head injury following an unwitnessed fall. He was found by a passerby, acutely confused, disoriented, and with associated nausea and vomiting. The patient is amnestic to the events surrounding the trauma, recalling only going for a walk. He arrived by ambulance. Initial vital signs were BP 166/72, HR 68, RR 16, SpO2 98%, with severe pain rated at 8/10. The patient has no known allergies.",
+      "pain": "0",
+      "chiefcomplaint": "Unresponsive",
+      "age": 68.0,
+      "tiragecase": "Synthetic test case. Older adult brought by ambulance after being found unresponsive at home. Minimal respiratory effort is reported by EMS and the patient does not respond to voice.",
       "temperature": null,
-      "heartrate": 68.0,
-      "resprate": 16.0,
-      "o2sat": 98.0,
-      "sbp": 166.0,
-      "dbp": 72.0
+      "heartrate": 42.0,
+      "resprate": 8.0,
+      "o2sat": 82.0,
+      "sbp": 78.0,
+      "dbp": 46.0
     },
     "output": {
       "acuity": "1"
@@ -22,958 +22,158 @@
   {
     "input": {
       "gender": "M",
-      "race": "WHITE",
+      "race": "UNKNOWN",
       "arrival_transport": "AMBULANCE",
-      "pain": "6",
-      "chiefcomplaint": "Head lac, s/p Fall",
-      "age": 52.21801877,
-      "tiragecase": "A 45-year-old white male with a history of intractable epilepsy presents to the ED after experiencing a seizure resulting in a fall and forehead laceration. The patient reports approximately three seizures per month but is not currently on any antiepileptic drugs (AEDs). He experienced multiple typical seizures during evaluation, characterized by unresponsiveness, inappropriate laughter, tachycardia, and postictal confusion. Vital signs on arrival: HR 70, RR 18, BP 145/80, SpO2 95%, T 97.3掳F, pain 6/10. Past medical history includes kidney stones and surgery for bilateral clubbed feet. The patient arrived by ambulance and has no known allergies.",
-      "temperature": 97.3,
-      "heartrate": 70.0,
-      "resprate": 18.0,
+      "pain": "9",
+      "chiefcomplaint": "Severe chest pain",
+      "age": 59.0,
+      "tiragecase": "Synthetic test case. Adult with sudden crushing central chest pain radiating to the left arm, diaphoresis, and shortness of breath. Alert on arrival but appears high risk.",
+      "temperature": 98.4,
+      "heartrate": 112.0,
+      "resprate": 24.0,
       "o2sat": 95.0,
-      "sbp": 145.0,
+      "sbp": 154.0,
+      "dbp": 92.0
+    },
+    "output": {
+      "acuity": "2"
+    }
+  },
+  {
+    "input": {
+      "gender": "F",
+      "race": "UNKNOWN",
+      "arrival_transport": "WALK IN",
+      "pain": "7",
+      "chiefcomplaint": "Right lower abdominal pain",
+      "age": 27.0,
+      "tiragecase": "Synthetic test case. Young adult with one day of worsening right lower abdominal pain, nausea, reduced appetite, and localized tenderness. No collapse or respiratory compromise.",
+      "temperature": 99.5,
+      "heartrate": 102.0,
+      "resprate": 18.0,
+      "o2sat": 99.0,
+      "sbp": 122.0,
+      "dbp": 76.0
+    },
+    "output": {
+      "acuity": "3"
+    }
+  },
+  {
+    "input": {
+      "gender": "M",
+      "race": "UNKNOWN",
+      "arrival_transport": "WALK IN",
+      "pain": "5",
+      "chiefcomplaint": "Ankle injury",
+      "age": 31.0,
+      "tiragecase": "Synthetic test case. Adult twisted an ankle while running. Able to speak in full sentences and has isolated swelling and pain with weight bearing difficulty.",
+      "temperature": 98.1,
+      "heartrate": 88.0,
+      "resprate": 16.0,
+      "o2sat": 99.0,
+      "sbp": 128.0,
       "dbp": 80.0
     },
     "output": {
-      "acuity": "2"
+      "acuity": "4"
     }
   },
   {
     "input": {
-      "gender": "M",
-      "race": "WHITE",
-      "arrival_transport": "AMBULANCE",
-      "pain": "10",
-      "chiefcomplaint": "Epigastric pain",
-      "age": 62.11705238,
-      "tiragecase": "A 61-year-old male presented to the emergency department via ambulance with a chief complaint of severe right upper quadrant abdominal pain, rated 10/10, accompanied by nausea, vomiting, constipation, and reduced oral intake. He has a significant medical history, including coronary artery disease, hypertension, hyperlipidemia, left ventricular hypertrophy, cholelithiasis, diverticulosis, colon adenoma, and a previous lacunar infarction. Earlier in the day, he was discharged with a diagnosis of gallstones and advised to follow up for surgery but returned with exacerbated symptoms. On arrival, his vital signs showed hypertension (BP 184/0) and hypothermia (T 96.6掳F).",
-      "temperature": 96.6,
-   heartrate": 85.0,
-      "resprate": 16.0,
-      "o2sat": 97.0,
-      "sbp": 184.0,
-      "dbp": null
+      "gender": "F",
+      "race": "UNKNOWN",
+      "arrival_transport": "WALK IN",
+      "pain": "2",
+      "chiefcomplaint": "Medication refill request",
+      "age": 44.0,
+      "tiragecase": "Synthetic test case. Adult presents requesting a refill for a chronic medication after running out. No acute symptoms, no distress, and normal examination at triage.",
+      "temperature": 98.2,
+      "heartrate": 74.0,
+      "resprate": 14.0,
+      "o2sat": 100.0,
+      "sbp": 118.0,
+      "dbp": 72.0
     },
     "output": {
-      "acuity": "2"
+      "acuity": "5"
     }
   },
   {
     "input": {
       "gender": "M",
-      "race": "WHITE",
+      "race": "UNKNOWN",
       "arrival_transport": "AMBULANCE",
       "pain": "Critical",
-      "chiefcomplaint": "Transfer, Respiratory distress",
-      "age": 53.46908207,
-      "tiragecase": "A 53-year-old white male with a history of COPD, CHF, renal infarction on hemodialysis, chronic aortic thrombosis status post recent stenting, hyperlipidemia, non-ischemic cardiomyopathy, chronic kidney disease, tobacco use, and hepatitis C infection presented to the ED with respiratory distress and dyspnea. The patient experienced an acute onset of shortness of breath and a strange chest sensation early in the morning. He reported recent fevers, chills, sore throat, and diarrhea but denied chest pain, shortness of breath, palpitations, nausea, pedal edema, or lightheadedness at the time of presentation. The patient arrived by ambulance and has no known drug allergies. Given his history and current presentation, he requires close monitoring and supportive care in the ED.",
-      "temperature": null,
-      "heartrate": null,
-      "resprate": null,
-      "o2sat": null,
-      "sbp": null,
-      "dbp": null
-    },
-    "output": {
-      "acuity": "1"
-    }
-  },
-  {
-    "input": {
-      "gender": "M",
-      "race": "WHITE",
-      "arrival_transport": "AMBULANCE",
-      "pain": "uta",
-      "chiefcomplaint": "Chest pain",
-      "age": 63.81083037,
-      "tiragecase": "A 63-year-old male with a history of aortic regurgitation, mechanical aortic valve placement, ascending aortic aneurysm repair, diabetes, hypertension, and hyperlipidemia presents to the ED via ambulance with a chief complaint of palpitations and dizziness. On arrival, vital signs were absent, indicating a potential cardiac emergency. The patient has a history of ventricular tachycardia and recent ICD placement. For the past two days, he experienced lightheadedness, resolving initially but recurring last night. He denies recent chest pain, fever, cough, leg pain, swelling, abdominal pain, nausea, or vomiting. He has no known allergies. Immediate resuscitation with ACLS measures is required.",
-      "temperature": null,
-      "heartrate": null,
-      "resprate": null,
-      "o2sat": null,
-      "sbp": null,
-      "dbp": null
-    },
-    "output": {
-      "acuity": "1"
-    }
-  },
-  {
-    "input": {
-      "gender": "M",
-      "race": "WHITE",
-      "arrival_transport": "WALK IN",
-      "pain": "8",
-      "chiefcomplaint": "Chest pain, Dyspnea",
-      "age": 53.42544091,
-      "tiragecase": "53-year-old white male with a history of HCV/EtOH cirrhosis (on Harvoni), COPD with ongoing tobacco use, IDDM, and jugular vein thrombosis (on warfarin), presented to the ED with a chief complaint of chest pain and dyspnea. The patient was referred from a liver clinic due to a 3-day history of intermittent, productive cough with scant yellow sputum and sharp, central chest pain that occurs with coughing. The patient also reported fatigue, mild dyspnea on exertion, and wheezing. There were no symptoms of dyspnea at rest, upper respiratory symptoms, subjective fevers, chills, headache, nausea, vomiting, diarrhea, abdominal pain, dysuria, rashes, melena, hematochezia, orthopnea, paroxysmal nocturnal dyspnea (PND), or edema. The patient walked into the ED and has allergies to codeine and penicillins. BP 119/71, P 91, RR 22, SpO2 97%, T 98.9掳 F, Pain 8.",
-      "temperature": 98.9,
-      "heartrate": 91.0,
-      "resprate": 22.0,
-      "o2sat": 97.0,
-      "sbp": 119.0,
-      "dbp": 71.0
-    },
-    "output": {
-      "acuity": "2"
-    }
-  },
-  {
-    "input": {
-      "gender": "M",
-      "race": "WHITE",
-      "arrival_transport": "WALK IN",
-      "pain": "0",
-      "chiefcomplaint": "L Weakness",
-      "age": 78.62967392,
-      "tiragecase": "A 76-year-old male with a significant medical history presented to the ED with a chief complaint of left-sided weakness and sensory changes. The patient deribes difficulties with lifting his left leg and arm, gripping objects, and feeling clumsy with his left hand. He also reports numbness extending to his mid-calf and mid-forearm. The symptoms developed gradually, with no associated headache, vision changes, speech difficulties, chest pain, or shortness of breath. The patient experienced a fall without headstrike the day before presentation. Allergies include iodine-containing products, sulfa antibiotics, aspirin, and NSAIDs. The patient, who walked into the ED, is currently under neurosurgery service.",
-      "temperature": 98.7,
-      "heartrate": 80.0,
-      "resprate": 16.0,
-      "o2sat": 99.0,
-      "sbp": 115.0,
-      "dbp": 67.0
-    },
-    "output": {
-      "acuity": "1"
-    }
-  },
-  {
-    "input": {
-      "gender": "M",
-      "race": "WHITE",
-      "arrival_transport": "AMBULANCE",
-      "pain": null,
-      "chiefcomplaint": "Unresponsive, Respiratory distress",
-      "age": 91.03527152,
-      "tiragecase": "The patient is a 91-year-old male with a recent history of a massive stroke two weeks ago, leading to decreased responsiveness and respiratory distress. He arrived at the ED unresponsive. Initial vital signs indicated hypotension (73/48) and a heart rate of 105. The patient was obtunded with shallow respirations. He was transported by ambulance and had no known allergies.",
-      "temperature": null,
-      "heartrate": null,
-      "resprate": null,
-      "o2sat": null,
-      "sbp": null,
-      "dbp": null
-    },
-    "output": {
-      "acuity": "1"
-    }
-  },
-  {
-    "input": {
-      "gender": "M",
-      "race": "WHITE",
-      "arrival_transport": "AMBULANCE",
-      "pain": "10",
-      "chiefcomplaint": "Difficulty swallowing, Transfer",
-      "age": 64.35184435,
-      "tiragecase": "64-year-old white male with a history of type II diabetes mellitus, hypercholesterolemia, depression, anxiety, and chronic neck and low back pain. Recently underwent C5 corpectomy and C6-7 ACDF. He presents with difficulty swallowing, increased swelling around the surgical incision, and hoarseness. Unable to swallow pills or water, regurgitating attempts. Reports no stridor or breathing difficulties. Recently used cocaine, contributing to hypertensive urgency with BP at 180/104, headache, and chest pain. Arrived by ambulance, allergic to Tegretol.",
-      "temperature": 97.9,
-      "heartrate": 87.0,
-      "resprate": 18.0,
-      "o2sat": 94.0,
-      "sbp": 180.0,
-      "dbp": 104.0
-    },
-    "output": {
-      "acuity": "2"
-    }
-  },
-  {
-    "input": {
-      "gender": "M",
-      "race": "WHITE",
-      "arrival_transport": "UNKNOWN",
-      "pain": "13",
-      "chiefcomplaint": "#NAME?",
-      "age": 55.43337918,
-      "tiragecase": "A 49-year-old male with a significant medical history including end-stage renal disease on hemodialysis, coronary artery disease, congestive heart failure, type 2 diabetes mellitus, and recent hospitalization for wet gangrene and osteomyelitis, presents with fever and signs of sepsis, including hypotension and tachycardia. The patient also exhibits intermittent agitation and anxiety. He is allergic to dobutamine.",
-      "temperature": 95.6,
-      "heartrate": 79.0,
-      "resprate": 20.0,
-      "o2sat": 96.0,
-      "sbp": 136.0,
-      "dbp": 84.0
-    },
-    "output": {
-      "acuity": "2"
-    }
-  },
-  {
-    "input": {
-      "gender": "M",
-      "race": "BLACK/AFRICAN AMERICAN",
-      "arrival_transport": "WALK IN",
-      "pain": "5",
-      "chiefcomplaint": "Chest pain",
-      "age": 54.53502122,
-      "tiragecase": "A 49-year-old African American male presents to the ED with a chief complaint of chest pain. He has a significant medical history, including paroxysmal atrial fibrillation (currently not on anticoagulation), cervical cord compression with associated complications, and a history of substance use (tobacco, alcohol, and IVDU on methadone). The patient describes his chest pain as sub-sternal, radiating to the left arm and jaw, with associated diaphoresis, shortness of breath, and palpitations. The pain occurs at rest, and he reports worsening orthopnea over the past two months. Vital signs are stable, and he has no known drug allergies. The patient walked into the ED and is currently not on anticoagulation despite atrial fibrillation.",
-      "temperature": 97.5,
-      "heartrate": 86.0,
-      "resprate": 18.0,
-      "o2sat": 99.0,
-      "sbp": 139.0,
-      "dbp": 84.0
-    },
-    "output": {
-      "acuity": "2"
-    }
-  },
-  {
-    "input": {
-      "gender": "F",
-      "race": "WHITE",
-      "arrival_transport": "AMBULANCE",
-      "pain": "0",
-      "chiefcomplaint": "Fever, Pneumonia, Transfer",
-      "age": 78.39096415,
-      "tiragecase": "A 78-year-old white female with a complex medical history including hypertension, type 2 diabetes mellitus, hypothyroidism, chronic kidney disease stage 3, polymyalgia rheumatica, hyperlipidemia, anemia, hyperparathyroidism, and recent metastatic malignancy status post resection of a cerebellar mass presents to the emergency department with fever, presumed pneumonia, and shock. She arrives via ambulance. The patient has experienced severe hypotension and supraventricular tachycardia (SVT). She was recently intubated for airway protection and had a central line placed for vascular access. Her vital signs on arrival were BP 120/58, HR 150, RR 20, SpO2 97%, and temperature 98.8掳 F, with no reported pain. The patient has a known allergy to penicillins.",
-      "temperature": 98.8,
-      "heartrate": 150.0,
-      "resprate": 20.0,
-      "o2sat": 97.0,
-      "sbp": 120.0,
-      "dbp": 58.0
-    },
-    "output": {
-      "acuity": "1"
-    }
-  },
-  {
-    "input": {
-      "gender": "M",
-      "race": "WHITE - RUSSIAN",
-      "arrival_transport": "AMBULANCE",
-      "pain": "13",
-      "chiefcomplaint": "Weakness, Hypotension",
-      "age": 75.26375891,
-      "tiragecase": "A 70-year-old male with a history of coronary artery disease, heart failure, COPD, and presumed cholangiocarcinoma presents to the ED via ambulance with weakness, fatigue, and hypotension (BP 74/47, P 58). He is on home oxygen (3L O2 by nasalannula) and reports decreased oral intake, generalized weakness, dehydration, and nausea with nonbloody emesis. Allergies include penicillins, lisinopril, angiotensin receptor antagonist, nifedipine, and furosemide. The patient expressed a strong desire for comfort measures, opting to avoid further invasive procedures.",
-      "temperature": null,
-      "heartrate": 58.0,
-      "resprate": null,
-      "o2sat": 96.0,
-      "sbp": 74.0,
-      "dbp": 47.0
-    },
-    "output": {
-      "acuity": "1"
-    }
-  },
-  {
-    "input": {
-      "gender": "F",
-      "race": "PATIENT DECLINED TO ANSWER",
-      "arrival_transport": "UNKNOWN",
-      "pain": "4",
-      "chiefcomplaint": "BASIC TRAUMA",
-      "age": 91.80183709,
-      "tiragecase": "A 91-year-old female with a history of Parkinson's disease and hypoglycemia presented to the ED following a mechanical fall that resulted in right-sided chest pain. Upon arrival, her vital signs were HR 96, RR 19, BP 157/77, SpO2 100%, and pain level 4.",
-      "temperature": null,
-      "heartrate": 96.0,
-      "resprate": 19.0,
-      "o2sat": 100.0,
-      "sbp": 157.0,
-      "dbp": 77.0
-    },
-    "output": {
-      "acuity": "1"
-    }
-  },
-  {
-    "input": {
-      "gender": "F",
-      "race": "WHITE - RUSSIAN",
-      "arrival_transport": "AMBULANCE",
-      "pain": "0",
-      "chiefcomplaint": "Dyspnea, Pedal edema",
-      "age": 82.96188547,
-      "tiragecase": "A 72-year-old female with a complex medical history including heart failure, aortic stenosis, history of strokes, COPD, and chronic urinary retention with a Foley catheter, presents to the emergency department with shortness of breath, chest pain, and bilateral pedal edema. The patient reports a one-week history of worsening shortness of breath and pedal edema, along with intermittent left-sided chest and arm pain. On the day of admission, she experienced worsening shortness of breath, requiring oxygen supplementation. The patient denies cough, fever, abdominal pain, or recent weight gain. She was transported by ambulance and has no known drug allergies.",
-      "temperature": 98.5,
-      "heartrate": 95.0,
-      "resprate": 18.0,
-      "o2sat": 100.0,
-      "sbp": 160.0,
+      "chiefcomplaint": "Respiratory distress",
+      "age": 73.0,
+      "tiragecase": "Synthetic test case. Older adult with severe respiratory distress, accessory muscle use, cyanosis, and inability to speak full sentences. EMS reports rapid deterioration during transport.",
+      "temperature": 100.1,
+      "heartrate": 128.0,
+      "resprate": 32.0,
+      "o2sat": 84.0,
+      "sbp": 86.0,
       "dbp": 54.0
     },
     "output": {
-      "acuity": "3"
+      "acuity": "1"
     }
   },
   {
     "input": {
-      "gender": "M",
-      "race": "WHITE",
+      "gender": "F",
+      "race": "UNKNOWN",
       "arrival_transport": "WALK IN",
       "pain": "8",
-      "chiefcomplaint": "RECTAL ABSCESS",
-      "age": 45.78984177,
-      "tiragecase": "A 41-year-old white male with a complex medical history including HIV, diabetes mellitus type 2, hidradenitis suppurativa, chronic renal insufficiency, hyperlipidemia, asthma, obstructive sleep apnea, and obesity, presents with a chief complaint of perianal abscess. The patient experiences significant pain exacerbated by sitting, similar to previous abscess episodes, but denies fever, chills, drainage, diarrhea, or bloody stools. He has a history of internal anal condylomata excision and appendectomy. The patient is allergic to erythromycin base. He walked into the ED with vital signs: HR 98, RR 18, BP 126/71, SpO2 100%, Temp 97.8掳F, and pain rated 8.",
-      "temperature": 97.8,
-      "heartrate": 98.0,
-      "resprate": 18.0,
-      "o2sat": 100.0,
-      "sbp": 126.0,
-      "dbp": 71.0
-    },
-    "output": {
-      "acuity": "3"
-    }
-  },
-  {
-    "input": {
-      "gender": "M",
-      "race": "WHITE",
-      "arrival_transport": "AMBULANCE",
-      "pain": "1",
-      "chiefcomplaint": "Chest pain",
-      "age": 80.61459252,
-      "tiragecase": "An 80-year-old male with a history of COPD, CAD, CKD, gout, arthritis, and a massive GI bleed presented to the ED with sudden onset of sharp left-sided chest pain. The pain was described as \"like a knife,\" exacerbated by deep breaths, and accompanied by bilateral calf pain. The patient has been undergoing non-operative management for a distal right femur fracture and reports a recent diagnosis of C diff following antibiotics for aspiration pneumonia. He arrived by ambulance and is allergic to aspirin, codeine, ibuprofen, iodinated contrast med, NSAIDs, penicillins, and sulfa antibiotics. Vital signs on arrival were stable, with a heart rate of 82, respiratory rate of 18, blood pressure of 116/62, SpO2 of 95%, and temperature of 98.0掳F, with a reported pain level of 1.",
-      "temperature": 98.0,
-      "heartrate": 82.0,
-      "resprate": 18.0,
-      "o2sat": 95.0,
-      "sbp": 116.0,
-      "dbp": 62.0
-    },
-    "output": {
-      "acuity": "3"
-    }
-  },
-  {
-    "input": {
-      "gender": "M",
-      "race": "UNKNOWN",
-      "arrival_transport": "UNKNOWN",
-      "pain": "unable",
-      "chiefcomplaint": "Transfer, Intubated",
-      "age": 72.83718276,
-      "tiragecase": "A 72-year-old male with a complex medical history, including COPD on home O2, atrial fibrillation (on Pradaxa), coronary artery disease with a history of myocardial infarction, bladder cancer, melanoma, hypertension, hyperlipidemia, rheumatoid arthritis, and moderate pulmonary hypertension, was transferred to the ED intubated due to severe respiratory failure. The patient had been discharged the previous day after a COPD exacerbation but became progressively dyspneic, leading to intubation for hypoxemic and hypercarbic respiratory failure. On arrival, the patient was sedated and intubated, with a history of recent use of accessory muscles and diffuse wheezing. The patient's wife reported recent cold virus exposure and progressive dyspnea post-discharge.",
-      "temperature": null,
-      "heartrate": null,
-      "resprate": null,
-      "o2sat": null,
-      "sbp": null,
-      "dbp": null
-    },
-    "output": {
-      "acuity": "1"
-    }
-  },
-  {
-    "input": {
-      "gender": "F",
-      "race": "WHITE",
-      "arrival_transport": "AMBULANCE",
-      "pain": null,
-      "chiefcomplaint": "ALTERED LEVEL OF CONSCIOUSNESS",
-      "age": 76.49987786,
-      "tiragecase": "A 76-year-old white female with a history of gliomatosis cerebri and seizure disorder was found unresponsive by her daughter. The patient was normal last night but showed confusion and disorientation before bed. This morning, she was found unresponsive in bed, not moving her left side, foaming at the mouth, and incontinent of urine. Upon EMS arrival, she was not protecting her airway and was intubated for airway protection. Neurological examination revealed eye deviation to the right and left-sided hemiparesis. Her past medical history includes hypercholesterolemia, hypothyroidism, leukopenia, polymyalgia rheumatica, hematuria, and optic disc drusen. No known allergies. She arrived by ambulance. Immediate neurological and cardiac assessments are essential.",
-      "temperature": null,
-      "heartrate": null,
-      "resprate": null,
-      "o2sat": null,
-      "sbp": null,
-      "dbp": null
-    },
-    "output": {
-      "acuity": "1"
-    }
-  },
-  {
-    "input": {
-      "gender": "F",
-      "race": "WHITE - RUSSIAN",
-      "arrival_transport": "AMBULANCE",
-      "pain": null,
-      "chiefcomplaint": "DYSPNEA",
-      "age": 83.07913802,
-      "tiragecase": "82-year-old White Russian female with a history of CAD, DM II, HTN, and metastatic renal cell carcinoma, recently discharged after a CHF exacerbation requiring non-invasive positive pressure ventilation. She presents with acute shortness of breath and decompensated to acute respiratory failure in the ED. She has a history of multiple hospitalizations for pneumonia, NSTEMI, STEMI, and sCHF exacerbation. Accompanied by her granddaughter, she developed acute respiratory distress at her nursing facility before being transferred to the ED. In the ED, initial vital signs: 160 160/80 35.",
-      "temperature": null,
-      "heartrate": null,
-      "resprate": 38.0,
-      "o2sat": null,
-      "sbp": null,
-      "dbp": null
-    },
-    "output": {
-      "acuity": "1"
-    }
-  },
-  {
-    "input": {
-      "gender": "M",
-      "race": "WHITE",
-      "arrival_transport": "WALK IN",
-      "pain": "0",
-      "chiefcomplaint": "Weakness",
-      "age": 44.1489015,
-      "tiragecase": "A 43-year-old white male with a history of depression, anxiety, PTSD, and systemic eosinophilia presented to t ED with sudden-onset weakness and inability to move extremities, occurring after waking from a nap. The patient is wheelchair-dependent and has a significant psychiatric history, including passive suicidal ideation and a history of physical and sexual abuse. He arrived at the ED via walk-in and has allergies to penicillins, amitriptyline, and Reglan.",
+      "chiefcomplaint": "Sudden severe headache",
+      "age": 46.0,
+      "tiragecase": "Synthetic test case. Adult with abrupt onset of the worst headache of life, vomiting, light sensitivity, and concern for neurologic emergency. Awake but visibly distressed.",
       "temperature": 98.7,
-      "heartrate": 92.0,
-      "resprate": 18.0,
-      "o2sat": 100.0,
-      "sbp": 145.0,
-      "dbp": 97.0
-    },
-    "output": {
-      "acuity": "1"
-    }
-  },
-  {
-    "input": {
-      "gender": "F",
-      "race": "WHITE",
-      "arrival_transport": "WALK IN",
-      "pain": "7",
-      "chiefcomplaint": "Lower abdominal pain",
-      "age": 49.76851634,
-      "tiragecase": "49-year-old white female presented to the ED with a chief complaint of lower abdominal pain rated as 7/10. The patient arrived by walking in. Upon arrival, her vital signs were stable: heart rate 75, respiratory rate 14, blood pressure 138/90, SpO2 100%, and temperature 98.3掳F.",
-      "temperature": 98.3,
-      "heartrate": 75.0,
-      "resprate": 14.0,
-      "o2sat": 100.0,
-      "sbp": 138.0,
-      "dbp": 90.0
-    },
-    "output": {
-      "acuity": "3"
-    }
-  },
-  {
-    "input": {
-      "gender": "M",
-      "race": "WHITE",
-      "arrival_transport": "AMBULANCE",
-      "pain": "0",
-      "chiefcomplaint": "ALTERED LEVEL OF CONSCIOUSNESS",
-      "age": 66.63059994,
-      "tiragecase": "A 62-year-old white male with a history of esophageal cancer (status post-esophagectomy), right-sided CVA, chronic pain syndrome on chronic opioids, COPD, and depression presents to the ED with altered mental status. The patient's wife found him having a bizarre conversation, not oriented to date or time, and he had fallen without head trauma. Suspected factors for AMS include possible narcotic overdose (pinpoint pupils, slurred speech). The patient has chronic left-sided weakness post-CVA and was found with a pill bottle, suggesting an extra dose of oxycontin may have been taken. The patient was transported by ambulance and has no known drug allergies. He is alert to person and place but complains of significant thirst.",
-      "temperature": 97.7,
-      "heartrate": 120.0,
-      "resprate": 18.0,
-      "o2sat": 93.0,
+      "heartrate": 98.0,
+      "resprate": 20.0,
+      "o2sat": 98.0,
       "sbp": 168.0,
-      "dbp": 106.0
+      "dbp": 96.0
     },
     "output": {
       "acuity": "2"
-    }
-  },
-  {
-    "input": {
-      "gender": "F",
-      "race": "WHITE",
-      "arrival_transport": "AMBULANCE",
-      "pain": "9",
-      "chiefcomplaint": "Acute Pelvic pain",
-      "age": 68.43308166,
-      "tiragecase": "A 61-year-old white female was brought to the emergency department by ambulance with a chief complaint of acute pelvic pain. Her vital signs were BP 143/72, pulse 65, respiratory rate 16, SpO2 94%, and temperature 98.4掳F. The patient reported a severe pain level of 9 out of 10. She had no known allergies and no previous medical history was provided.",
-      "temperature": 98.4,
-      "heartrate": 65.0,
-      "resprate": 16.0,
-      "o2sat": 94.0,
-      "sbp": 1,
-      "dbp": 72.0
-    },
-    "output": {
-      "acuity": "3"
-    }
-  },
-  {
-    "input": {
-      "gender": "F",
-      "race": "WHITE",
-      "arrival_transport": "WALK IN",
-      "pain": "10",
-      "chiefcomplaint": "Dyspnea",
-      "age": 64.2934765,
-      "tiragecase": "63-year-old white female with a history of ovarian cancer, non-Hodgkin lymphoma, myocardial infarction with cardiac stent, renal insufficiency, right lower extremity DVT/PE on Pradaxa, DM2, GERD, HTN, and a history of seizures related to hypertensive emergency, presents with worsening dyspnea. The patient has a clogged Pleurx catheter initially placed to manage chronic right malignant pleural effusion, which has been producing decreased output. She reports worsened dyspnea post-follow-up visit. Additionally, mild cellulitis is noted around the catheter site. Denies fevers, chills, chest pain, or extremity pain. Arrival: Walk-in. Allergies: hydrocodone, Demerol, Zofran, oxycodone.",
-      "temperature": 98.1,
-      "heartrate": 90.0,
-      "resprate": 18.0,
-      "o2sat": 100.0,
-      "sbp": 102.0,
-      "dbp": 69.0
-    },
-    "output": {
-      "acuity": "2"
-    }
-  },
-  {
-    "input": {
-      "gender": "M",
-      "race": "WHITE",
-      "arrival_transport": "AMBULANCE",
-      "pain": "0",
-      "chiefcomplaint": "Slurred speech",
-      "age": 97.2277849,
-      "tiragecase": "A 91-year-old male with a significant medical history presented to the ED with the chief complaint of slurred speech and right facial weakness. The patient experienced approximately four episodes of transient slurred speech and right facial droop over the last year, with the most recent episode occurring in the clinic parking lot, lasting about 8 minutes. Symptoms resolved to 95% of baseline by the time of ED arrival. The patient was transported by ambulance. Vital signs were stable upon arrival. Immediate neurological assessment was warranted due to the risk of TIA or stroke.",
-      "temperature": 97.6,
-      "heartrate": 68.0,
-      "resprate": 18.0,
-      "o2sat": 99.0,
-      "sbp": 152.0,
-      "dbp": 82.0
-    },
-    "output": {
-      "acuity": "1"
-    }
-  },
-  {
-    "input": {
-      "gender": "M",
-      "race": "WHITE",
-      "arrival_transport": "AMBULANCE",
-      "pain": null,
-      "chiefcomplaint": "SEPSIS",
-      "age": 55.31660242,
-      "tiragecase": "A 52-year-old white male with a complex medical history was brought to the ED via ambulance with a chief complaint of sepsis and hypotension. On arrival, the patient was critically hypotensive and required immediate hemodynamic stabilization. His condition is complicated by infected sacral decubitus wounds. The patient is receiving mechanical ventilation due to respiratory failure and is on dialysis for renal failure. Immediate attention is focused on stabilizing his vital signs and managing infections.",
-      "temperature": null,
-      "heartrate": null,
-      "resprate": null,
-      "o2sat": null,
-      "sbp": null,
-      "dbp": null
-    },
-    "output": {
-      "acuity": "1"
     }
   },
   {
     "input": {
       "gender": "M",
       "race": "UNKNOWN",
-      "arrival_transport": "UNKNOWN",
-      "pain": null,
-      "chiefcomplaint": "SZ",
-      "age": 20.14207665,
-      "tiragecase": "A 20-year-old male college freshman with a history of depression on Wellbutrin presented to the ED with a chief complaint of seizures. He experienced tonic-clonic convulsions with jaw clenching after a night of binge drinking and suspected cocaine use. The patient had significant recent weight loss, indicating a possible eating disorder. No personal or family history of epilepsy was reported. Upon ED arrival, he had tachycardia.",
-      "temperature": null,
-      "heartrate": 146.0,
-      "resprate": null,
-      "o2sat": null,
-      "sbp": 127.0,
-      "dbp": 73.0
-    },
-    "output": {
-      "acuity": "1"
-    }
-  },
-  {
-    "input": {
-      "gender": "M",
-      "race": "ASIAN - CHINESE",
-      "arrival_transport": "AMBULANCE",
-      "pain": "0",
-      "chiefcomplaint": "N/V, Weakness",
-      "age": 58.51407058,
-      "tiragecase": "A 51-year-old Asian male with a past medical history of ESRD secondary to IgA nephropathy, hypertension, adrenal insufficiency, and other comorbidities presented to the ED with nausea, vomiting, and left-sided weakness. The patient was noted to be flaccid on the left side with possible gaze deviation and actively vomiting. Vital signs on arrival were BP 198/107, P 108, RR 22, SpO2 97%, and T 97.0掳 F. He was transported to the ED by ambulance and has an allergy to isoniazid.",
-      "temperature": 97.0,
+      "arrival_transport": "WALK IN",
+      "pain": "6",
+      "chiefcomplaint": "Fever and cough",
+      "age": 35.0,
+      "tiragecase": "Synthetic test case. Adult with three days of fever, productive cough, malaise, and mild pleuritic discomfort. Stable at triage but likely to need imaging and laboratory workup.",
+      "temperature": 101.3,
       "heartrate": 108.0,
       "resprate": 22.0,
-      "o2sat": 97.0,
-      "sbp": 198.0,
-      "dbp": 107.0
-    },
-    "output": {
-      "acuity": "2"
-    }
-  },
-  {
-    "input": {
-      "gender": "M",
-      "race": "HISPANIC/LATINO - HONDURAN",
-      "arrival_transport": "WALK IN",
-      "pain": "3",
-      "chiefcomplaint": "Finger laceration",
-      "age": 26.09154129,
-      "tiragecase": "A 26-year-old Hispanic/Latino male arrived at the emergency department with a chief complaint of a finger laceratn. The patient walked into the ED, indicating stable condition upon arrival. Vital signs show a blood pressure of 147/87, heart rate of 90 bpm, respiratory rate of 18 breaths per minute, SpO2 of 100%, and a temperature of 99.0掳 F. The patient reports a pain level of 3 out of 10.",
-      "temperature": 99.0,
-      "heartrate": 90.0,
-      "resprate": 18.0,
-      "o2sat": 100.0,
-      "sbp": 147.0,
-      "dbp": 87.0
-    },
-    "output": {
-      "acuity": "4"
-    }
-  },
-  {
-    "input": {
-      "gender": "M",
-      "race": "WHITE",
-      "arrival_transport": "UNKNOWN",
-      "pain": "Critical",
-      "chiefcomplaint": "Found down",
-      "age": 62.13048997,
-      "tiragecase": "A 62-year-old white male with a history of syncope and a pacemaker (battery not changed) presented with an out-of-hospital asystolic cardiac arrest. The arrest occurred while swimming, and CPR was initiated by a lifeguard. EMS continued resuscitation en route to the ED, finding the patient in PEA. Upon arrival, he remained pulseless.",
-      "temperature": null,
-      "heartrate": null,
-      "resprate": null,
-      "o2sat": null,
-      "sbp": null,
-      "dbp": null
-    },
-    "output": {
-      "acuity": "1"
-    }
-  },
-  {
-    "input": {
-      "gender": "F",
-      "race": "ASIAN - CHINESE",
-      "arrival_transport": "WALK IN",
-      "pain": "3",
-      "chiefcomplaint": "Finger laceration",
-      "age": 58.69628622,
-      "tiragecase": "A 49-year-old Asian female presented to the ED with a chief complaint of a finger laceration. The patient arrived via walk-in and reports mild pain at a level of 3 out of 10. Vital signs are as follows: BP 179/72, P 96, RR 16, SpO2 100%, T 97.6掳F. The patient appears stable with no immediate life-threatening conditions noted.",
-      "temperature": 97.6,
-      "heartrate": 96.0,
-      "resprate": 16.0,
-      "o2sat": 100.0,
-      "sbp": 179.0,
-      "dbp": 72.0
-    },
-    "output": {
-      "acuity": "4"
-    }
-  },
-  {
-    "input": {
-      "gender": "F",
-      "race": "WHITE",
-      "arrival_transport"MBULANCE",
-      "pain": "UA",
-      "chiefcomplaint": "MVC, Transfer",
-      "age": 52.47791373,
-      "tiragecase": "A 52-year-old female was transferred to the emergency department following a motor vehicle collision involving a tree, with a chief complaint of chest pain. She has a recent diagnosis of COPD, not on home oxygen. Upon arrival, she required oxygen supplementation at 4L to maintain her oxygen saturation above 92%. She has no known drug allergies. The patient arrived by ambulance and is under surgical care for chest tube management and pain control.",
-      "temperature": null,
-      "heartrate": null,
-      "resprate": null,
-      "o2sat": null,
-      "sbp": null,
-      "dbp": null
-    },
-    "output": {
-      "acuity": "1"
-    }
-  },
-  {
-    "input": {
-      "gender": "F",
-      "race": "WHITE - OTHER EUROPEAN",
-      "arrival_transport": "UNKNOWN",
-      "pain": "crit",
-      "chiefcomplaint": "Chest pain",
-      "age": 74.89827429,
-      "tiragecase": "74-year-old European female with a history of dyslipidemia, GERD, and hypothyroidism presented to the ED as a transfer for STEMI. The patient experienced a vague feeling of unwellness over two days and mild nausea, without specific chest pain. Family history includes CHF (mother) and CVA (father). She has no known allergies. Arrival transport details are unknown.",
-      "temperature": null,
-      "heartrate": null,
-      "resprate": null,
-      "o2sat": null,
-      "sbp": null,
-      "dbp": null
-    },
-    "output": {
-      "acuity": "1"
-    }
-  },
-  {
-    "input": {
-      "gender": "F",
-      "race": "BLACK/AFRICAN AMERICAN",
-      "arrival_transport": "WALK IN",
-      "pain": "8",
-      "chiefcomplaint": "R Wrist pain",
-      "age": 23.51929991,
-      "tiragecase": "A 23-year-old African American female presented to the ED with a chief complaint of right wrist pain, rated as 8 out of 10. The patient walked into the ED. Vital signs on arrival were: heart rate 72, respiratory rate 20, blood pressure 114/74, SpO2 99%, and temperature 99.4掳F. The patient did not report any other symptoms or relevant medical history upon triage.",
-      "temperature": 99.4,
-      "heartrate": 72.0,
-      "resprate": 20.0,
-      "o2sat": 99.0,
-      "sbp": 114.0,
-      "dbp": 74.0
-    },
-    "output": {
-      "acuity": "4"
-    }
-  },
-  {
-    "input": {
-      "gender": "M",
-      "race": "WHITE",
-      "arrival_transport": "WALK IN",
-      "pain": "7",
-      "chiefcomplaint": "R Foot swelling",
-      "age": 58.61738572,
-      "tiragecase": "A 54-year-old white male presented to the ED with a chief complaint of right foot swelling, reporting a pain level of 7. The patient arrived as a walk-in. Vital signs upon arrival: BP 153/100, P 61, RR 16, SpO2 100%, T 97.9掳F. The patient has a history of hypertension.",
-      "temperature": 97.9,
-      "heartrate": 61.0,
-      "resprate": 16.0,
-      "o2sat": 100.0,
-      "sbp": 153.0,
-      "dbp": 100.0
-    },
-    "output": {
-      "acuity": "3"
-    }
-  },
-  {
-    "input": {
-      "gender": "M",
-      "race": "WHITE",
-     rival_transport": "AMBULANCE",
-      "pain": "Critical",
-      "chiefcomplaint": "Cardiac arrest",
-      "age": 75.36495019,
-      "tiragecase": "A 75-year-old white male was transported to the ED by ambulance after a witnessed cardiac arrest at home. The patient had an extended downtime of approximately 30 minutes without resuscitation. Upon arrival, the patient's vital signs indicated cardiac arrest, with heart rate, respiratory rate, blood pressure, and SpO2 all at 0. The chief complaint was cardiac arrest.",
-      "temperature": null,
-      "heartrate": null,
-      "resprate": null,
-      "o2sat": null,
-      "sbp": null,
-      "dbp": null
-    },
-    "output": {
-      "acuity": "1"
-    }
-  },
-  {
-    "input": {
-      "gender": "F",
-      "race": "WHITE",
-      "arrival_transport": "AMBULANCE",
-      "pain": "0",
-      "chiefcomplaint": "Overdose",
-      "age": 18.25583114,
-      "tiragecase": "An 18-year-old female with a history of depression and borderline personality disorder presented to the emergency department following an intentional overdose of Wellbutrin SR, approximately 2.8g, resulting in a generalized tonic-clonic seizure. EMS reported seizure activity before arrival. Upon arrival, she was intubated for airway protection. Initial vital signs showed a heart rate of 113 and blood pressure of 105/53. She exhibited tachycardia, agitation, increased muscle tone, and sustained bilateral lower extremity clonus. Her past medical history includes depression, borderline personality disorder, and a prior suicide attempt. There are no recorded allergies. Arrival was via ambulance.",
-      "temperature": null,
-      "heartrate": null,
-      "resprate": null,
-      "o2sat": null,
-      "sbp": null,
-      "dbp": null
-    },
-    "output": {
-      "acuity": "1"
-    }
-  },
-  {
-    "input": {
-      "gender": "M",
-      "race": "WHITE",
-      "arrival_transport": "WALK IN",
-      "pain": "10",
-      "chiefcomplaint": "Abd pain, Abdominal distention",
-      "age": 79.7448563,
-      "tiragecase": "A 77-year-old male with a significant medical history, including laryngeal cancer, moderate COPD, GERD, obstructive sleep apnea on CPAP, atrial fibrillation on anticoagulation, hypertension, gout, and a history of colonic polyps presented to the ED with a chief complaint of severe abdominal pain (rated 10/10) and abdominal distention. Upon arrival, vital signs were: HR 100, RR 16, BP 122/84, SpO2 99%, T 97.2掳F. He has a known allergy to penicillins. The patient is at risk for complications due to his anticoagulation therapy and history of atrial fibrillation.",
-      "temperature": 97.2,
-      "heartrate": 100.0,
-      "resprate": 16.0,
-      "o2sat": 99.0,
-      "sbp": 122.0,
-      "dbp": 84.0
-    },
-    "output": {
-      "acuity": "2"
-    }
-  },
-  {
-    "input": {
-      "gender": "M",
-      "race": "BLACK/AFRICAN AMERICAN",
-      "arrival_transport": "WALK IN",
-      "pain": "7",
-      "chiefcomplaint": "Abd pain, Vomiting, Nausea, Dyspnea",
-      "age": 71.34845253,
-      "tiragecase": "A 67-year-old Black/African Ameran male with a history of hypertension, bilateral pulmonary emboli, stage II chronic kidney disease, and metastatic renal cell carcinoma to the lungs and mediastinum, presented to the ED with abdominal pain, vomiting, nausea, and dyspnea. He recently underwent a right radical nephrectomy one month ago and has been experiencing right lower quadrant pain since the surgery, with non-bilious non-bloody emesis in the past two weeks. This morning, he developed acute right-sided chest pain and dyspnea that resolved with rest. He denies fever but reports taking oxycodone for post-surgical abdominal pain. The patient is a walk-in arrival with no known allergies. Vital signs: BP 166/84, HR 85, RR 16, SpO2 90%, T 99.6掳 F. Pain is rated at 7/10. Family history includes multiple early deaths from coronary artery disease among siblings and renal cancer in the mother.",
-      "temperature": 99.6,
-      "heartrate": 85.0,
-      "resprate": 16.0,
-      "o2sat": 90.0,
-      "sbp": 166.0,
-      "dbp": 84.0
-    },
-    "output": {
-      "acuity": "2"
-    }
-  },
-  {
-    "input": {
-      "gender": "F",
-      "race": "WHITE",
-      "arrival_transport": "WALK IN",
-      "pain": "0",
-      "chiefcomplaint": "Suture removal",
-      "age": 39.83115206,
-      "tiragecase": "A 31-year-old female presented to the emergency department with a chief complaint of suture removal. The patient arrived as a walk-in and reported no pain. On arrival, her vital signs were stable: heart rate 74, respiratory rate 16, blood pressure 125/69, SpO2 100%, and temperature 98.1掳 F.",
-      "temperature": 98.1,
-      "heartrate": 74.0,
-      "resprate": 16.0,
-      "o2sat": 100.0,
-      "sbp": 125.0,
-      "dbp": 69.0
-    },
-    "output": {
-      "acuity": "5"
-    }
-  },
-  {
-    "input": {
-      "gender": "M",
-      "race": "WHITE",
-      "arrival_transport": "WALK IN",
-      "pain": "9",
-      "chiefcomplaint": "BACK PAIN",
-      "age": 50.84502961,
-      "tiragecase": "48-year-old white male with a history of chronic cervical and lumbosacral pain after acident several years ago, who has spinal cord stimulators for both regions, presents with acute worsening of lumbar pain. He had been weaning down his oxycodone to 20 mg po tid. He was quite active and able to do things like clean the house. He suddenly felt a pop in his lower back and then resumed having pain, which is worse when he walks. He feels lower back pain every time he takes a step. He felt cold at home and had some sweats. No falls or recent injuries. Keeps stimulator for lumbar spine on most of the time. No cough, chest pain, nausea, vomiting, headache, or other symptoms.",
-      "temperature": 97.2,
-      "heartrate": 72.0,
-      "resprate": null,
-      "o2sat": 100.0,
-      "sbp": 138.0,
-      "dbp": 77.0
-    },
-    "output": {
-      "acuity": "4"
-    }
-  },
-  {
-    "input": {
-      "gender": "F",
-      "race": "WHITE",
-      "arrival_transport": "AMBULANCE",
-      "pain": "13",
-      "chiefcomplaint": "Abd pain, Transfer",
-      "age": 67.70127591,
-      "tiragecase": "A 67-year-old female with a history of hypertension and hyperlipidemia presents to the ED with a chief complaint of abdominal pain and altered mental status. The patient was discovered by her husband with altered mental status. She is hemodynamically unstable. The situation is critical, requiring immediate medical intervention.",
-      "temperature": 98.1,
-      "heartrate": 115.0,
-      "resprate": 16.0,
-      "o2sat": 100.0,
-      "sbp": 125.0,
-      "dbp": 95.0
-    },
-    "output": {
-      "acuity": "1"
-    }
-  },
-  {
-    "input": {
-      "gender": "F",
-      "race": "WHITE",
-      "arrival_transport": "AMBULANCE",
-      "pain": "0",
-      "chiefcomplaint": "SDH",
-      "age": 69.40509861,
-      "tiragecase": "69-year-old white female with a history of prior stroke and chronic dizziness presented to the ED by ambulance with a chief complaint of persistent headache and falls. The patient's husband reported increasing unsteadiness and frequent falls attributed to dizziness since her stroke. The patient has baseline peripheral neuropathy, right side weakness, and difficulty walking. Past medical history includes TIAs, left basal ganglia infarct with mild residual right weakness, HTN, HLD, depression, GERD, and G6PD deficiency. The patient is a nonsmoker with no alcohol use. Her vital signs were stable upon arrival, and she reported no pain.",
-      "temperature": 97.6,
-      "heartrate": 70.0,
-      "resprate": 16.0,
       "o2sat": 96.0,
-      "sbp": 133.0,
-      "dbp": 68.0
-    },
-    "output": {
-      "acuity": "2"
-    }
-  },
-  {
-    "input": {
-      "gender": "M",
-      "race": "WHITE",
-      "arrival_transport": "AMBULANCE",
-      "pain": "0",
-      "chiefcomplaint": "DYSPNEA",
-      "age": 66.82124203,
-      "tiragecase": "66-year-old white male with a significant medical history of COPD (GOLD Stage IV), coronary artery disease post-CABG, pulmonary embolism, and deep vein thrombosis (managed with Coumadin and an IVC filter), presented to the ED with acute worsening dyspnea over the past week and increased falls. He was transported by ambulance. Upon arrival, he was alert but disoriented. He has a history of osteosarcoma with right above-the-knee amputation and ongoing tobacco use managed with nicotine patches. The patient is allergic to penicillins and has expressed a preference for non-invasive ventilation, declining intubation if necessary.",
-      "temperature": null,
-      "heartrate": 60.0,
-      "resprate": 12.0,
-      "o2sat": 100.0,
-      "sbp": null,
-      "dbp": null
-    },
-    "output": {
-      "acuity": "1"
-    }
-  },
-  {
-    "input": {
-      "gender": "F",
-      "race": "WHITE",
-      "arrival_transport": "AMBULANCE",
-      "pain": "0",
-      "chiefcomplaint": "Med refill",
-      "age": 40.67049153,
-      "tiragecase": "A 40-year-old white female presented to the ED with a chief complaint of needing a medication refill. The patient arrived by ambulance. Her vital signs on arrival were stable: BP 120/70, HR 97, RR 16, SpO2 97%, and temperature 99.6掳F, with no reported pain.",
-      "temperature": 99.6,
-      "heartte": 97.0,
-      "resprate": 16.0,
-      "o2sat": 97.0,
-      "sbp": 120.0,
-      "dbp": 70.0
-    },
-    "output": {
-      "acuity": "5"
-    }
-  },
-  {
-    "input": {
-      "gender": "M",
-      "race": "ASIAN",
-      "arrival_transport": "WALK IN",
-      "pain": "5",
-      "chiefcomplaint": "Neck pain, Headache",
-      "age": 46.62818814,
-      "tiragecase": "A 41-year-old Asian male presented to the emergency department with a chief complaint of neck pain and headache. The patient walked into the ED. Upon arrival, his vital signs were stable: BP 131/72, P 77, RR 16, SpO2 98%, T 98.3掳F. He described his pain level as 5 out of 10. There was no mention of additional concerning symptoms such as fever, photophobia, or neurological deficits.",
-      "temperature": 98.3,
-      "heartrate": 77.0,
-      "resprate": 16.0,
-      "o2sat": 98.0,
-      "sbp": 131.0,
-      "dbp": 72.0
-    },
-    "output": {
-      "acuity": "3"
-    }
-  },
-  {
-    "input": {
-      "gender": "F",
-      "race": "UNKNOWN",
-      "arrival_transport": "UNKNOWN",
-      "pain": "2",
-      "chiefcomplaint": "L Leg injury, Transfer",
-      "age": 40.39095845,
-      "tiragecase": "A 40-year-old female with a history of hypothyroidism and depression, allergic to erythromycin base, was transferred to the emergency department with a chief complaint of left leg pain. The patient sustained injuries after falling from a porch, resulting in an open left tibia/fibula fracture, a nondisplaced left medial malleolar fracture, and a fracture of the base of the left metatarsal. She reported falling after the porch railing gave way, landing on her left leg. Her vital signs upon arrival were stable, with a heart rate of 100, respiratory rate of 16, blood pressure of 138/78, SpO2 at 98%, and temperature of 98.1掳F. The patient rated her pain at 2/10.",
-      "temperature": 98.1,
-      "heartrate": 100.0,
-      "resprate": 16.0,
-      "o2sat": 98.0,
-      "sbp": 138.0,
+      "sbp": 124.0,
       "dbp": 78.0
     },
     "output": {
-      "acuity": "2"
+      "acuity": "3"
     }
   },
   {
     "input": {
-      der": "F",
-      "race": "WHITE",
+      "gender": "F",
+      "race": "UNKNOWN",
       "arrival_transport": "WALK IN",
-      "pain": "6",
-      "chiefcomplaint": "R Foot pain",
-      "age": 24.51184679,
-      "tiragecase": "A 22-year-old white female presents to the emergency department with a chief complaint of right foot pain, rated as 6 out of 10. She arrived at the ED by walking in. Vital signs are blood pressure 148/86, heart rate 81, respiratory rate 18, SpO2 99%, and temperature 98.9掳F. The patient reports no additional symptoms.",
-      "temperature": 98.9,
-      "heartrate": 81.0,
-      "resprate": 18.0,
-      "o2sat": 99.0,
-      "sbp": 148.0,
-      "dbp": 86.0
+      "pain": "4",
+      "chiefcomplaint": "Hand laceration",
+      "age": 22.0,
+      "tiragecase": "Synthetic test case. Adult with a kitchen knife laceration to the palm. Bleeding is controlled, sensation is intact, and there are no signs of shock or severe distress.",
+      "temperature": 98.0,
+      "heartrate": 82.0,
+      "resprate": 16.0,
+      "o2sat": 100.0,
+      "sbp": 116.0,
+      "dbp": 70.0
     },
     "output": {
       "acuity": "4"
@@ -982,21 +182,21 @@
   {
     "input": {
       "gender": "M",
-      "race": "BLACK/AFRICAN AMERICAN",
+      "race": "UNKNOWN",
       "arrival_transport": "WALK IN",
-      "pain": "9",
-      "chiefcomplaint": "ABDOMINAL PAIN",
-      "age": 37.95244606,
-      "tiragecase": "A 34-year-old Black/African American male with a history of fistulizing Crohn's disease presented to the ED with severe anal pain. The patient reports increasing anal pain, decreased oral intake due to fear of bowel movements, and an 18-pound weight loss over the last two months. The patient also experiences purulent and bloody discharge from abscesses, episodic fevers, and night sweats. Initial vital signs in the ED were stable.",
-      "temperature": 98.8,
-      "heartrate": 77.0,
-      "resprate": 18.0,
-      "o2sat": 100.0,
-      "sbp": 125.0,
-      "dbp": 65.0
+      "pain": "1",
+      "chiefcomplaint": "Sore throat",
+      "age": 19.0,
+      "tiragecase": "Synthetic test case. Young adult with sore throat and nasal congestion for two days, tolerating oral intake and breathing comfortably. No red flags at triage.",
+      "temperature": 98.9,
+      "heartrate": 76.0,
+      "resprate": 14.0,
+      "o2sat": 99.0,
+      "sbp": 114.0,
+      "dbp": 68.0
     },
     "output": {
-      "acuity": "2"
+      "acuity": "5"
     }
   }
 ]

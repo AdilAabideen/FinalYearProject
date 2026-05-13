@@ -1,3 +1,5 @@
+"""Doctoragenttests script helpers."""
+
 from __future__ import annotations
 
 import argparse
@@ -20,10 +22,14 @@ from app.models.agent_test_case import AgentTestCase
 
 
 def _repo_root() -> Path:
+    """Handle root."""
+    # Keep the main step clear.
     return Path(__file__).resolve().parents[1]
 
 
 def _parse_args() -> argparse.Namespace:
+    """Parse args."""
+    # Keep the output consistent.
     parser = argparse.ArgumentParser(
         description="Initialize doctor agent test cases from JSON into agent_test_cases."
     )
@@ -52,17 +58,23 @@ def _parse_args() -> argparse.Namespace:
 
 
 def _slugify(value: str) -> str:
+    """Handle the value."""
+    # Keep the main step clear.
     slug = re.sub(r"[^a-z0-9]+", "_", value.lower()).strip("_")
     return slug[:40] or "case"
 
 
 def _build_name(index: int, item: dict[str, Any]) -> str:
+    """Build name."""
+    # Build the next value.
     chiefcomplaint = str(item.get("chiefcomplaint") or "").strip()
     source_agent = str(item.get("source_agent") or "unknown").strip()
     return f"doctor_json_case_{index:02d}_{_slugify(chiefcomplaint)}_{_slugify(source_agent)}"
 
 
 def _build_notes(index: int, item: dict[str, Any], json_name: str) -> str:
+    """Build notes."""
+    # Build the next value.
     source_agent = str(item.get("source_agent") or "unknown").strip()
     chiefcomplaint = str(item.get("chiefcomplaint") or "").strip()
     return (
@@ -74,6 +86,8 @@ def _build_notes(index: int, item: dict[str, Any], json_name: str) -> str:
 
 
 def _load_json_rows(json_path: Path) -> list[dict[str, Any]]:
+    """Load json rows."""
+    # Read the current value.
     with json_path.open("r", encoding="utf-8") as f:
         payload = json.load(f)
 
@@ -96,6 +110,8 @@ def _load_json_rows(json_path: Path) -> list[dict[str, Any]]:
 
 
 def main() -> int:
+    """Handle the value."""
+    # Keep the main step clear.
     args = _parse_args()
 
     json_path = Path(args.json_path)

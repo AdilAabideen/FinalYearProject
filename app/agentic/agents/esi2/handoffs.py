@@ -1,3 +1,5 @@
+"""Handoffs module helpers."""
+
 from typing import Any, ClassVar, List, Literal
 
 from pydantic import Field, model_validator
@@ -11,6 +13,8 @@ class ESI2ToESI345Payload(CoerciveHandoffPayload):
     @model_validator(mode="before")
     @classmethod
     def _coerce_stale_false_branch_fields(cls, value: Any) -> Any:
+        """Handle stale false branch fields."""
+        # Keep the main step clear.
         if not isinstance(value, dict):
             return value
 
@@ -42,6 +46,8 @@ class ESI2ToDoctorPayload(CoerciveHandoffPayload):
     @model_validator(mode="before")
     @classmethod
     def _coerce_stale_true_branch_fields(cls, value: Any) -> Any:
+        """Handle stale true branch fields."""
+        # Keep the main step clear.
         if not isinstance(value, dict):
             return value
 

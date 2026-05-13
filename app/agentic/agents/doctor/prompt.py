@@ -1,3 +1,5 @@
+"""Prompt module helpers."""
+
 SYSTEM_PROMPT = """
 <role>
 You are the Doctor Router Agent.

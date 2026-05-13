@@ -1,3 +1,5 @@
+"""Mas Event Emitter module helpers."""
+
 from __future__ import annotations
 
 import json
@@ -25,6 +27,8 @@ class MASEventEmitter:
         db: Session | None = None,
         session_factory: Callable[[], Session] | None = None,
     ) -> None:
+        """Handle the value."""
+        # Keep the main step clear.
         self.workflow_id = workflow_id
         self.db = db
         self.session_factory = session_factory
@@ -43,6 +47,8 @@ class MASEventEmitter:
         payload_json: Optional[dict[str, Any]] = None,
         payload_text: Optional[str] = None,
     ) -> int:
+        """Emit the value."""
+        # Keep events flowing.
         with self._session_scope() as db:
             sanitized_payload = self._sanitize_json(payload_json)
             safe_payload_text = self._safe_text(payload_text)
@@ -76,12 +82,16 @@ class MASEventEmitter:
 
     @classmethod
     def _sanitize_json(cls, value: Optional[dict[str, Any]]) -> Optional[dict[str, Any]]:
+        """Handle json."""
+        # Keep the main step clear.
         if value is None:
             return None
         return cls._sanitize_value(value)
 
     @classmethod
     def _sanitize_value(cls, value: Any) -> Any:
+        """Handle value."""
+        # Keep the main step clear.
         if value is None or isinstance(value, (str, int, float, bool)):
             return value
         if isinstance(value, (datetime, date)):
@@ -103,6 +113,8 @@ class MASEventEmitter:
 
     @staticmethod
     def _safe_text(value: Optional[str]) -> Optional[str]:
+        """Handle text."""
+        # Keep the main step clear.
         if value is None:
             return None
         text = str(value)
@@ -112,6 +124,8 @@ class MASEventEmitter:
 
     @staticmethod
     def _is_seq_conflict(exc: IntegrityError) -> bool:
+        """Handle seq conflict."""
+        # Keep the main step clear.
         message = str(exc.orig if getattr(exc, "orig", None) is not None else exc)
         return (
             "mas_events.mas_run_id, mas_events.seq" in message
@@ -120,6 +134,8 @@ class MASEventEmitter:
 
     @contextmanager
     def _session_scope(self) -> Iterator[Session]:
+        """Handle scope."""
+        # Keep the main step clear.
         if self.session_factory is not None:
             db = self.session_factory()
             try:

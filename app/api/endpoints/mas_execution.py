@@ -1,3 +1,5 @@
+"""Mas Execution API endpoints."""
+
 from __future__ import annotations
 
 from fastapi import APIRouter, BackgroundTasks
@@ -14,6 +16,8 @@ def start_mas_run(
     payload: MASExecutionStartRequest,
     background_tasks: BackgroundTasks,
 ):
+    """Start mas run."""
+    # Kick off the main step.
     return mas_execution_service.start_mas_execution(
         workflow_id=workflow_id,
         payload=payload,

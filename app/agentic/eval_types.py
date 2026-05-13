@@ -1,3 +1,5 @@
+"""Eval Types module helpers."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -14,6 +16,8 @@ class EvalResult:
 
 class AgentEvaluator(Protocol):
     def validate_expected(self, expected_json: Dict[str, Any]) -> None:
+        """Validate expected."""
+        # Fail fast on bad input.
         ...
 
     def evaluate(
@@ -23,8 +27,12 @@ class AgentEvaluator(Protocol):
         *,
         agent_status: str,
     ) -> EvalResult:
+        """Handle the value."""
+        # Keep the main step clear.
         ...
 
     def aggregate(self, results: Sequence[EvalResult]) -> Dict[str, Any]:
+        """Handle the value."""
+        # Keep the main step clear.
         ...
 

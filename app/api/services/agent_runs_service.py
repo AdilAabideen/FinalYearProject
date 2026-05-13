@@ -1,3 +1,5 @@
+"""Agent Runs Service service helpers."""
+
 from __future__ import annotations
 
 import asyncio
@@ -27,13 +29,10 @@ from app.schemas.agent_runs import (
     AgentLLMCallRead,
     AgentRunCreateRequest,
     AgentRunCreateResponse,
-    AgentRunReliabilityIssuePage,
-    AgentRunReliabilityIssueRead,
     AgentRunReliabilityCategoryCount,
     AgentRunReliabilitySummary,
     AgentRunMetricsDetail,
     AgentRunMetricsRead,
-    AgentRunMetricsSummary,
     AgentRunRead,
     AgentToolCallRead,
     RunStatus,
@@ -58,12 +57,16 @@ class _ReliabilityIssue:
 
 
 def _safe_text(text: str) -> str:
+    """Handle text."""
+    # Keep the main step clear.
     if len(text) <= MAX_EVENT_TEXT_LEN:
         return text
     return text[:MAX_EVENT_TEXT_LEN] + "…(truncated)"
 
 
 def _try_parse_json(text: str) -> Tuple[Optional[dict], Optional[str]]:
+    """Handle parse json."""
+    # Keep the main step clear.
     stripped = text.strip()
     if not stripped:
         return None, ""
@@ -89,6 +92,8 @@ def _append_event(
     payload_json: Optional[dict] = None,
     payload_text: Optional[str] = None,
 ) -> None:
+    """Append event."""
+    # Keep the next value explicit.
     agent_runs_repository.append_event(
         db,
         run_id=run.id,
@@ -106,6 +111,8 @@ def _append_event(
 
 
 def _coerce_output_json(value: Any) -> Optional[dict]:
+    """Handle output json."""
+    # Keep the main step clear.
     if value is None:
         return None
     if isinstance(value, dict):
@@ -125,6 +132,8 @@ def _coerce_output_json(value: Any) -> Optional[dict]:
 
 
 def _truncate_optional_text(value: Optional[str], max_len: int = 4_000) -> Optional[str]:
+    """Handle optional text."""
+    # Keep the main step clear.
     if value is None:
         return None
     text = str(value)
@@ -134,6 +143,8 @@ def _truncate_optional_text(value: Optional[str], max_len: int = 4_000) -> Optio
 
 
 def _schema_validation_error(run: AgentRun, output_json: Optional[dict]) -> Optional[str]:
+    """Handle validation error."""
+    # Keep the main step clear.
     if output_json is None:
         return None
     try:
@@ -156,6 +167,8 @@ def _collect_reliability_issues(
     output_json: Optional[dict],
     raw_output: Any,
 ) -> list[_ReliabilityIssue]:
+    """Handle reliability issues."""
+    # Keep the main step clear.
     llm_calls = agent_metrics_repository.list_llm_calls(db, run.id)
     tool_calls = agent_metrics_repository.list_tool_calls(db, run.id)
     events = agent_runs_repository.list_events_after(
@@ -367,6 +380,8 @@ def _persist_reliability_issues(
     seq: int,
     issues: list[_ReliabilityIssue],
 ) -> int:
+    """Persist reliability issues."""
+    # Keep stored state current.
     if not issues:
         return seq
 
@@ -412,6 +427,8 @@ def _persist_reliability_issues(
 
 
 def _build_reliability_summary(db: Session, run_id: str) -> AgentRunReliabilitySummary:
+    """Build reliability summary."""
+    # Build the next value.
     by_category = agent_metrics_repository.list_reliability_issue_category_counts(db, run_id)
     total_issues, error_issues, _, _ = agent_metrics_repository.count_reliability_issues(db, run_id)
     warning_issues = sum(count for _, severity, count in by_category if severity == "warning")
@@ -429,12 +446,16 @@ def _build_reliability_summary(db: Session, run_id: str) -> AgentRunReliabilityS
 
 
 def _resolve_agent_system(agent: Any) -> str:
+    """Resolve agent system."""
+    # Pick the needed value.
     if all(hasattr(agent, attr) for attr in ("set_event_context", "set_event_handlers")):
         return "handrolled_callback"
     return "legacy_stream"
 
 
 def _schema_valid_for_run(run: AgentRun) -> Optional[bool]:
+    """Handle valid for run."""
+    # Keep the main step clear.
     if run.output_json is None:
         return None
     try:
@@ -451,6 +472,8 @@ def _schema_valid_for_run(run: AgentRun) -> Optional[bool]:
 
 
 def _persist_run_metrics(db: Session, run: AgentRun, *, agent_system: str) -> None:
+    """Persist run metrics."""
+    # Keep stored state current.
     llm_calls = agent_metrics_repository.list_llm_calls(db, run.id)
     input_tokens_total = sum(int(c.input_tokens or 0) for c in llm_calls)
     output_tokens_total = sum(int(c.output_tokens or 0) for c in llm_calls)
@@ -504,6 +527,8 @@ def _persist_run_metrics(db: Session, run: AgentRun, *, agent_system: str) -> No
 
 
 def _build_run_read(run: AgentRun, db: Session) -> AgentRunRead:
+    """Build run read."""
+    # Build the next value.
     metrics = agent_metrics_repository.get_run_metrics(db, run.id)
     model = AgentRunRead.model_validate(run.__dict__)
     if metrics is not None:
@@ -512,6 +537,8 @@ def _build_run_read(run: AgentRun, db: Session) -> AgentRunRead:
 
 
 def _percentile(values: list[float], pct: float) -> Optional[float]:
+    """Handle the value."""
+    # Keep the main step clear.
     if not values:
         return None
     if len(values) == 1:
@@ -525,6 +552,8 @@ def _percentile(values: list[float], pct: float) -> Optional[float]:
 
 
 def _normalize_tool_names(raw: Any) -> list[str]:
+    """Normalize tool names."""
+    # Keep the output consistent.
     if isinstance(raw, list):
         return [str(name) for name in raw if name is not None]
     if isinstance(raw, str):
@@ -538,6 +567,8 @@ def _normalize_tool_names(raw: Any) -> list[str]:
 
 
 def _ensure_run_start_event(db: Session, run: AgentRun) -> int:
+    """Handle run start event."""
+    # Keep the main step clear.
     seq = agent_runs_repository.get_last_event_seq(db, run.id)
     if seq > 0:
         return seq
@@ -561,6 +592,8 @@ def _ensure_run_start_event(db: Session, run: AgentRun) -> int:
 
 
 def execute_agent_run_and_persist(db: Session, run: AgentRun) -> Optional[dict]:
+    """Handle agent run and persist."""
+    # Keep the main step clear.
     seq = _ensure_run_start_event(db, run)
     agent_system = "unknown"
 
@@ -628,6 +661,8 @@ def execute_agent_run_and_persist(db: Session, run: AgentRun) -> Optional[dict]:
 
 
 def _run_agent_and_persist(db: Session, run: AgentRun, seq: int) -> Tuple[int, Optional[dict], Any, str]:
+    """Run agent and persist."""
+    # Kick off the main step.
     try:
         spec = get_agent_spec(run.agent_name)
     except KeyError as e:
@@ -666,6 +701,8 @@ def _run_agent_and_persist(db: Session, run: AgentRun, seq: int) -> Tuple[int, O
 
 
 def _execute_run_in_background(run_id: str) -> None:
+    """Handle run in background."""
+    # Keep the main step clear.
     db = SessionLocal()
     try:
         run = agent_runs_repository.get_run(db, run_id)
@@ -676,55 +713,13 @@ def _execute_run_in_background(run_id: str) -> None:
         db.close()
 
 
-def create_agent_run(payload: AgentRunCreateRequest, db: Session) -> AgentRunCreateResponse:
-    supported = supported_agent_names()
-    if payload.agent_name not in supported:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Unsupported agent_name '{payload.agent_name}'. Supported: {sorted(supported)}",
-        )
-
-    spec = get_agent_spec(payload.agent_name)
-    model_id = payload.model_id or settings.OPENAI_MODEL
-    try:
-        validate_model_for_agent(
-            model_id=model_id,
-            agent_name=payload.agent_name,
-            requires_tools=bool(spec.tools),
-        )
-    except ValueError as e:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
-
-    run_id = str(uuid.uuid4())
-    now = datetime.utcnow()
-    run = AgentRun(
-        id=run_id,
-        mas_run_id=payload.mas_run_id,
-        workflow_id=payload.workflow_id,
-        workflow_version=payload.workflow_version,
-        sequence_index=payload.sequence_index,
-        parent_handoff_id=payload.parent_handoff_id,
-        outgoing_handoff_id=payload.outgoing_handoff_id,
-        is_final_agent=payload.is_final_agent,
-        agent_name=payload.agent_name,
-        status="created",
-        model_name=model_id,
-        input_json=payload.input,
-        started_at=None,
-        finished_at=None,
-        created_at=now,
-        updated_at=now,
-    )
-    agent_runs_repository.save_run(db, run)
-
-    return AgentRunCreateResponse(run_id=run_id, status="created")
-
-
 def start_agent_run(
     payload: AgentRunCreateRequest,
     background_tasks: BackgroundTasks,
     db: Session,
 ) -> AgentRunCreateResponse:
+    """Start agent run."""
+    # Kick off the main step.
     supported = supported_agent_names()
     if payload.agent_name not in supported:
         raise HTTPException(
@@ -778,6 +773,8 @@ def start_agent_run(
 
 
 def get_agent_run(run_id: str, db: Session) -> AgentRunRead:
+    """Return agent run."""
+    # Read the current value.
     run = agent_runs_repository.get_run(db, run_id)
     if run is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Run not found")
@@ -785,6 +782,8 @@ def get_agent_run(run_id: str, db: Session) -> AgentRunRead:
 
 
 def get_agent_run_metrics(run_id: str, db: Session) -> AgentRunMetricsDetail:
+    """Return agent run metrics."""
+    # Read the current value.
     run = agent_runs_repository.get_run(db, run_id)
     if run is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Run not found")
@@ -837,130 +836,14 @@ def get_agent_run_metrics(run_id: str, db: Session) -> AgentRunMetricsDetail:
     )
 
 
-def get_agent_run_reliability_issues(
-    *,
-    run_id: str,
-    issue_code: Optional[str],
-    limit: int,
-    offset: int,
-    db: Session,
-) -> AgentRunReliabilityIssuePage:
-    run = agent_runs_repository.get_run(db, run_id)
-    if run is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Run not found")
-
-    rows = agent_metrics_repository.list_reliability_issues(
-        db,
-        run_id=run_id,
-        issue_code=issue_code,
-        limit=limit,
-        offset=offset,
-    )
-    total_count = agent_metrics_repository.count_reliability_issues_filtered(
-        db,
-        run_id=run_id,
-        issue_code=issue_code,
-    )
-    items = [AgentRunReliabilityIssueRead.model_validate(r.__dict__) for r in rows]
-    return AgentRunReliabilityIssuePage(
-        run_id=run_id,
-        issues=items,
-        next_offset=offset + len(items),
-        total_count=total_count,
-    )
-
-
-def get_metrics_summary(
-    *,
-    agent_system: Optional[str],
-    agent_name: Optional[str],
-    model_name: Optional[str],
-    created_from: Optional[datetime],
-    created_to: Optional[datetime],
-    limit: int,
-    offset: int,
-    db: Session,
-) -> AgentRunMetricsSummary:
-    rows = agent_metrics_repository.list_run_metrics(
-        db,
-        agent_system=agent_system,
-        agent_name=agent_name,
-        model_name=model_name,
-        created_from=created_from,
-        created_to=created_to,
-        limit=limit,
-        offset=offset,
-    )
-    total_runs = len(rows)
-    if total_runs == 0:
-        return AgentRunMetricsSummary(
-            total_runs=0,
-            successful_runs=0,
-            success_rate=0.0,
-            schema_valid_rate=None,
-            tool_error_rate=0.0,
-            reliability_failure_rate=0.0,
-            finalization_failure_rate=0.0,
-            runs_with_reliability_issues=0,
-            timeout_or_stuck_rate=0.0,
-            p50_duration_ms=None,
-            p95_duration_ms=None,
-            p50_llm_call_count=None,
-            p95_llm_call_count=None,
-            p50_tokens_total=None,
-            p95_tokens_total=None,
-            cost_per_successful_run=None,
-        )
-
-    successful_runs = sum(1 for r in rows if r.status == "succeeded")
-    schema_known = [r.schema_valid for r in rows if r.schema_valid is not None]
-    schema_valid_rate = (
-        sum(1 for v in schema_known if v) / len(schema_known)
-        if schema_known
-        else None
-    )
-
-    total_tool_calls = sum(int(r.tool_call_count or 0) for r in rows)
-    total_tool_errors = sum(int(r.tool_error_count or 0) for r in rows)
-    tool_error_rate = (
-        (total_tool_errors / total_tool_calls) if total_tool_calls > 0 else 0.0
-    )
-    runs_with_reliability_issues = sum(1 for r in rows if int(r.reliability_issue_count or 0) > 0)
-    runs_with_finalization_failures = sum(1 for r in rows if int(r.finalization_failure_count or 0) > 0)
-    timeout_runs = sum(1 for r in rows if (r.failure_reason or "") == FailureCategory.TIMEOUT_ERROR.value)
-
-    durations = [float(r.duration_ms) for r in rows if r.duration_ms is not None]
-    llm_counts = [float(r.llm_call_count) for r in rows]
-    token_totals = [float(r.tokens_total) for r in rows]
-    success_costs = [r.cost_usd_total for r in rows if r.status == "succeeded" and r.cost_usd_total is not None]
-    cost_per_success = (sum(success_costs) / len(success_costs)) if success_costs else None
-
-    return AgentRunMetricsSummary(
-        total_runs=total_runs,
-        successful_runs=successful_runs,
-        success_rate=successful_runs / total_runs,
-        schema_valid_rate=schema_valid_rate,
-        tool_error_rate=tool_error_rate,
-        reliability_failure_rate=runs_with_reliability_issues / total_runs,
-        finalization_failure_rate=runs_with_finalization_failures / total_runs,
-        runs_with_reliability_issues=runs_with_reliability_issues,
-        timeout_or_stuck_rate=timeout_runs / total_runs,
-        p50_duration_ms=_percentile(durations, 50),
-        p95_duration_ms=_percentile(durations, 95),
-        p50_llm_call_count=_percentile(llm_counts, 50),
-        p95_llm_call_count=_percentile(llm_counts, 95),
-        p50_tokens_total=_percentile(token_totals, 50),
-        p95_tokens_total=_percentile(token_totals, 95),
-        cost_per_successful_run=cost_per_success,
-    )
-
-
 def list_agent_events(
     run_id: str,
     after_seq: int,
     limit: int,
     db: Session,
 ) -> AgentEventsPage:
+    """List agent events."""
+    # Read the current list.
     run = agent_runs_repository.get_run(db, run_id)
     if run is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Run not found")
@@ -983,6 +866,8 @@ def stream_agent_events(
     poll_interval_s: float,
     db: Session,
 ) -> StreamingResponse:
+    """Stream agent events."""
+    # Keep events flowing.
     run = agent_runs_repository.get_run(db, run_id)
     if run is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Run not found")
@@ -995,6 +880,8 @@ def stream_agent_events(
             pass
 
     def _event_stream():
+        """Handle stream."""
+        # Keep the main step clear.
         nonlocal after_seq
         last_heartbeat = datetime.utcnow()
 
@@ -1036,29 +923,6 @@ def stream_agent_events(
     return StreamingResponse(_event_stream(), media_type="text/event-stream", headers=headers)
 
 
-def execute_agent_run(run_id: str, db: Session) -> dict:
-    run = agent_runs_repository.get_run(db, run_id)
-    if run is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Run not found")
-
-    if run.status in {"running"}:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Run is already running")
-    if run.status in {"succeeded"}:
-        return {"run_id": run.id, "status": run.status, "output": run.output_json}
-
-    now = datetime.utcnow()
-    run.status = "running"
-    run.started_at = now
-    run.updated_at = now
-    agent_runs_repository.save_run(db, run)
-
-    execute_agent_run_and_persist(db, run)
-    if run.status == "succeeded":
-        return {"run_id": run.id, "status": run.status, "output": run.output_json}
-
-    raise HTTPException(status_code=500, detail=run.error_text or "Agent run failed")
-
-
 def list_agent_runs(
     *,
     agent_name: Optional[str],
@@ -1068,6 +932,8 @@ def list_agent_runs(
     order: str,
     db: Session,
 ) -> list[AgentRunRead]:
+    """List agent runs."""
+    # Read the current list.
     runs = agent_runs_repository.list_runs(
         db,
         agent_name=agent_name,

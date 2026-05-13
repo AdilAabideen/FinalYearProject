@@ -1,3 +1,5 @@
+"""Api module helpers."""
+
 from fastapi import APIRouter
 from app.api.endpoints import (
     agent_catalog,
@@ -7,17 +9,11 @@ from app.api.endpoints import (
     mas_catalog,
     mas_execution,
     models,
-    medrecon,
     mas_runs,
-    vitals_agent,
 )
 
 api_router = APIRouter()
 
-api_router.include_router(medrecon.router, prefix="/medrecon", tags=["medrecon"])
-api_router.include_router(
-    vitals_agent.router, prefix="/vitals-agent", tags=["vitals-agent"]
-)
 api_router.include_router(agent_runs.router, prefix="/agent-runs", tags=["agent-runs"])
 api_router.include_router(mas_runs.router, prefix="/mas-runs", tags=["mas-runs"])
 api_router.include_router(mas_runs.router, prefix="/swarm-runs", tags=["swarm-runs"])

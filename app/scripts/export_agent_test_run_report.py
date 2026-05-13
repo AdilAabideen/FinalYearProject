@@ -1,3 +1,5 @@
+"""Export Agent Test Run Report script helpers."""
+
 from __future__ import annotations
 
 import argparse
@@ -28,6 +30,8 @@ DEFAULT_OUTPUT_ROOT = REPO_ROOT / "reports" / "agent_test_runs"
 
 
 def _normalize_id(raw: str) -> str:
+    """Normalize id."""
+    # Keep the output consistent.
     text = str(raw).strip()
     if not text:
         return text
@@ -38,12 +42,16 @@ def _normalize_id(raw: str) -> str:
 
 
 def _json_dumps(value: Any) -> str:
+    """Handle dumps."""
+    # Keep the main step clear.
     if value is None:
         return ""
     return json.dumps(value, ensure_ascii=False, default=str)
 
 
 def _dt(value: Any) -> str:
+    """Handle the value."""
+    # Keep the main step clear.
     if value is None:
         return ""
     if isinstance(value, datetime):
@@ -52,18 +60,24 @@ def _dt(value: Any) -> str:
 
 
 def _duration_ms(started_at: datetime | None, finished_at: datetime | None) -> int | None:
+    """Handle ms."""
+    # Keep the main step clear.
     if started_at is None or finished_at is None:
         return None
     return max(0, int((finished_at - started_at).total_seconds() * 1000))
 
 
 def _duration_s(started_at: datetime | None, finished_at: datetime | None) -> str:
+    """Handle s."""
+    # Keep the main step clear.
     if started_at is None or finished_at is None:
         return ""
     return f"{(finished_at - started_at).total_seconds():.3f}"
 
 
 def _write_csv(path: Path, rows: list[dict[str, Any]], fieldnames: list[str]) -> None:
+    """Handle csv."""
+    # Keep the main step clear.
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", newline="", encoding="utf-8") as handle:
         writer = csv.DictWriter(handle, fieldnames=fieldnames)
@@ -73,6 +87,8 @@ def _write_csv(path: Path, rows: list[dict[str, Any]], fieldnames: list[str]) ->
 
 
 def _latest_agent_test_run_id() -> str:
+    """Handle agent test run id."""
+    # Keep the main step clear.
     db = SessionLocal()
     try:
         row = db.scalar(
@@ -88,6 +104,8 @@ def _latest_agent_test_run_id() -> str:
 
 
 def export_agent_test_run_report(*, run_id: str, output_path: Path | None = None) -> Path:
+    """Handle agent test run report."""
+    # Keep the main step clear.
     ensure_runtime_schema_upgrades()
     normalized_run_id = _normalize_id(run_id)
 
@@ -243,6 +261,8 @@ def export_agent_test_run_report(*, run_id: str, output_path: Path | None = None
 
 
 def main() -> int:
+    """Handle the value."""
+    # Keep the main step clear.
     parser = argparse.ArgumentParser(
         description="Export one single-agent test run to a spreadsheet-friendly CSV."
     )

@@ -1,3 +1,5 @@
+"""Test Mas Payload Builders test coverage."""
+
 from __future__ import annotations
 
 import pytest
@@ -11,6 +13,8 @@ from app.agentic.workflows.definitions.esi_mas.payload_builders import (
 
 
 def _sample_case_info() -> dict:
+    """Handle case info."""
+    # Keep the main step clear.
     return {
         "gender": "M",
         "race": "WHITE",
@@ -30,6 +34,8 @@ def _sample_case_info() -> dict:
 
 @pytest.mark.unit
 def test_ut_plb_001_left_side_payload_projects_shared_triage_fields():
+    """Handle ut plb 001 left side payload projects shared triage fields."""
+    # Keep the main step clear.
     payload = left_side_payload(_sample_case_info())
 
     assert payload["gender"] == "M"
@@ -47,6 +53,8 @@ def test_ut_plb_001_left_side_payload_projects_shared_triage_fields():
 
 @pytest.mark.unit
 def test_ut_plb_002_right_side_payload_projects_structured_vitals_fields():
+    """Handle ut plb 002 right side payload projects structured vitals fields."""
+    # Keep the main step clear.
     payload = right_side_payload(_sample_case_info())
 
     assert payload["temperature"] == 98.6
@@ -63,6 +71,8 @@ def test_ut_plb_002_right_side_payload_projects_structured_vitals_fields():
 
 @pytest.mark.unit
 def test_ut_plb_003_unified_payload_builder_hides_vitals_from_esi_agents():
+    """Handle ut plb 003 unified payload builder hides vitals from ESI agents."""
+    # Keep the main step clear.
     payload = unified_payload_builder("esi2_agent", _sample_case_info())
 
     assert payload["chief_complaint"] == "Chest pain"
@@ -75,6 +85,8 @@ def test_ut_plb_003_unified_payload_builder_hides_vitals_from_esi_agents():
 
 @pytest.mark.unit
 def test_ut_plb_004_unified_payload_builder_exposes_vitals_to_vitals_and_doctor():
+    """Handle ut plb 004 unified payload builder exposes vitals to vitals and doctor."""
+    # Keep the main step clear.
     vitals_payload = unified_payload_builder("vitals_agent", _sample_case_info())
     doctor_payload = unified_payload_builder("doctor_agent", _sample_case_info())
 
@@ -88,6 +100,8 @@ def test_ut_plb_004_unified_payload_builder_exposes_vitals_to_vitals_and_doctor(
 
 @pytest.mark.unit
 def test_ut_plb_005_build_pending_agent_payload_applies_visibility_policy():
+    """Handle ut plb 005 build pending agent payload applies visibility policy."""
+    # Keep the main step clear.
     state = {
         "case_info": _sample_case_info(),
         "pending_handoff": None,

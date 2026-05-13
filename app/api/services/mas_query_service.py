@@ -1,3 +1,5 @@
+"""Mas Query Service service helpers."""
+
 from __future__ import annotations
 
 from fastapi import HTTPException, status
@@ -26,6 +28,8 @@ from app.schemas.mas_runs import MASRunRead
 
 
 def _require_mas_run(mas_run_id: str, db: Session):
+    """Handle mas run."""
+    # Keep the main step clear.
     row = mas_runs_repository.get_mas_run(db, mas_run_id)
     if row is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="MAS run not found")
@@ -33,6 +37,8 @@ def _require_mas_run(mas_run_id: str, db: Session):
 
 
 def get_mas_summary(mas_run_id: str, db: Session) -> MASSummaryRead:
+    """Return mas summary."""
+    # Read the current value.
     mas_run = _require_mas_run(mas_run_id, db)
 
     current_agent = None
@@ -86,6 +92,8 @@ def list_mas_agents(
     limit: int = 200,
     offset: int = 0,
 ) -> list[MASAgentRunRead]:
+    """List mas agents."""
+    # Read the current list.
     _require_mas_run(mas_run_id, db)
     rows = agent_runs_repository.list_runs_for_mas(
         db,
@@ -103,6 +111,8 @@ def list_mas_handoffs(
     limit: int = 200,
     offset: int = 0,
 ) -> list[MASHandoffRead]:
+    """List mas handoffs."""
+    # Read the current list.
     _require_mas_run(mas_run_id, db)
     rows = mas_handoffs_repository.list_mas_handoffs_for_run(
         db,
@@ -120,6 +130,8 @@ def list_mas_gate_evaluations(
     limit: int = 200,
     offset: int = 0,
 ) -> list[MASGateEvaluationRead]:
+    """List mas gate evaluations."""
+    # Read the current list.
     _require_mas_run(mas_run_id, db)
     rows = mas_gate_evaluations_repository.list_mas_gate_evaluations_for_run(
         db,
@@ -131,6 +143,8 @@ def list_mas_gate_evaluations(
 
 
 def get_mas_final_output(mas_run_id: str, db: Session) -> MASFinalOutputRead:
+    """Return mas final output."""
+    # Read the current value.
     _require_mas_run(mas_run_id, db)
     row = mas_final_outputs_repository.get_latest_mas_final_output_for_run(
         db,
@@ -142,6 +156,8 @@ def get_mas_final_output(mas_run_id: str, db: Session) -> MASFinalOutputRead:
 
 
 def get_mas_metrics(mas_run_id: str, db: Session) -> MASRunMetricsRead:
+    """Return mas metrics."""
+    # Read the current value.
     mas_run = _require_mas_run(mas_run_id, db)
     row = mas_run_metrics_repository.get_mas_run_metrics(db, mas_run_id)
     if row is None and mas_run.status in mas_run_metrics_service.TERMINAL_MAS_STATUSES:

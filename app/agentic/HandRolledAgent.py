@@ -1,3 +1,5 @@
+"""Handrolledagent module helpers."""
+
 from __future__ import annotations
 
 import asyncio
@@ -10,7 +12,7 @@ from typing import Any, AsyncGenerator, Callable, Mapping, Sequence
 
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
 from langchain_core.tools import BaseTool, tool as lc_tool
-from langchain_openai import ChatOpenAI
+from langchain_openai import AzureChatOpenAI
 from pydantic import BaseModel, ConfigDict
 
 from app.agentic.protocols import (
@@ -31,6 +33,7 @@ from app.agentic.telemetry import (
     ToolExecutionMetric,
 )
 from app.agentic.telemetry.usage_extractor import extract_provider_usage
+from app.config import settings
 
 
 class AgentKernel:
@@ -62,6 +65,8 @@ class AgentKernel:
         max_tool_calls: int = 2,
         runtime_config: RuntimeConfig | None = None,
     ) -> None:
+        """Handle the value."""
+        # Keep the main step clear.
         self.model = self._build_model(model=model, llm_kwargs=llm_kwargs)
         self.tools: list[BaseTool] = self._coerce_tools(tools or [])
 
@@ -155,15 +160,25 @@ class AgentKernel:
 
     @staticmethod
     def _build_model(model: str | Any, llm_kwargs: dict[str, Any] | None) -> Any:
+        """Build model."""
+        # Build the next value.
         if isinstance(model, str):
-            kwargs = {"model": model, "temperature": 0.0}
+            kwargs = {
+                "azure_deployment": model,
+                "azure_endpoint": settings.AZURE_OPENAI_ENDPOINT,
+                "api_key": settings.AZURE_OPENAI_API_KEY,
+                "api_version": settings.AZURE_OPENAI_API_VERSION,
+                "temperature": 0.0,
+            }
             if llm_kwargs:
                 kwargs.update(llm_kwargs)
-            return ChatOpenAI(**kwargs)
+            return AzureChatOpenAI(**kwargs)
         return model
 
     @staticmethod
     def _coerce_tools(raw_tools: Sequence[Any]) -> list[BaseTool]:
+        """Handle tools."""
+        # Keep the main step clear.
         normalized: list[BaseTool] = []
         for item in raw_tools:
             if isinstance(item, BaseTool):
@@ -181,6 +196,7 @@ class AgentKernel:
         These hints are consumed by the custom Dr7 and llama wrappers, but should not be
         forwarded to generic LangChain providers such as ChatOpenAI.
         """
+        # Keep the main step clear.
         if bool(getattr(self.model, "supports_runtime_tool_binding_hints", False)):
             return True
 
@@ -193,7 +209,7 @@ class AgentKernel:
         except Exception:
             return False
 
-        return llm_type in {"dr7-medical-chat", "llama-server-chat"}
+        return llm_type in {"dr7-medical-chat", "vllm-chat"}
 
     def _bind_model_tools(self) -> Any:
         """
@@ -203,6 +219,7 @@ class AgentKernel:
         the production wrappers accept extra runtime hints such as `agent_name`,
         `multi_agent`, and `handoff_names`.
         """
+        # Keep the main step clear.
         if not self._supports_runtime_tool_binding_hints():
             return self.model.bind_tools(
                 self.tools,
@@ -225,12 +242,16 @@ class AgentKernel:
 
     @staticmethod
     def _fallback_final_answer_schema() -> type[BaseModel]:
+        """Handle final answer schema."""
+        # Keep the main step clear.
         class FinalAnswerPayload(BaseModel):
             model_config = ConfigDict(extra="allow")
 
         return FinalAnswerPayload
 
     def _should_add_final_answer_tool(self, *, handoff_tool_names: Sequence[str] | None) -> bool:
+        """Handle add final answer tool."""
+        # Keep the main step clear.
         if not self.final_answer_tool_name or self.response_format is None:
             return False
 
@@ -245,6 +266,8 @@ class AgentKernel:
         return True
 
     def _build_final_answer_tool(self) -> BaseTool:
+        """Build final answer tool."""
+        # Build the next value.
         if not self.final_answer_tool_name:
             raise ValueError("final_answer_tool_name must be set to build final_answer tool.")
 
@@ -255,6 +278,7 @@ class AgentKernel:
         @lc_tool(tool_name, args_schema=schema_model)
         def _final_answer(**kwargs: Any) -> dict[str, Any]:
             """Signal completion and return the final structured payload."""
+            # Keep the main step clear.
             if not kwargs:
                 raise ValueError("final_answer requires a non-empty JSON object.")
 
@@ -268,6 +292,7 @@ class AgentKernel:
 
     def _schema_validation_error_for_output(self, value: Any) -> str | None:
         """Validate final output against configured response format when strict schema is available."""
+        # Keep the main step clear.
         if not (isinstance(self.response_format, type) and issubclass(self.response_format, BaseModel)):
             return None
         try:
@@ -277,6 +302,8 @@ class AgentKernel:
             return str(exc)
 
     def _render_system_prompt(self) -> str:
+        """Handle system prompt."""
+        # Keep the main step clear.
         return build_system_prompt(
             self.system_prompt,
             multi_agent_addon=self.multi_agent_prompt_addon,
@@ -287,6 +314,8 @@ class AgentKernel:
 
     @staticmethod
     def _payload_to_human_content(payload: Any) -> str:
+        """Handle to human content."""
+        # Keep the main step clear.
         if isinstance(payload, str):
             return payload
 
@@ -309,6 +338,8 @@ class AgentKernel:
 
     @staticmethod
     def _json_from_text(text: str) -> tuple[Any | None, str]:
+        """Handle from text."""
+        # Keep the main step clear.
         raw = (text or "").strip()
         if not raw:
             return None, raw
@@ -325,6 +356,8 @@ class AgentKernel:
         *,
         extra_additional_kwargs: Mapping[str, Any] | None = None,
     ) -> AIMessage:
+        """Handle message with tool calls."""
+        # Keep the main step clear.
         additional_kwargs = dict(getattr(source, "additional_kwargs", {}) or {})
         if extra_additional_kwargs:
             additional_kwargs.update(dict(extra_additional_kwargs))
@@ -341,11 +374,15 @@ class AgentKernel:
         self,
         tool_calls: list[dict[str, Any]],
     ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+        """Handle tool calls."""
+        # Keep the main step clear.
         if len(tool_calls) <= self.max_tool_calls:
             return tool_calls, []
         return tool_calls[: self.max_tool_calls], tool_calls[self.max_tool_calls :]
 
     def _emit_tool_execution_trace(self, trace: ToolExecutionTrace) -> None:
+        """Emit tool execution trace."""
+        # Keep events flowing.
         if self.runtime_config.print_events:
             status = trace.status or "unknown"
             print(
@@ -388,6 +425,8 @@ class AgentKernel:
         output_json: Any,
         handoff_json: Any = None,
     ) -> dict[str, Any]:
+        """Handle state."""
+        # Keep the main step clear.
         return {
             "messages": list(messages),
             "iteration": iteration,
@@ -397,29 +436,45 @@ class AgentKernel:
         }
 
     def set_event_context(self, *, run_id: str, agent_name: str, start_seq: int = 0) -> None:
+        """Handle event context."""
+        # Keep the main step clear.
         self._events.set_context(run_id=run_id, agent_name=agent_name, start_seq=start_seq)
         self._telemetry.set_context(run_id=run_id, agent_name=agent_name)
 
     def set_event_handlers(self, handlers: Sequence[Callable[[dict[str, Any]], None]] | None) -> None:
+        """Handle event handlers."""
+        # Keep the main step clear.
         self._events.set_handlers(handlers)
 
     def add_event_handler(self, handler: Callable[[dict[str, Any]], None]) -> None:
+        """Handle event handler."""
+        # Keep the main step clear.
         self._events.add_handler(handler)
 
     def set_llm_call_handlers(self, handlers: Sequence[Callable[[dict[str, Any]], None]] | None) -> None:
+        """Handle llm call handlers."""
+        # Keep the main step clear.
         self._telemetry.set_llm_handlers(handlers)
 
     def add_llm_call_handler(self, handler: Callable[[dict[str, Any]], None]) -> None:
+        """Handle llm call handler."""
+        # Keep the main step clear.
         self._telemetry.add_llm_handler(handler)
 
     def set_tool_call_handlers(self, handlers: Sequence[Callable[[dict[str, Any]], None]] | None) -> None:
+        """Handle tool call handlers."""
+        # Keep the main step clear.
         self._telemetry.set_tool_handlers(handlers)
 
     def add_tool_call_handler(self, handler: Callable[[dict[str, Any]], None]) -> None:
+        """Handle tool call handler."""
+        # Keep the main step clear.
         self._telemetry.add_tool_handler(handler)
 
     @staticmethod
     def _parsed_to_payload_json(parsed: Any) -> dict[str, Any] | None:
+        """Handle to payload json."""
+        # Keep the main step clear.
         if parsed is None:
             return None
         if isinstance(parsed, dict):
@@ -434,6 +489,8 @@ class AgentKernel:
         messages: list[BaseMessage],
         invoke_fn: Callable[[], Any],
     ) -> Any:
+        """Handle with telemetry."""
+        # Keep the main step clear.
         started_at = datetime.utcnow()
         t0 = time.perf_counter()
         model_name = getattr(self.model, "model_name", None) or getattr(self.model, "model", None)
@@ -576,6 +633,8 @@ class AgentKernel:
             raise normalized_exc
 
     def _emit_llm_metric(self, metric: LLMCallMetric) -> None:
+        """Emit llm metric."""
+        # Keep events flowing.
         if self.runtime_config.print_events:
             status = "error" if metric.error_text else "ok"
             tool_names = ",".join(metric.tool_names) if metric.tool_names else "none"
@@ -608,6 +667,8 @@ class AgentKernel:
         payload_json: dict[str, Any] | None = None,
         payload_text: str | None = None,
     ) -> None:
+        """Emit event."""
+        # Keep events flowing.
         if self.runtime_config.print_events:
             details = []
             if node_name:
@@ -637,10 +698,14 @@ class AgentKernel:
         payload: Any,
         stream_mode: Sequence[str] | str | None = None,
     ) -> AsyncGenerator[tuple[str, Any], None]:
+        """Handle the value."""
+        # Keep the main step clear.
         async for item in self._agent_runner.astream(payload, stream_mode=stream_mode):
             yield item
 
     async def ainvoke(self, payload: Any) -> Any:
+        """Handle the value."""
+        # Keep the main step clear.
         final_output: Any = None
         final_handoff: Any = None
         async for mode, data in self.astream(payload, stream_mode=("values",)):
@@ -652,6 +717,8 @@ class AgentKernel:
         return final_output
 
     def invoke(self, payload: Any) -> Any:
+        """Handle the value."""
+        # Keep the main step clear.
         return self._run_async_in_thread(self.ainvoke(payload))
 
     def stream(
@@ -659,14 +726,20 @@ class AgentKernel:
         payload: Any,
         stream_mode: Sequence[str] | str | None = None,
     ):
+        """Stream the value."""
+        # Keep events flowing.
         async_gen = self.astream(payload, stream_mode=stream_mode)
         yield from self._stream_async_in_thread(async_gen)
 
     @staticmethod
     def _run_async_in_thread(coro: Any) -> Any:
+        """Run async in thread."""
+        # Kick off the main step.
         q: Queue[Any] = Queue()
 
         def _runner() -> None:
+            """Handle the value."""
+            # Keep the main step clear.
             try:
                 result = asyncio.run(coro)
                 q.put(("result", result))
@@ -682,10 +755,14 @@ class AgentKernel:
 
     @staticmethod
     def _stream_async_in_thread(async_gen: AsyncGenerator[tuple[str, Any], None]):
+        """Stream async in thread."""
+        # Keep events flowing.
         q: Queue[Any] = Queue()
         sentinel = object()
 
         async def _producer() -> None:
+            """Handle the value."""
+            # Keep the main step clear.
             try:
                 async for item in async_gen:
                     q.put(("item", item))
@@ -695,6 +772,8 @@ class AgentKernel:
                 q.put(("done", sentinel))
 
         def _runner() -> None:
+            """Handle the value."""
+            # Keep the main step clear.
             asyncio.run(_producer())
 
         thread = threading.Thread(target=_runner, daemon=True)

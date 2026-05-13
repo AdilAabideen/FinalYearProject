@@ -1,3 +1,5 @@
+"""Mas Tests Service service helpers."""
+
 from __future__ import annotations
 
 import asyncio
@@ -24,20 +26,15 @@ from app.api.services import mas_execution_service
 from app.api.services.mas_run_metrics_service import TERMINAL_MAS_STATUSES, persist_mas_run_metrics
 from app.config import settings
 from app.database import SessionLocal
-from app.models.mas_test_case import MasTestCase
 from app.models.mas_test_case_run import MasTestCaseRun
 from app.models.mas_test_run import MasTestRun
 from app.schemas.mas_tests import (
     MasTestCaseAnalyticsRead,
-    MasTestCaseCreateRequest,
     MasTestCaseRead,
     MasTestCaseRunMetricRead,
-    MasTestCaseRunRead,
-    MasTestCaseUpdateRequest,
     MasTestRunAnalyticsRead,
     MasTestRunAnalyticsSummaryRead,
     MasTestRunBatchMetricsRead,
-    MasTestRunDetailRead,
     MasTestRunMetricsSummaryRead,
     MasTestRunRead,
     MasTestRunStartRequest,
@@ -45,6 +42,8 @@ from app.schemas.mas_tests import (
 
 
 def _workflow_spec_or_400(workflow_id: str):
+    """Handle spec or 400."""
+    # Keep the main step clear.
     try:
         return get_workflow_spec(workflow_id)
     except ValueError:
@@ -56,6 +55,8 @@ def _workflow_spec_or_400(workflow_id: str):
 
 
 def _workflow_evaluator_or_400(workflow_id: str):
+    """Handle evaluator or 400."""
+    # Keep the main step clear.
     spec = _workflow_spec_or_400(workflow_id)
     if spec.test_evaluator is None:
         raise HTTPException(
@@ -71,6 +72,8 @@ def _validate_case_payload_or_400(
     input_json: dict[str, Any],
     expected_json: dict[str, Any],
 ) -> None:
+    """Validate case payload or 400."""
+    # Fail fast on bad input.
     evaluator = _workflow_evaluator_or_400(workflow_id)
     try:
         evaluator.validate_expected(expected_json)
@@ -83,6 +86,8 @@ def _normalize_runtime_input_or_400(
     workflow_id: str,
     input_json: dict[str, Any],
 ) -> dict[str, Any]:
+    """Normalize runtime input or 400."""
+    # Keep the output consistent.
     candidate = dict(input_json)
     if "gender" not in candidate and "der" in candidate:
         candidate["gender"] = candidate["der"]
@@ -95,6 +100,8 @@ def _normalize_runtime_input_or_400(
 
 
 def _resolve_test_run_model_id(run: MasTestRun) -> str:
+    """Resolve test run model id."""
+    # Pick the needed value.
     return run.model_name or settings.OPENAI_MODEL
 
 
@@ -107,6 +114,8 @@ def _build_case_diff_payload(
     evaluator_diff: Optional[dict[str, Any]],
     error_text: Optional[str],
 ) -> dict[str, Any]:
+    """Build case diff payload."""
+    # Build the next value.
     payload: dict[str, Any] = {
         "expected_answer": expected_answer,
         "actual_answer": actual_answer,
@@ -121,6 +130,8 @@ def _build_case_diff_payload(
 
 
 def _stream_legacy_swarm_diff_payload(payload: dict[str, Any]) -> dict[str, Any]:
+    """Stream legacy swarm diff payload."""
+    # Keep events flowing.
     legacy = dict(payload)
     if "mas_status" in legacy:
         legacy["swarm_status"] = legacy.pop("mas_status")
@@ -130,6 +141,8 @@ def _stream_legacy_swarm_diff_payload(payload: dict[str, Any]) -> dict[str, Any]
 
 
 def _avg_or_none(total: float, count: int, ndigits: int = 4) -> Optional[float]:
+    """Handle or none."""
+    # Keep the main step clear.
     if count <= 0:
         return None
     return round(total / count, ndigits)
@@ -144,6 +157,8 @@ def list_cases(
     order: str,
     db: Session,
 ) -> list[MasTestCaseRead]:
+    """List cases."""
+    # Read the current list.
     rows = mas_tests_repository.list_test_cases(
         db,
         workflow_id=workflow_id,
@@ -155,77 +170,9 @@ def list_cases(
     return [MasTestCaseRead.model_validate(row.__dict__) for row in rows]
 
 
-def create_case(payload: MasTestCaseCreateRequest, db: Session) -> MasTestCaseRead:
-    _validate_case_payload_or_400(
-        workflow_id=payload.workflow_id,
-        input_json=payload.input_json,
-        expected_json=payload.expected_json,
-    )
-    _normalize_runtime_input_or_400(
-        workflow_id=payload.workflow_id,
-        input_json=payload.input_json,
-    )
-
-    now = datetime.utcnow()
-    row = MasTestCase(
-        id=str(uuid.uuid4()),
-        workflow_id=payload.workflow_id,
-        name=payload.name,
-        enabled=payload.enabled,
-        input_json=payload.input_json,
-        expected_json=payload.expected_json,
-        created_at=now,
-        updated_at=now,
-    )
-    mas_tests_repository.save_test_case(db, row, refresh=True)
-    return MasTestCaseRead.model_validate(row.__dict__)
-
-
-def update_case(
-    case_id: str,
-    payload: MasTestCaseUpdateRequest,
-    db: Session,
-) -> MasTestCaseRead:
-    row = mas_tests_repository.get_test_case(db, case_id)
-    if row is None:
-        raise HTTPException(status_code=404, detail="Test case not found")
-
-    workflow_id = payload.workflow_id or row.workflow_id
-    input_json = payload.input_json if payload.input_json is not None else row.input_json
-    expected_json = payload.expected_json if payload.expected_json is not None else row.expected_json
-
-    _validate_case_payload_or_400(
-        workflow_id=workflow_id,
-        input_json=input_json,
-        expected_json=expected_json,
-    )
-    _normalize_runtime_input_or_400(
-        workflow_id=workflow_id,
-        input_json=input_json,
-    )
-
-    row.workflow_id = workflow_id
-    row.input_json = input_json
-    row.expected_json = expected_json
-    if payload.name is not None:
-        row.name = payload.name
-    if payload.enabled is not None:
-        row.enabled = payload.enabled
-    row.updated_at = datetime.utcnow()
-    mas_tests_repository.save_test_case(db, row, refresh=True)
-    return MasTestCaseRead.model_validate(row.__dict__)
-
-
-def delete_case(case_id: str, db: Session) -> None:
-    row = mas_tests_repository.get_test_case(db, case_id)
-    if row is None:
-        raise HTTPException(status_code=404, detail="Test case not found")
-    row.enabled = False
-    row.updated_at = datetime.utcnow()
-    mas_tests_repository.save_test_case(db, row)
-
-
 def start_run(payload: MasTestRunStartRequest, db: Session) -> MasTestRunRead:
+    """Start run."""
+    # Kick off the main step.
     if not payload.case_ids:
         raise HTTPException(status_code=400, detail="case_ids must be non-empty")
 
@@ -298,39 +245,9 @@ def start_run(payload: MasTestRunStartRequest, db: Session) -> MasTestRunRead:
     return MasTestRunRead.model_validate(run.__dict__)
 
 
-def list_runs(
-    *,
-    workflow_id: Optional[str],
-    limit: int,
-    offset: int,
-    order: str,
-    db: Session,
-) -> list[MasTestRunRead]:
-    rows = mas_tests_repository.list_test_runs(
-        db,
-        workflow_id=workflow_id,
-        limit=limit,
-        offset=offset,
-        order=order,
-    )
-    return [MasTestRunRead.model_validate(row.__dict__) for row in rows]
-
-
-def get_run(run_id: str, db: Session) -> MasTestRunDetailRead:
-    run = mas_tests_repository.get_test_run(db, run_id)
-    if run is None:
-        raise HTTPException(status_code=404, detail="Test run not found")
-
-    case_runs = mas_tests_repository.get_case_runs_for_test_run(db, run_id)
-    by_case_id = {case_run.test_case_id: case_run for case_run in case_runs}
-    ordered = [by_case_id[case_id] for case_id in run.selected_case_ids_json if case_id in by_case_id]
-    return MasTestRunDetailRead(
-        run=MasTestRunRead.model_validate(run.__dict__),
-        case_runs=[MasTestCaseRunRead.model_validate(case_run.__dict__) for case_run in ordered],
-    )
-
-
 def get_run_metrics(run_id: str, db: Session) -> MasTestRunBatchMetricsRead:
+    """Return run metrics."""
+    # Read the current value.
     run = mas_tests_repository.get_test_run(db, run_id)
     if run is None:
         raise HTTPException(status_code=404, detail="Test run not found")
@@ -404,6 +321,8 @@ def get_run_metrics(run_id: str, db: Session) -> MasTestRunBatchMetricsRead:
 
 
 def get_run_analytics(run_id: str, db: Session) -> MasTestRunAnalyticsRead:
+    """Return run analytics."""
+    # Read the current value.
     run = mas_tests_repository.get_test_run(db, run_id)
     if run is None:
         raise HTTPException(status_code=404, detail="Test run not found")
@@ -535,6 +454,8 @@ def get_run_analytics(run_id: str, db: Session) -> MasTestRunAnalyticsRead:
 
 
 def stream_run(run_id: str, db: Session) -> StreamingResponse:
+    """Stream run."""
+    # Keep events flowing.
     run = mas_tests_repository.get_test_run(db, run_id)
     if run is None:
         raise HTTPException(status_code=404, detail="Test run not found")
@@ -560,6 +481,8 @@ def stream_run(run_id: str, db: Session) -> StreamingResponse:
         )
 
     def _sse(event: str, data: dict[str, Any], event_id: Optional[int] = None) -> str:
+        """Handle the value."""
+        # Keep the main step clear.
         payload = json.dumps(data, ensure_ascii=False)
         lines = []
         if event_id is not None:
@@ -569,6 +492,8 @@ def stream_run(run_id: str, db: Session) -> StreamingResponse:
         return "\n".join(lines) + "\n\n"
 
     def _load_mas_result(mas_run_id: str) -> tuple[str, Optional[dict[str, Any]], Optional[int], Optional[str]]:
+        """Load mas result."""
+        # Read the current value.
         result_db = SessionLocal()
         try:
             mas_run = mas_runs_repository.get_mas_run(result_db, mas_run_id)
@@ -593,6 +518,8 @@ def stream_run(run_id: str, db: Session) -> StreamingResponse:
             result_db.close()
 
     def _stream():
+        """Stream the value."""
+        # Keep events flowing.
         nonlocal run
         model_id = _resolve_test_run_model_id(run)
 

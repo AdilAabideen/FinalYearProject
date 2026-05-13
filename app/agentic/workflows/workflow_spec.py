@@ -1,3 +1,5 @@
+"""Workflow Spec module helpers."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -19,6 +21,8 @@ class WorkflowInputSchemaSpec:
     metadata: Dict[str, Any] = field(default_factory=dict)
 
     def json_schema(self) -> Dict[str, Any]:
+        """Handle schema."""
+        # Keep the main step clear.
         return self.model.model_json_schema()
 
 
@@ -33,12 +37,18 @@ class WorkflowSpec:
 
     @property
     def workflow_id(self) -> str:
+        """Handle id."""
+        # Keep the main step clear.
         return self.workflow_definition.metadata.workflow_id
 
     @property
     def name(self) -> str:
+        """Handle the value."""
+        # Keep the main step clear.
         return self.workflow_definition.metadata.name
 
     @property
     def version(self) -> str:
+        """Handle the value."""
+        # Keep the main step clear.
         return self.workflow_definition.metadata.version

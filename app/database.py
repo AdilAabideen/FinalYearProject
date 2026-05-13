@@ -1,3 +1,5 @@
+"""Database module helpers."""
+
 from sqlalchemy import create_engine, event, inspect, text
 from sqlalchemy.orm import sessionmaker
 from app.config import settings
@@ -18,6 +20,8 @@ engine = create_engine(
 if "sqlite" in settings.DATABASE_URL:
     @event.listens_for(engine, "connect")
     def _set_sqlite_pragma(dbapi_connection, connection_record) -> None:  # type: ignore[no-redef]
+        """Handle sqlite pragma."""
+        # Keep the main step clear.
         cursor = dbapi_connection.cursor()
         cursor.execute("PRAGMA foreign_keys=ON")
         cursor.close()
@@ -33,6 +37,7 @@ def ensure_runtime_schema_upgrades() -> None:
     """
     Apply additive runtime schema upgrades for environments without migrations.
     """
+    # Keep the main step clear.
     inspector = inspect(engine)
     table_names = set(inspector.get_table_names())
     with engine.begin() as conn:
@@ -764,6 +769,7 @@ def get_db():
     FastAPI dependency that provides a database session.
     Automatically closes the session after the request.
     """
+    # Read the current value.
     db = SessionLocal()
     try:
         yield db

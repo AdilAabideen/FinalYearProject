@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+"""Context Buildup script helpers."""
+
 from __future__ import annotations
 
 import argparse
@@ -16,13 +18,15 @@ from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, System
 from langchain_core.utils.function_calling import convert_to_openai_tool
 
 from app.agentic.agents.agents import get_agent_spec
-from app.agentic.models.dr7_medical_chat import Dr7MedicalChatModel
-from app.agentic.models.llama_server_chat import LlamaServerChat
+from app.agentic.models.medgemma_medical_chat import MedGemmaMedicalChatModel
+from app.agentic.models.vllm_chat import VLLMChat
 
 def temp_tool_instruction(
         tools: Sequence[dict[str, Any]],
         tool_choice: Optional[str],
     ) -> str:
+        """Handle tool instruction."""
+        # Keep the main step clear.
         prompt_tools: list[dict[str, Any]] = []
         for tool in tools:
             fn = tool.get("function", {})
@@ -93,6 +97,8 @@ def temp_tool_instruction(
 
 
 def _parse_args() -> argparse.Namespace:
+    """Parse args."""
+    # Keep the output consistent.
     parser = argparse.ArgumentParser(
         description=(
             "Build and inspect model context exactly like Dr7/Llama wrappers do, "
@@ -147,11 +153,15 @@ def _parse_args() -> argparse.Namespace:
 
 
 def _load_json_file(path: str) -> Any:
+    """Load json file."""
+    # Read the current value.
     payload = Path(path).read_text(encoding="utf-8")
     return json.loads(payload)
 
 
 def _resolve_agent_system_prompt(agent_name: str) -> str:
+    """Resolve agent system prompt."""
+    # Pick the needed value.
     normalized = str(agent_name or "").strip()
     if not normalized:
         return ""
@@ -177,6 +187,8 @@ def _resolve_agent_system_prompt(agent_name: str) -> str:
 
 
 def _to_base_message(item: dict[str, Any]) -> BaseMessage:
+    """Handle base message."""
+    # Keep the main step clear.
     role = str(item.get("role") or "").strip().lower()
     content = item.get("content", "")
     if not isinstance(content, str):
@@ -202,6 +214,8 @@ def _to_base_message(item: dict[str, Any]) -> BaseMessage:
 
 
 def _load_messages(messages_json: str, system_text: str, user_text: str) -> list[BaseMessage]:
+    """Load messages."""
+    # Read the current value.
     if messages_json:
         raw = _load_json_file(messages_json)
         if not isinstance(raw, list):
@@ -222,6 +236,8 @@ def _load_messages(messages_json: str, system_text: str, user_text: str) -> list
 
 
 def _load_tools(agent_name: str, tools_json: str) -> list[dict[str, Any]]:
+    """Load tools."""
+    # Read the current value.
     raw_tools: list[Any] = []
     spec = None
     if agent_name:
@@ -282,7 +298,9 @@ def _build_dr7_context(
     tools: list[dict[str, Any]],
     tool_choice: Optional[str],
 ) -> dict[str, Any]:
-    model = Dr7MedicalChatModel(
+    """Build dr7 context."""
+    # Build the next value.
+    model = MedGemmaMedicalChatModel(
         model=model_id,
         base_url="http://localhost/v1",
         api_key="debug",
@@ -331,7 +349,9 @@ def _build_llama_context(
     tools: list[dict[str, Any]],
     tool_choice: Optional[str],
 ) -> dict[str, Any]:
-    model = LlamaServerChat(
+    """Build llama context."""
+    # Build the next value.
+    model = VLLMChat(
         model=model_id,
         base_url="https://l99jmubodzvsex-8000.proxy.runpod.net/v1",
         api_key="",
@@ -374,6 +394,8 @@ def _build_llama_context(
 
 
 def main() -> int:
+    """Handle the value."""
+    # Keep the main step clear.
     args = _parse_args()
     system_text = args.system
     if (

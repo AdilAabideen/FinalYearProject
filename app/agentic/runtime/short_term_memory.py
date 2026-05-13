@@ -1,3 +1,5 @@
+"""Short Term Memory module helpers."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -48,6 +50,8 @@ class ShortTermMemory:
         token_estimator: TokenEstimator | None = None,
         log_fn: Callable[[str], None] | None = None,
     ) -> None:
+        """Handle the value."""
+        # Keep the main step clear.
         self.config = config or ShortTermMemoryConfig()
         self._messages: list[BaseMessage] = []
         self._token_estimator = token_estimator or TokenEstimator()
@@ -55,6 +59,7 @@ class ShortTermMemory:
 
     def append_assistant_tool_call(self, message: AIMessage) -> AIMessage:
         """Append an assistant message that contains one or more tool calls."""
+        # Keep the next value explicit.
         tool_calls = list(getattr(message, "tool_calls", []) or [])
         if not tool_calls:
             raise ValueError("append_assistant_tool_call requires AIMessage.tool_calls to be non-empty.")
@@ -66,6 +71,7 @@ class ShortTermMemory:
 
     def append_tool_result(self, message: ToolMessage) -> ToolMessage:
         """Append a tool result message."""
+        # Keep the next value explicit.
         cloned = self._clone_tool_message(message)
         self._messages.append(cloned)
         self._emit_append_event(kind="tool_result", message=cloned)
@@ -77,6 +83,7 @@ class ShortTermMemory:
 
         Returns appended message when enabled, else returns None.
         """
+        # Keep the next value explicit.
         if not self.config.include_final_assistant_output:
             return None
 
@@ -87,18 +94,24 @@ class ShortTermMemory:
 
     def messages(self) -> list[BaseMessage]:
         """Return a shallow copy of current short-term memory messages."""
+        # Keep the main step clear.
         return list(self._messages)
 
     def clear(self) -> None:
         """Clear short-term memory state."""
+        # Keep the main step clear.
         self._messages.clear()
         if self.config.verbose:
             self._log_fn(f"{self.config.log_prefix} cleared messages=0")
 
     def __len__(self) -> int:
+        """Handle the value."""
+        # Keep the main step clear.
         return len(self._messages)
 
     def _clone_ai_message(self, message: AIMessage) -> AIMessage:
+        """Handle ai message."""
+        # Keep the main step clear.
         additional_kwargs = self._sanitize_additional_kwargs(
             dict(getattr(message, "additional_kwargs", {}) or {})
         )
@@ -113,6 +126,8 @@ class ShortTermMemory:
 
     @staticmethod
     def _clone_tool_message(message: ToolMessage) -> ToolMessage:
+        """Handle tool message."""
+        # Keep the main step clear.
         kwargs: dict[str, Any] = {
             "content": str(getattr(message, "content", "") or ""),
             "tool_call_id": getattr(message, "tool_call_id", None),
@@ -124,6 +139,8 @@ class ShortTermMemory:
         return ToolMessage(**kwargs)
 
     def _sanitize_additional_kwargs(self, additional_kwargs: Mapping[str, Any]) -> dict[str, Any]:
+        """Handle additional kwargs."""
+        # Keep the main step clear.
         if self.config.include_raw_provider_debug:
             return dict(additional_kwargs)
 
@@ -133,6 +150,8 @@ class ShortTermMemory:
         return sanitized
 
     def _emit_append_event(self, *, kind: str, message: BaseMessage) -> None:
+        """Emit append event."""
+        # Keep events flowing.
         if not (self.config.verbose or self.config.on_message_appended is not None):
             return
 
@@ -169,6 +188,8 @@ class ShortTermMemory:
 
     @staticmethod
     def _message_role(message: BaseMessage) -> str:
+        """Handle role."""
+        # Keep the main step clear.
         if isinstance(message, AIMessage):
             return "assistant"
         if isinstance(message, ToolMessage):
@@ -178,6 +199,7 @@ class ShortTermMemory:
     @staticmethod
     def _provider_preview(message: BaseMessage) -> str | None:
         """Render one-message preview in provider message format."""
+        # Keep the main step clear.
         try:
             rendered = to_provider_messages(
                 [message],

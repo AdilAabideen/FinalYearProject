@@ -1,3 +1,5 @@
+"""Workflow Definition module helpers."""
+
 from __future__ import annotations
 
 from typing import Any, Dict, List, Optional, Tuple
@@ -16,6 +18,8 @@ class WorkflowMetadata(BaseModel):
 
     @model_validator(mode="after")
     def validate_metadata(self) -> "WorkflowMetadata":
+        """Validate metadata."""
+        # Fail fast on bad input.
         if not self.workflow_id.strip():
             raise ValueError("workflow_id must be non-empty.")
         if not self.name.strip():
@@ -51,6 +55,8 @@ class GateNodeDefinition(BaseModel):
 
     @model_validator(mode="after")
     def validate_gate(self) -> "GateNodeDefinition":
+        """Validate gate."""
+        # Fail fast on bad input.
         if not self.gate_id.strip():
             raise ValueError("gate_id must be non-empty.")
         if not self.name.strip():
@@ -76,6 +82,8 @@ class SourceDefinition(BaseModel):
 
     @model_validator(mode="after")
     def validate_source(self) -> "SourceDefinition":
+        """Validate source."""
+        # Fail fast on bad input.
         if not self.source_id.strip():
             raise ValueError("source_id must be non-empty.")
         if not self.name.strip():
@@ -122,6 +130,8 @@ class WorkflowDefinition(BaseModel):
 
     @model_validator(mode="after")
     def validate_definition(self) -> "WorkflowDefinition":
+        """Validate definition."""
+        # Fail fast on bad input.
         participating_agents = list(self.participating_agents)
         if not participating_agents:
             raise ValueError("participating_agents must contain at least one agent.")
@@ -226,35 +236,53 @@ class WorkflowDefinition(BaseModel):
 
     @property
     def gate_ids(self) -> Tuple[str, ...]:
+        """Handle ids."""
+        # Keep the main step clear.
         return tuple(self.gates.keys())
 
     @property
     def source_ids(self) -> Tuple[str, ...]:
+        """Handle ids."""
+        # Keep the main step clear.
         return tuple(self.sources.keys())
 
     @property
     def all_nodes(self) -> Tuple[str, ...]:
+        """Handle nodes."""
+        # Keep the main step clear.
         return tuple(list(self.participating_agents) + list(self.gate_ids))
 
     def allowed_targets_for(self, source_agent: str) -> Tuple[str, ...]:
+        """Handle targets for."""
+        # Keep the main step clear.
         return tuple(self.allowed_handoffs.get(source_agent, ()))
 
     def is_start_agent(self, agent_name: str) -> bool:
+        """Handle start agent."""
+        # Keep the main step clear.
         return agent_name in self.start_agents
 
     def is_finalizing_agent(self, agent_name: str) -> bool:
+        """Handle finalizing agent."""
+        # Keep the main step clear.
         return agent_name in self.finalizing_agents
 
     def is_gate_node(self, node_name: str) -> bool:
+        """Handle gate node."""
+        # Keep the main step clear.
         return node_name in self.gates
 
     def source_agents(self, source_id: str) -> Tuple[str, ...]:
+        """Handle agents."""
+        # Keep the main step clear.
         source = self.sources.get(source_id)
         if source is None:
             return ()
         return source.agent_names
 
     def sources_for_agent(self, agent_name: str) -> Tuple[str, ...]:
+        """Handle for agent."""
+        # Keep the main step clear.
         source_ids: List[str] = []
         for source_id, source in self.sources.items():
             if agent_name in source.agent_names:
@@ -262,6 +290,8 @@ class WorkflowDefinition(BaseModel):
         return tuple(source_ids)
 
     def gate_incoming_nodes(self, gate_id: str) -> Tuple[str, ...]:
+        """Handle incoming nodes."""
+        # Keep the main step clear.
         gate = self.gates[gate_id]
         if gate.incoming_from:
             return gate.incoming_from
@@ -278,6 +308,8 @@ class WorkflowDefinition(BaseModel):
         gate_id: str,
         handoff_history: List[Dict[str, Any]],
     ) -> Tuple[str, ...]:
+        """Handle satisfied sources."""
+        # Keep the main step clear.
         gate = self.gates[gate_id]
         target_node = gate.target_node
         if target_node is None:
@@ -301,6 +333,8 @@ class WorkflowDefinition(BaseModel):
         gate_id: str,
         handoff_history: List[Dict[str, Any]],
     ) -> Tuple[str, ...]:
+        """Handle missing sources."""
+        # Keep the main step clear.
         gate = self.gates[gate_id]
         satisfied = set(self.gate_satisfied_sources(gate_id, handoff_history))
         return tuple(source_id for source_id in gate.required_sources if source_id not in satisfied)
@@ -310,9 +344,13 @@ class WorkflowDefinition(BaseModel):
         gate_id: str,
         handoff_history: List[Dict[str, Any]],
     ) -> bool:
+        """Handle gate ready."""
+        # Keep the main step clear.
         return len(self.gate_missing_sources(gate_id, handoff_history)) == 0
 
     def graph_edges(self) -> List[Tuple[str, str]]:
+        """Handle edges."""
+        # Keep the main step clear.
         edges: List[Tuple[str, str]] = []
         for source_agent, target_agents in self.allowed_handoffs.items():
             for target_agent in target_agents:

@@ -1,3 +1,5 @@
+"""Test Agent Runs And Metrics Repository test coverage."""
+
 from __future__ import annotations
 
 from datetime import datetime
@@ -11,12 +13,16 @@ from app.models.agent_run import AgentRun
 @pytest.mark.integration
 @pytest.mark.db
 def test_it_db_001_get_last_event_seq_returns_zero_when_none_exist(db_session):
+    """Handle it db 001 get last event seq returns zero when none exist."""
+    # Keep the main step clear.
     assert agent_runs_repository.get_last_event_seq(db_session, "missing") == 0
 
 
 @pytest.mark.integration
 @pytest.mark.db
 def test_it_db_002_save_and_reload_agent_run(db_session):
+    """Handle it db 002 save and reload agent run."""
+    # Keep the main step clear.
     run = AgentRun(
         id="run_1",
         agent_name="vitals_agent",
@@ -39,6 +45,8 @@ def test_it_db_002_save_and_reload_agent_run(db_session):
 @pytest.mark.integration
 @pytest.mark.db
 def test_it_db_003_list_runs_filters_by_agent_name(db_session):
+    """Handle it db 003 list runs filters by agent name."""
+    # Keep the main step clear.
     for idx, agent_name in enumerate(["a", "b"]):
         agent_runs_repository.save_run(
             db_session,
@@ -63,6 +71,8 @@ def test_it_db_003_list_runs_filters_by_agent_name(db_session):
 @pytest.mark.integration
 @pytest.mark.db
 def test_it_db_004_append_event_persists_sequence_ordering(db_session):
+    """Handle it db 004 append event persists sequence ordering."""
+    # Keep the main step clear.
     agent_runs_repository.append_event(
         db_session,
         run_id="run_1",
@@ -86,6 +96,8 @@ def test_it_db_004_append_event_persists_sequence_ordering(db_session):
 @pytest.mark.integration
 @pytest.mark.db
 def test_it_db_005_append_llm_call_persists_normalized_counts(db_session):
+    """Handle it db 005 append LLM call persists normalized counts."""
+    # Keep the main step clear.
     agent_metrics_repository.append_llm_call(
         db_session,
         run_id="run_1",
@@ -118,6 +130,8 @@ def test_it_db_005_append_llm_call_persists_normalized_counts(db_session):
 @pytest.mark.integration
 @pytest.mark.db
 def test_it_db_006_append_tool_call_persists_status_and_latency(db_session):
+    """Handle it db 006 append tool call persists status and latency."""
+    # Keep the main step clear.
     agent_metrics_repository.append_tool_call(
         db_session,
         run_id="run_1",
@@ -140,6 +154,8 @@ def test_it_db_006_append_tool_call_persists_status_and_latency(db_session):
 @pytest.mark.integration
 @pytest.mark.db
 def test_it_db_007_upsert_metrics_inserts_then_updates_same_row(db_session):
+    """Handle it db 007 upsert metrics inserts then updates same row."""
+    # Keep the main step clear.
     agent_metrics_repository.upsert_run_metrics(
         db_session,
         run_id="run_1",

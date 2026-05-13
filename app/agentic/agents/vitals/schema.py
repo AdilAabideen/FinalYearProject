@@ -1,3 +1,5 @@
+"""Schema module helpers."""
+
 from __future__ import annotations
 
 from typing import Literal, Union
@@ -38,6 +40,8 @@ class VitalsAgentOutput(BaseModel):
     @model_validator(mode="before")
     @classmethod
     def _accept_flat_or_nested_payload(cls, value):
+        """Handle flat or nested payload."""
+        # Keep the main step clear.
         if not isinstance(value, dict):
             return value
 

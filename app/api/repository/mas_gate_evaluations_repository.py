@@ -1,3 +1,5 @@
+"""Mas Gate Evaluations Repository repository helpers."""
+
 from __future__ import annotations
 
 from typing import Optional
@@ -9,6 +11,8 @@ from app.models.mas_gate_evaluation import MASGateEvaluation
 
 
 def get_mas_gate_evaluation(db: Session, evaluation_id: str) -> Optional[MASGateEvaluation]:
+    """Return mas gate evaluation."""
+    # Read the current value.
     return db.get(MASGateEvaluation, evaluation_id)
 
 
@@ -18,6 +22,8 @@ def save_mas_gate_evaluation(
     *,
     refresh: bool = False,
 ) -> None:
+    """Save mas gate evaluation."""
+    # Keep stored state current.
     db.add(evaluation)
     db.commit()
     if refresh:
@@ -31,6 +37,8 @@ def list_mas_gate_evaluations_for_run(
     limit: int = 200,
     offset: int = 0,
 ) -> list[MASGateEvaluation]:
+    """List mas gate evaluations for run."""
+    # Read the current list.
     stmt = (
         select(MASGateEvaluation)
         .where(MASGateEvaluation.mas_run_id == mas_run_id)
@@ -42,6 +50,8 @@ def list_mas_gate_evaluations_for_run(
 
 
 def count_mas_gate_evaluations_for_run(db: Session, *, mas_run_id: str) -> int:
+    """Count mas gate evaluations for run."""
+    # Derive the needed value.
     stmt = (
         select(func.count())
         .select_from(MASGateEvaluation)

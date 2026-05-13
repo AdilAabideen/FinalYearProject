@@ -1,3 +1,5 @@
+"""Payload Builders package exports."""
+
 from __future__ import annotations
 
 from typing import Any, Dict
@@ -6,6 +8,8 @@ from app.agentic.mas_contract import AgentName
 
 
 def left_side_payload(case_info: Dict[str, Any]) -> Dict[str, Any]:
+    """Handle side payload."""
+    # Keep the main step clear.
     chief_complaint = case_info.get("chiefcomplaint")
     triage_case = case_info.get("tiragecase")
     age = case_info.get("age")
@@ -25,6 +29,8 @@ def left_side_payload(case_info: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def right_side_payload(case_info: Dict[str, Any]) -> Dict[str, Any]:
+    """Handle side payload."""
+    # Keep the main step clear.
     heart_rate = case_info.get("heartrate")
     respiratory_rate = case_info.get("resprate")
     o2_sat = case_info.get("o2sat")
@@ -43,6 +49,8 @@ def right_side_payload(case_info: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def unified_payload_builder(agent_name: AgentName, case_info: Dict[str, Any]) -> Dict[str, Any]:
+    """Handle payload builder."""
+    # Keep the main step clear.
     projected = left_side_payload(case_info)
     if agent_name in {"vitals_agent", "doctor_agent"}:
         projected.update(right_side_payload(case_info))

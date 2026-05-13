@@ -33,6 +33,8 @@ GRAY = "\x1b[90m"
 
 
 def _maybe_pretty_json(text: str) -> str:
+    """Handle pretty json."""
+    # Keep the main step clear.
     stripped = (text or "").strip()
     if not stripped:
         return ""
@@ -44,6 +46,8 @@ def _maybe_pretty_json(text: str) -> str:
 
 
 def _use_color() -> bool:
+    """Handle color."""
+    # Keep the main step clear.
     return (
         (os.environ.get("FORCE_COLOR") == "1" or sys.stdout.isatty())
         and os.environ.get("NO_COLOR") is None
@@ -52,12 +56,16 @@ def _use_color() -> bool:
 
 
 def _c(text: str, *codes: str) -> str:
+    """Handle the value."""
+    # Keep the main step clear.
     if not _use_color() or not codes:
         return text
     return "".join(codes) + text + RESET
 
 
 def _status_color(status: str) -> str:
+    """Handle color."""
+    # Keep the main step clear.
     normalized = (status or "").strip().lower()
     if normalized in {"error", "failed", "failure"}:
         return RED
@@ -67,10 +75,14 @@ def _status_color(status: str) -> str:
 
 
 def _log(prefix: str, line: str) -> None:
+    """Handle the value."""
+    # Keep the main step clear.
     print(f"{prefix}{line}", flush=True)
 
 
 def _log_block(prefix: str, header: str, body: str) -> None:
+    """Handle block."""
+    # Keep the main step clear.
     _log(prefix, header)
     if body:
         for ln in body.splitlines():
@@ -83,6 +95,7 @@ def _parse_tool_calls_from_text_jsonl(text: str) -> list[dict[str, Any]]:
     Debug helper: if a model dumps tool calls as JSON/JSONL in plain text,
     try to extract them so you can see what's being attempted.
     """
+    # Keep the output consistent.
     out: list[dict[str, Any]] = []
     raw = (text or "").strip()
     if not raw:
@@ -130,6 +143,8 @@ def _parse_tool_calls_from_text_jsonl(text: str) -> list[dict[str, Any]]:
 
 
 def _default_vitals_input() -> dict[str, Any]:
+    """Handle vitals input."""
+    # Keep the main step clear.
     return {
         "temperature": 98.5,
         "heartrate": 95.0,
@@ -146,6 +161,8 @@ def _default_vitals_input() -> dict[str, Any]:
 
 
 def main() -> int:
+    """Handle the value."""
+    # Keep the main step clear.
     ap = argparse.ArgumentParser()
     ap.add_argument("--agent", default="vitals_agent")
     ap.add_argument("--model", default=os.getenv("MODEL_ID", "medgemma-4b-it"))

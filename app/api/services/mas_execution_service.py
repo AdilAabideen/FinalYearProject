@@ -1,3 +1,5 @@
+"""Mas Execution Service service helpers."""
+
 from __future__ import annotations
 
 import asyncio
@@ -30,6 +32,8 @@ from app.api.services import mas_runs_service
 
 
 def _build_real_registry(model_id: str) -> MASAgentRegistry:
+    """Build real registry."""
+    # Build the next value.
     model_spec = resolve_model_spec(model_id)
     runtime = AgentRuntime(
         model_id=model_id,
@@ -52,9 +56,13 @@ def _build_graph(
     registry: MASAgentRegistry,
     execution_tracker: MASExecutionTracker,
 ):
+    """Build graph."""
+    # Build the next value.
     workflow = get_workflow_definition(workflow_id)
 
     async def _execute(request: ExecutionRequest) -> AgentExecutionResult:
+        """Handle the value."""
+        # Keep the main step clear.
         agent = registry.get(request.agent_name)
         state = request.state_dict()
         execution_context = dict(state.get("execution_context") or {})
@@ -98,6 +106,8 @@ def normalize_workflow_input(
     workflow_id: str,
     input_payload: dict[str, Any],
 ) -> tuple[dict[str, Any], str, str | None]:
+    """Normalize workflow input."""
+    # Keep the output consistent.
     try:
         workflow_spec = get_workflow_spec(workflow_id)
     except ValueError as exc:
@@ -126,6 +136,8 @@ def create_and_start_mas_run(
     model_id: str,
     metadata: Optional[dict[str, Any]] = None,
 ) -> tuple[str, dict[str, Any], str, str | None]:
+    """Create and start MAS run."""
+    # Build the new value.
     normalized_input, input_schema_name, workflow_version = normalize_workflow_input(
         workflow_id,
         input_payload,
@@ -159,6 +171,8 @@ def create_and_start_mas_run(
 
 
 def _run_urls(mas_run_id: str) -> dict[str, str]:
+    """Run urls."""
+    # Kick off the main step.
     base = f"/api/swarm-runs/{mas_run_id}"
     return {
         "run_url": base,
@@ -177,6 +191,8 @@ def start_mas_execution(
     payload: MASExecutionStartRequest,
     background_tasks: BackgroundTasks,
 ) -> MASExecutionStartResponse:
+    """Start mas execution."""
+    # Kick off the main step.
     workflow = get_workflow_definition(workflow_id)
     model_id = payload.model_id or settings.OPENAI_MODEL
     for agent_name in workflow.participating_agents:
@@ -225,6 +241,8 @@ def _execute_mas_run_in_background(
     case_info: dict[str, Any],
     model_id: str,
 ) -> None:
+    """Handle mas run in background."""
+    # Keep the main step clear.
     asyncio.run(
         execute_mas_run(
             workflow_id=workflow_id,
@@ -244,6 +262,8 @@ async def execute_mas_run(
     case_info: dict[str, Any],
     model_id: str,
 ) -> MASState:
+    """Handle mas run."""
+    # Keep the main step clear.
     workflow = get_workflow_definition(workflow_id)
     registry = _build_real_registry(model_id)
     event_emitter = MASEventEmitter(

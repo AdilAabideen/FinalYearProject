@@ -1,3 +1,5 @@
+"""Mas Runs Repository repository helpers."""
+
 from __future__ import annotations
 
 from typing import Optional
@@ -9,10 +11,14 @@ from app.models.mas_run import MASRun
 
 
 def get_mas_run(db: Session, mas_run_id: str) -> Optional[MASRun]:
+    """Return mas run."""
+    # Read the current value.
     return db.get(MASRun, mas_run_id)
 
 
 def save_mas_run(db: Session, mas_run: MASRun, *, refresh: bool = False) -> None:
+    """Save mas run."""
+    # Keep stored state current.
     db.add(mas_run)
     db.commit()
     if refresh:
@@ -28,6 +34,8 @@ def list_mas_runs(
     offset: int = 0,
     order: str = "desc",
 ) -> list[MASRun]:
+    """List mas runs."""
+    # Read the current list.
     stmt = select(MASRun)
     if workflow_id:
         stmt = stmt.where(MASRun.workflow_id == workflow_id)

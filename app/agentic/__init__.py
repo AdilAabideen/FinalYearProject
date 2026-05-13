@@ -1,3 +1,5 @@
+"""Agentic package exports."""
+
 from .handoff import (
     HandoffCommandConfig,
     HandoffDefinition,

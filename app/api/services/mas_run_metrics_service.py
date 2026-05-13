@@ -1,3 +1,5 @@
+"""Mas Run Metrics Service service helpers."""
+
 from __future__ import annotations
 
 from datetime import datetime
@@ -17,6 +19,8 @@ TERMINAL_MAS_STATUSES = {"completed", "failed", "canceled"}
 
 
 def persist_mas_run_metrics(mas_run_id: str) -> None:
+    """Persist mas run metrics."""
+    # Keep stored state current.
     db = SessionLocal()
     try:
         mas_run = mas_runs_repository.get_mas_run(db, mas_run_id)

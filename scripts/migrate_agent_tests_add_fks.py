@@ -1,3 +1,5 @@
+"""Migrate Agent Tests Add Fks script helpers."""
+
 from __future__ import annotations
 
 import sys
@@ -12,6 +14,8 @@ from sqlalchemy.engine.url import make_url
 
 
 def _repo_root() -> Path:
+    """Handle root."""
+    # Keep the main step clear.
     return Path(__file__).resolve().parents[1]
 
 
@@ -29,6 +33,7 @@ def _resolve_database_url(database_url: str) -> str:
     Without this, running the script from `scripts/` would create/use `scripts/app.db`
     for a URL like `sqlite:///app.db`.
     """
+    # Pick the needed value.
     try:
         url = make_url(database_url)
     except Exception:  # noqa: BLE001
@@ -60,6 +65,8 @@ TEST_TABLES: Sequence[str] = (
 
 
 def _table_exists(conn: Connection, table_name: str) -> bool:
+    """Handle exists."""
+    # Keep the main step clear.
     row = conn.exec_driver_sql(
         "SELECT name FROM sqlite_master WHERE type='table' AND name = ?",
         (table_name,),
@@ -68,10 +75,14 @@ def _table_exists(conn: Connection, table_name: str) -> bool:
 
 
 def _fk_list(conn: Connection, table_name: str) -> list[tuple]:
+    """Handle list."""
+    # Keep the main step clear.
     return conn.exec_driver_sql(f"PRAGMA foreign_key_list('{table_name}')").fetchall()
 
 
 def _count_invalid_agent_run_refs(conn: Connection) -> int:
+    """Count invalid agent run refs."""
+    # Derive the needed value.
     row = conn.exec_driver_sql(
         """
         SELECT COUNT(*)
@@ -84,6 +95,8 @@ def _count_invalid_agent_run_refs(conn: Connection) -> int:
 
 
 def main() -> int:
+    """Handle the value."""
+    # Keep the main step clear.
     if not settings.DATABASE_URL.startswith("sqlite"):
         print("This migration script is SQLite-only.")
         print(f"DATABASE_URL={settings.DATABASE_URL}")

@@ -1,3 +1,5 @@
+"""Mas Events Service service helpers."""
+
 from __future__ import annotations
 
 import json
@@ -20,10 +22,14 @@ _LEGACY_EVENT_TYPE_MAP = {
 
 
 def _is_legacy_swarm_path(request: Request) -> bool:
+    """Handle legacy swarm path."""
+    # Keep the main step clear.
     return "/swarm-runs/" in str(request.url.path)
 
 
 def _serialize_event_envelope(*, event_row, legacy: bool) -> dict:
+    """Handle event envelope."""
+    # Keep the main step clear.
     item = MASEventEnvelope.model_validate(event_row, from_attributes=True).model_dump(mode="json")
     item["swarm_run_id"] = item.get("mas_run_id")
     item["mas_event_type"] = item.get("event_type")
@@ -38,6 +44,8 @@ def list_mas_events(
     limit: int,
     db: Session,
 ) -> MASEventsPage:
+    """List mas events."""
+    # Read the current list.
     row = mas_runs_repository.get_mas_run(db, mas_run_id)
     if row is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="MAS run not found")
@@ -63,6 +71,8 @@ def stream_mas_events(
     poll_interval_s: float,
     db: Session,
 ) -> StreamingResponse:
+    """Stream mas events."""
+    # Keep events flowing.
     row = mas_runs_repository.get_mas_run(db, mas_run_id)
     if row is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="MAS run not found")
@@ -77,6 +87,8 @@ def stream_mas_events(
             pass
 
     def _event_stream():
+        """Handle stream."""
+        # Keep the main step clear.
         nonlocal after_seq
         last_heartbeat = datetime.utcnow()
 

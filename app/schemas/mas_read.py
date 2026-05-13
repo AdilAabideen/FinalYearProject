@@ -1,3 +1,5 @@
+"""Mas Read schema types."""
+
 from __future__ import annotations
 
 from datetime import datetime

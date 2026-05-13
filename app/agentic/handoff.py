@@ -1,3 +1,5 @@
+"""Handoff module helpers."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -11,6 +13,8 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 def _coerce_string_bool(value: Any) -> Any:
+    """Handle string bool."""
+    # Keep the main step clear.
     if isinstance(value, str):
         lowered = value.strip().lower()
         if lowered == "true":
@@ -21,6 +25,8 @@ def _coerce_string_bool(value: Any) -> Any:
 
 
 def _coerce_string_list(value: Any) -> list[str]:
+    """Handle string list."""
+    # Keep the main step clear.
     if value is None:
         return []
     if isinstance(value, str):
@@ -50,6 +56,8 @@ class CoerciveHandoffPayload(BaseModel):
     @model_validator(mode="before")
     @classmethod
     def _coerce_common_handoff_shapes(cls, value: Any) -> Any:
+        """Handle common handoff shapes."""
+        # Keep the main step clear.
         if not isinstance(value, dict):
             return value
 
@@ -82,6 +90,8 @@ class HandoffDefinition:
 
     @property
     def name(self) -> str:
+        """Handle the value."""
+        # Keep the main step clear.
         if self.tool_name:
             return self.tool_name
         return "handoff_to_{target}".format(target=self.target_agent)
@@ -103,6 +113,8 @@ def define_handoff(
     description: str,
     tool_name: Optional[str] = None,
 ) -> HandoffDefinition:
+    """Handle handoff."""
+    # Keep the main step clear.
     if not source_agent.strip():
         raise ValueError("source_agent must be non-empty.")
     if not target_agent.strip():
@@ -122,6 +134,8 @@ def define_handoff(
 
 
 def create_handoff_tool(definition: HandoffDefinition) -> BaseTool:
+    """Create handoff tool."""
+    # Build the new value.
     payload_model = definition.payload_model
     tool_name = definition.name
     tool_description = "{description}".format(
@@ -133,6 +147,8 @@ def create_handoff_tool(definition: HandoffDefinition) -> BaseTool:
 
     @tool(tool_name, args_schema=payload_model, description=tool_description)
     def _handoff(**kwargs: Any) -> Dict[str, Any]:
+        """Handle the value."""
+        # Keep the main step clear.
         validated = payload_model.model_validate(kwargs)
         result = HandoffResult(
             handoff_name=tool_name,
@@ -150,6 +166,8 @@ def create_handoff_tools(
     source_agent: str,
     handoffs: Sequence[HandoffDefinition],
 ) -> List[BaseTool]:
+    """Create handoff tools."""
+    # Build the new value.
     normalized = validate_handoffs(source_agent=source_agent, handoffs=handoffs)
     return [create_handoff_tool(handoff) for handoff in normalized]
 
@@ -159,6 +177,8 @@ def validate_handoffs(
     source_agent: str,
     handoffs: Sequence[HandoffDefinition],
 ) -> List[HandoffDefinition]:
+    """Validate handoffs."""
+    # Fail fast on bad input.
     normalized: List[HandoffDefinition] = []
     seen_tool_names: Dict[str, str] = {}
 
@@ -193,6 +213,8 @@ def handoff_result_to_command(
     tool_name: Optional[str] = None,
     config: Optional[HandoffCommandConfig] = None,
 ) -> Command:
+    """Handle result to command."""
+    # Keep the main step clear.
     runtime_config = config or HandoffCommandConfig()
 
     messages_key = runtime_config.messages_state_key
@@ -230,6 +252,8 @@ def handoff_result_to_command(
 
 
 def handoff_targets(handoffs: Sequence[HandoffDefinition]) -> List[str]:
+    """Handle targets."""
+    # Keep the main step clear.
     targets: List[str] = []
     for handoff in handoffs:
         if handoff.target_agent not in targets:

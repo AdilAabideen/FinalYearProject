@@ -1,3 +1,5 @@
+"""Llm module helpers."""
+
 from __future__ import annotations
 
 from typing import Optional
@@ -12,4 +14,5 @@ def get_chat_model(model_id: Optional[str] = None):
 
     New code should prefer `app.agentic.model_registry.get_chat_model(model_id)`.
     """
+    # Read the current value.
     return get_chat_model_by_id(model_id or settings.OPENAI_MODEL)

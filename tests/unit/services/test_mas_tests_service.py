@@ -1,4 +1,7 @@
+"""Test Mas Tests Service service helpers."""
+
 from __future__ import annotations
+
 import asyncio
 import json
 from datetime import datetime
@@ -14,9 +17,13 @@ from app.schemas.mas_tests import MasTestRunStartRequest
 
 class _FakeEvaluator:
     def validate_expected(self, expected_json):
+        """Validate expected."""
+        # Fail fast on bad input.
         return None
 
     def evaluate(self, expected_json, actual_json, *, mas_status):
+        """Handle the value."""
+        # Keep the main step clear.
         return EvalResult(
             passed=mas_status == "completed",
             score=1.0 if mas_status == "completed" else 0.0,
@@ -25,10 +32,14 @@ class _FakeEvaluator:
         )
 
     def aggregate(self, results):
+        """Handle the value."""
+        # Keep the main step clear.
         return {"passed": sum(1 for item in results if item.passed)}
 
 
 def _seed_case(db_session, *, case_id: str = "case_1") -> MasTestCase:
+    """Seed case."""
+    # Keep the seed data explicit.
     now = datetime.utcnow()
     case = MasTestCase(
         id=case_id,
@@ -46,6 +57,8 @@ def _seed_case(db_session, *, case_id: str = "case_1") -> MasTestCase:
 
 
 async def _collect_stream_chunks(response) -> list[str]:
+    """Handle stream chunks."""
+    # Keep the main step clear.
     chunks: list[str] = []
     async for chunk in response.body_iterator:
         if isinstance(chunk, bytes):
@@ -55,6 +68,8 @@ async def _collect_stream_chunks(response) -> list[str]:
     return chunks
 
 def test_ut_srv_003_mas_test_start_run_persists_selected_model(monkeypatch, db_session):
+    """Handle ut srv 003 MAS test start run persists selected model."""
+    # Keep the main step clear.
     case = _seed_case(db_session)
     monkeypatch.setattr(mas_tests_service, "_workflow_evaluator_or_400", lambda workflow_id: _FakeEvaluator())
 
@@ -75,6 +90,8 @@ def test_ut_srv_003_mas_test_start_run_persists_selected_model(monkeypatch, db_s
 
 
 def test_ut_srv_004_mas_test_resolve_model_prefers_persisted_value():
+    """Handle ut srv 004 MAS test resolve model prefers persisted value."""
+    # Keep the main step clear.
     run = MasTestRun(
         id="run_1",
         workflow_id="esi_mas",
@@ -93,6 +110,8 @@ def test_ut_srv_004_mas_test_resolve_model_prefers_persisted_value():
 
 
 def test_ut_srv_005_mas_test_resolve_model_falls_back_to_default(monkeypatch):
+    """Handle ut srv 005 MAS test resolve model falls back to default."""
+    # Keep the main step clear.
     run = MasTestRun(
         id="run_2",
         workflow_id="esi_mas",
@@ -112,6 +131,8 @@ def test_ut_srv_005_mas_test_resolve_model_falls_back_to_default(monkeypatch):
 
 
 def test_ut_srv_006_mas_test_stream_run_emits_case_backoff_and_sleeps(monkeypatch, db_session):
+    """Handle ut srv 006 MAS test stream run emits case backoff and sleeps."""
+    # Keep the main step clear.
     case_1 = _seed_case(db_session, case_id="case_1")
     case_2 = _seed_case(db_session, case_id="case_2")
     monkeypatch.setattr(mas_tests_service, "_workflow_evaluator_or_400", lambda workflow_id: _FakeEvaluator())
@@ -130,11 +151,15 @@ def test_ut_srv_006_mas_test_stream_run_emits_case_backoff_and_sleeps(monkeypatc
     sleep_calls: list[float] = []
 
     def _fake_create_and_start_mas_run(*, workflow_id, input_payload, model_id, metadata):
+        """Handle create and start MAS run."""
+        # Keep the main step clear.
         mas_run_id = f"mas_{len(created_mas_ids) + 1}"
         created_mas_ids.append(mas_run_id)
         return mas_run_id, input_payload, None, "1.0.0"
 
     async def _fake_execute_mas_run(*, workflow_id, workflow_version, mas_run_id, case_info, model_id):
+        """Handle execute MAS run."""
+        # Keep the main step clear.
         return None
 
     monkeypatch.setattr(mas_tests_service.mas_execution_service, "create_and_start_mas_run", _fake_create_and_start_mas_run)

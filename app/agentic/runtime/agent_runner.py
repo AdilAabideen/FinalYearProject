@@ -1,3 +1,5 @@
+"""Agent Runner module helpers."""
+
 from __future__ import annotations
 
 import json
@@ -50,6 +52,8 @@ class AgentRunner:
         emit_event: EmitEvent,
         values_state: ValuesStateBuilder,
     ) -> None:
+        """Handle the value."""
+        # Keep the main step clear.
         self.bound_model = bound_model
         self.runtime_config = runtime_config
         self.agent_node_name = agent_node_name
@@ -70,6 +74,8 @@ class AgentRunner:
 
     @staticmethod
     def _resolve_modes(stream_mode: StreamModesInput) -> tuple[str, ...]:
+        """Resolve modes."""
+        # Pick the needed value.
         return (stream_mode,) if isinstance(stream_mode, str) else tuple(stream_mode or ("updates", "values"))
 
     def _build_call_messages(
@@ -79,6 +85,8 @@ class AgentRunner:
         short_term_memory: ShortTermMemory,
         retry_feedback: HumanMessage | None = None,
     ) -> list[BaseMessage]:
+        """Build call messages."""
+        # Build the next value.
         call_messages: list[BaseMessage] = [SystemMessage(content=self.render_system_prompt()), human_msg]
         call_messages.extend(short_term_memory.messages())
         if retry_feedback is not None:
@@ -87,12 +95,16 @@ class AgentRunner:
 
     @staticmethod
     def _short_excerpt(text: str, *, max_chars: int = 400) -> str:
+        """Handle excerpt."""
+        # Keep the main step clear.
         value = str(text or "").strip()
         if len(value) <= max_chars:
             return value
         return value[:max_chars] + "...(truncated)"
 
     def _build_malformed_tool_retry_feedback(self, ai_msg: AIMessage) -> HumanMessage:
+        """Build malformed tool retry feedback."""
+        # Build the next value.
         excerpt = self._short_excerpt(str(getattr(ai_msg, "content", "") or ""))
         content = (
             "MALFORMED TOOL CALL DETECTED.\n"
@@ -109,6 +121,8 @@ class AgentRunner:
         return HumanMessage(content=content)
 
     def _expected_tool_for_retry(self, ai_msg: AIMessage) -> str | None:
+        """Handle tool for retry."""
+        # Keep the main step clear.
         content = str(getattr(ai_msg, "content", "") or "")
         lowered = content.lower()
 
@@ -127,6 +141,8 @@ class AgentRunner:
         return None
 
     def _retry_key_for_tool(self, tool_name: str | None) -> str:
+        """Handle key for tool."""
+        # Keep the main step clear.
         return str(tool_name or "__unknown_tool__")
 
     def _build_tool_specific_malformed_tool_retry_feedback(
@@ -135,6 +151,8 @@ class AgentRunner:
         *,
         tool_name: str | None,
     ) -> HumanMessage:
+        """Build tool specific malformed tool retry feedback."""
+        # Build the next value.
         if not tool_name:
             return self._build_malformed_tool_retry_feedback(ai_msg)
 
@@ -157,6 +175,8 @@ class AgentRunner:
         return HumanMessage(content=content)
 
     def _extract_normalized_tool_calls(self, ai_msg: AIMessage) -> list[dict[str, Any]]:
+        """Extract normalized tool calls."""
+        # Pull out the needed value.
         raw_tool_calls = list(getattr(ai_msg, "tool_calls", []) or [])
         normalized_calls: list[dict[str, Any]] = []
         for item in raw_tool_calls:
@@ -182,6 +202,8 @@ class AgentRunner:
         ai_msg: AIMessage,
         tool_calls: list[dict[str, Any]],
     ) -> tuple[AIMessage, list[dict[str, Any]]]:
+        """Handle tool call limit."""
+        # Keep the main step clear.
         limited_tool_calls, dropped_tool_calls = self.limit_tool_calls(tool_calls)
         if not (dropped_tool_calls and self.runtime_config.drop_extra_tool_calls):
             return ai_msg, tool_calls
@@ -197,6 +219,8 @@ class AgentRunner:
         return limited_ai_msg, limited_tool_calls
 
     def _emit_assistant_event_from_text(self, content: str) -> None:
+        """Emit assistant event from text."""
+        # Keep events flowing.
         stripped = str(content or "").strip()
         if not stripped:
             return
@@ -209,6 +233,8 @@ class AgentRunner:
         )
 
     def _emit_tool_call_events(self, tool_calls: list[dict[str, Any]]) -> None:
+        """Emit tool call events."""
+        # Keep events flowing.
         for tool_call in tool_calls:
             self.emit_event(
                 event_type="tool_call",
@@ -219,6 +245,8 @@ class AgentRunner:
             )
 
     def _emit_tool_result_event(self, tool_message: ToolMessage) -> None:
+        """Emit tool result event."""
+        # Keep events flowing.
         content = str(getattr(tool_message, "content", "") or "").strip()
         parsed, raw = self.json_from_text(content)
         self.emit_event(
@@ -233,6 +261,8 @@ class AgentRunner:
 
     @staticmethod
     def _should_emit(modes: tuple[str, ...], mode: str) -> bool:
+        """Handle emit."""
+        # Keep the main step clear.
         return mode in modes
 
     async def astream(
@@ -240,6 +270,8 @@ class AgentRunner:
         payload: Any,
         stream_mode: StreamModesInput = None,
     ) -> AsyncGenerator[tuple[str, Any], None]:
+        """Handle the value."""
+        # Keep the main step clear.
         modes = self._resolve_modes(stream_mode)
 
         human_msg = HumanMessage(content=self.payload_to_human_content(payload))

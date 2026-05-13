@@ -1,4 +1,7 @@
+"""Vllm Chat ORM models."""
+
 from __future__ import annotations
+
 from contextlib import contextmanager
 import threading
 from typing import Any, Callable, Optional, Sequence, Union
@@ -25,12 +28,16 @@ from app.agentic.protocols import (
 
 class _SerialRequestQueue:
     def __init__(self) -> None:
+        """Handle the value."""
+        # Keep the main step clear.
         self._condition = threading.Condition()
         self._next_ticket = 0
         self._serving_ticket = 0
 
     @contextmanager
     def acquire(self):
+        """Handle the value."""
+        # Keep the main step clear.
         with self._condition:
             ticket = self._next_ticket
             self._next_ticket += 1
@@ -50,10 +57,14 @@ _SERIAL_QUEUES_BY_BASE_URL: dict[str, _SerialRequestQueue] = {}
 
 
 def _queue_key_for(base_url: str) -> str:
+    """Handle key for."""
+    # Keep the main step clear.
     return str(base_url or "").rstrip("/")
 
 
 def _serial_queue_for(base_url: str) -> _SerialRequestQueue:
+    """Handle queue for."""
+    # Keep the main step clear.
     key = _queue_key_for(base_url)
     with _SERIAL_QUEUE_GUARD:
         queue = _SERIAL_QUEUES_BY_BASE_URL.get(key)
@@ -63,7 +74,7 @@ def _serial_queue_for(base_url: str) -> _SerialRequestQueue:
         return queue
 
 
-class LlamaServerChat(BaseChatModel):
+class VLLMChat(BaseChatModel):
     """
     Minimal LangChain ChatModel wrapper around LLama Server chat completions endpoint.
 
@@ -98,16 +109,22 @@ class LlamaServerChat(BaseChatModel):
     timeout_s: float = 60.0
 
     def _llm_type(self) -> str:
-        return "llama-server-chat"
+        """Handle type."""
+        # Keep the main step clear.
+        return "vllm-chat"
 
     @property
     def _identifying_params(self) -> dict[str, Any]:
+        """Handle params."""
+        # Keep the main step clear.
         return {
             "model": self.model,
             "base_url": self.base_url,
         }
 
     def _resolve_provider_model(self, **kwargs: Any) -> str:
+        """Resolve provider model."""
+        # Pick the needed value.
         agent_name = str(kwargs.get("agent_name") or "").strip()
         if agent_name and self.agent_model_id_overrides:
             override = self.agent_model_id_overrides.get(agent_name)
@@ -117,10 +134,12 @@ class LlamaServerChat(BaseChatModel):
 
     def _normalize_llama_messages(self, messages: list[dict[str, str]]) -> list[dict[str, str]]:
         """Normalize provider messages via shared protocol helper."""
+        # Keep the output consistent.
         return normalize_chat_messages(messages)
 
     def _build_chat_completions_url(self) -> str:
         """Accept either a base API URL or a full chat completions endpoint."""
+        # Build the next value.
         normalized = self.base_url.rstrip("/")
         if normalized.endswith("/chat/completions"):
             return normalized
@@ -140,6 +159,7 @@ class LlamaServerChat(BaseChatModel):
         tool schemas are used to instruct the model to emit JSON tool calls that are then
         converted into `AIMessage.tool_calls`.
         """
+        # Keep the main step clear.
         formatted_tools = [convert_to_openai_tool(tool) for tool in tools]
         # LangGraph's `create_react_agent` binds tools with no tool_choice; for this wrapper we
         # default to requiring a tool call so it doesn't "answer in one go" without
@@ -159,6 +179,8 @@ class LlamaServerChat(BaseChatModel):
         run_manager: Optional[Any] = None,
         **kwargs: Any,
     ) -> ChatResult:
+        """Handle the value."""
+        # Keep the main step clear.
         serialize_requests = bool(kwargs.get("serialize_requests", self.serialize_requests))
         if not serialize_requests:
             return self._generate_once(
@@ -183,6 +205,8 @@ class LlamaServerChat(BaseChatModel):
         run_manager: Optional[Any] = None,
         **kwargs: Any,
     ) -> ChatResult:
+        """Handle once."""
+        # Keep the main step clear.
         bound_tools = kwargs.get("tools")
         tool_choice = kwargs.get("tool_choice")
         multi_agent = bool(kwargs.get("multi_agent"))
@@ -192,7 +216,7 @@ class LlamaServerChat(BaseChatModel):
         llama_messages = to_provider_messages(
             messages,
             allow_tool_messages=bool(tools),
-            tool_message_error="LlamaServerChat does not support tool calling (ToolMessage present).",
+            tool_message_error="VLLMChat does not support tool calling (ToolMessage present).",
             unsupported_type_label="Llama Server",
         )
         llama_messages = inject_tool_instruction(

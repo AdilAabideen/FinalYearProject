@@ -1,3 +1,5 @@
+"""Protocols package exports."""
+
 from .protocol_types import (
     AllowedToolNames,
     NormalizedToolCall,

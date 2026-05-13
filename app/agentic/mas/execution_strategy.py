@@ -1,3 +1,5 @@
+"""Execution Strategy module helpers."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -25,16 +27,24 @@ class ExecutionRequest:
 
     @property
     def workflow_id(self) -> str:
+        """Handle id."""
+        # Keep the main step clear.
         return self.workflow.metadata.workflow_id
 
     @property
     def workflow_version(self) -> str:
+        """Handle version."""
+        # Keep the main step clear.
         return self.workflow.metadata.version
 
     def payload_dict(self) -> Dict[str, Any]:
+        """Handle dict."""
+        # Keep the main step clear.
         return dict(self.pending_agent_payload)
 
     def state_dict(self) -> Dict[str, Any]:
+        """Handle dict."""
+        # Keep the main step clear.
         return dict(self.state_snapshot)
 
 
@@ -50,6 +60,7 @@ class ExecutionStrategy(Protocol):
 
     async def execute(self, request: ExecutionRequest) -> AgentExecutionResult:
         """Execute one workflow agent step and return the normalized result."""
+        # Keep the main step clear.
         ...
 
 
@@ -64,4 +75,6 @@ class CallableExecutionStrategy:
     execute_fn: ExecutionFn
 
     async def execute(self, request: ExecutionRequest) -> AgentExecutionResult:
+        """Handle the value."""
+        # Keep the main step clear.
         return await self.execute_fn(request)

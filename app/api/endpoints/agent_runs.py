@@ -1,6 +1,7 @@
+"""Agent Runs API endpoints."""
+
 from __future__ import annotations
 
-from datetime import datetime
 from typing import Optional
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Query, Request
@@ -12,19 +13,12 @@ from app.schemas.agent_runs import (
     AgentEventsPage,
     AgentRunCreateRequest,
     AgentRunCreateResponse,
-    AgentRunReliabilityIssuePage,
     AgentRunMetricsDetail,
-    AgentRunMetricsSummary,
     AgentRunRead,
     RunStatus,
 )
 
 router = APIRouter()
-
-
-@router.post("", response_model=AgentRunCreateResponse)
-def create_agent_run(payload: AgentRunCreateRequest, db: Session = Depends(get_db)):
-    return agent_runs_service.create_agent_run(payload, db)
 
 
 @router.post("/start", response_model=AgentRunCreateResponse)
@@ -33,57 +27,23 @@ def start_agent_run(
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
 ):
+    """Start agent run."""
+    # Kick off the main step.
     return agent_runs_service.start_agent_run(payload, background_tasks, db)
-
-
-@router.get("/metrics/summary", response_model=AgentRunMetricsSummary)
-def get_metrics_summary(
-    agent_system: Optional[str] = Query(default=None),
-    agent_name: Optional[str] = Query(default=None),
-    model_name: Optional[str] = Query(default=None),
-    created_from: Optional[datetime] = Query(default=None),
-    created_to: Optional[datetime] = Query(default=None),
-    limit: int = Query(default=1000, ge=1, le=10000),
-    offset: int = Query(default=0, ge=0),
-    db: Session = Depends(get_db),
-):
-    return agent_runs_service.get_metrics_summary(
-        agent_system=agent_system,
-        agent_name=agent_name,
-        model_name=model_name,
-        created_from=created_from,
-        created_to=created_to,
-        limit=limit,
-        offset=offset,
-        db=db,
-    )
 
 
 @router.get("/{run_id}", response_model=AgentRunRead)
 def get_agent_run(run_id: str, db: Session = Depends(get_db)):
+    """Return agent run."""
+    # Read the current value.
     return agent_runs_service.get_agent_run(run_id, db)
 
 
 @router.get("/{run_id}/metrics", response_model=AgentRunMetricsDetail)
 def get_agent_run_metrics(run_id: str, db: Session = Depends(get_db)):
+    """Return agent run metrics."""
+    # Read the current value.
     return agent_runs_service.get_agent_run_metrics(run_id, db)
-
-
-@router.get("/{run_id}/reliability-issues", response_model=AgentRunReliabilityIssuePage)
-def get_agent_run_reliability_issues(
-    run_id: str,
-    issue_code: Optional[str] = Query(default=None),
-    limit: int = Query(default=200, ge=1, le=1000),
-    offset: int = Query(default=0, ge=0),
-    db: Session = Depends(get_db),
-):
-    return agent_runs_service.get_agent_run_reliability_issues(
-        run_id=run_id,
-        issue_code=issue_code,
-        limit=limit,
-        offset=offset,
-        db=db,
-    )
 
 
 @router.get("/{run_id}/events", response_model=AgentEventsPage)
@@ -93,6 +53,8 @@ def list_agent_events(
     limit: int = Query(default=200, ge=1, le=1000),
     db: Session = Depends(get_db),
 ):
+    """List agent events."""
+    # Read the current list.
     return agent_runs_service.list_agent_events(run_id, after_seq, limit, db)
 
 
@@ -104,12 +66,9 @@ def stream_agent_events(
     poll_interval_s: float = Query(default=0.25, ge=0.05, le=5.0),
     db: Session = Depends(get_db),
 ):
+    """Stream agent events."""
+    # Keep events flowing.
     return agent_runs_service.stream_agent_events(run_id, request, after_seq, poll_interval_s, db)
-
-
-@router.post("/{run_id}/execute")
-def execute_agent_run(run_id: str, db: Session = Depends(get_db)):
-    return agent_runs_service.execute_agent_run(run_id, db)
 
 
 @router.get("", response_model=list[AgentRunRead])
@@ -123,6 +82,8 @@ def list_agent_runs(
     order: str = Query(default="desc", pattern="^(asc|desc)$"),
     db: Session = Depends(get_db),
 ):
+    """List agent runs."""
+    # Read the current list.
     return agent_runs_service.list_agent_runs(
         agent_name=agent_name,
         status=status,

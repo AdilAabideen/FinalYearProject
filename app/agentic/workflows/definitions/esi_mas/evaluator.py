@@ -1,3 +1,5 @@
+"""Evaluator module helpers."""
+
 from __future__ import annotations
 
 from typing import Any, Dict, Optional, Sequence
@@ -9,12 +11,16 @@ def _evaluate_expected_subset(
     expected: Dict[str, Any],
     actual: Optional[Dict[str, Any]],
 ) -> tuple[bool, float, Dict[str, Any]]:
+    """Handle expected subset."""
+    # Keep the main step clear.
     if actual is None:
         return False, 0.0, {"error": "actual_json_missing"}
 
     diffs: list[dict[str, Any]] = []
 
     def _walk(exp: Any, act: Any, path: str) -> None:
+        """Handle the value."""
+        # Keep the main step clear.
         if isinstance(exp, dict):
             if not isinstance(act, dict):
                 diffs.append({"path": path, "expected": exp, "actual": act})
@@ -44,6 +50,8 @@ class ESIMASEvaluator(WorkflowEvaluator):
     label_name = "esi_mas_final_output_subset"
 
     def validate_expected(self, expected_json: Dict[str, Any]) -> None:
+        """Validate expected."""
+        # Fail fast on bad input.
         if not isinstance(expected_json, dict):
             raise ValueError("expected_json must be an object")
         if "acuity" in expected_json:
@@ -60,6 +68,8 @@ class ESIMASEvaluator(WorkflowEvaluator):
         *,
         mas_status: str,
     ) -> EvalResult:
+        """Handle the value."""
+        # Keep the main step clear.
         self.validate_expected(expected_json)
 
         if mas_status != "completed":
@@ -117,6 +127,8 @@ class ESIMASEvaluator(WorkflowEvaluator):
         )
 
     def aggregate(self, results: Sequence[EvalResult]) -> Dict[str, Any]:
+        """Handle the value."""
+        # Keep the main step clear.
         total = 0
         passed = 0
         exec_failed = 0

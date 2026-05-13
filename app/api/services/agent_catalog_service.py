@@ -1,3 +1,5 @@
+"""Agent Catalog Service service helpers."""
+
 from __future__ import annotations
 
 from typing import Any
@@ -10,6 +12,8 @@ from app.schemas.agent_catalog import AgentCatalogDetail, AgentCatalogSummary, T
 
 
 def _tool_args_schema(tool: Any) -> dict[str, Any]:
+    """Handle args schema."""
+    # Keep the main step clear.
     args_schema = getattr(tool, "args_schema", None)
     if (
         args_schema is not None
@@ -26,6 +30,8 @@ def _tool_args_schema(tool: Any) -> dict[str, Any]:
 
 
 def list_agent_catalog() -> list[AgentCatalogSummary]:
+    """List agent catalog."""
+    # Read the current list.
     specs = sorted(list_agent_specs(), key=lambda s: s.name)
     return [
         AgentCatalogSummary(
@@ -39,6 +45,8 @@ def list_agent_catalog() -> list[AgentCatalogSummary]:
 
 
 def get_agent_catalog(agent_name: str) -> AgentCatalogDetail:
+    """Return agent catalog."""
+    # Read the current value.
     try:
         spec = get_agent_spec(agent_name)
     except KeyError:

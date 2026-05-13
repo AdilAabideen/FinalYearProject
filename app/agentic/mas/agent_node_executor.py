@@ -1,3 +1,5 @@
+"""Agent Node Executor module helpers."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -38,12 +40,16 @@ class AgentNodeExecutor:
         payload_builder: PayloadBuilder = build_pending_agent_payload,
         execution_tracker: MASExecutionTracker | None = None,
     ) -> None:
+        """Handle the value."""
+        # Keep the main step clear.
         self.workflow = workflow
         self.strategy = strategy
         self.payload_builder = payload_builder
         self.execution_tracker = execution_tracker
 
     async def execute(self, *, agent_name: AgentName, state: MASState) -> AgentNodeExecutionOutcome:
+        """Handle the value."""
+        # Keep the main step clear.
         pending_agent_payload = self.payload_builder(agent_name, state)
         tracked_execution = self._begin_tracking(
             agent_name=agent_name,
@@ -86,6 +92,8 @@ class AgentNodeExecutor:
         tracked_execution: TrackedAgentExecution | None,
         tracking_outcome: TrackedExecutionPersistenceOutcome | None,
     ) -> Dict[str, Any]:
+        """Handle updates."""
+        # Keep the main step clear.
         updates = {
             "active_agent": agent_name,
             "pending_agent_payload": pending_agent_payload,
@@ -128,6 +136,8 @@ class AgentNodeExecutor:
         updates: Dict[str, Any],
         tracking_outcome: TrackedExecutionPersistenceOutcome | None,
     ) -> AgentNodeExecutionOutcome:
+        """Handle outcome."""
+        # Keep the main step clear.
         if result.status == "final":
             updates["final_output"] = result.final_output or {}
             updates["execution_trace"].append(
@@ -205,12 +215,16 @@ class AgentNodeExecutor:
         )
 
     def _route_handoff(self, handoff: HandoffEnvelope) -> str:
+        """Handle handoff."""
+        # Keep the main step clear.
         gate_id = self._matching_gate_for_handoff(handoff)
         if gate_id is not None:
             return gate_id
         return handoff.target_agent
 
     def _matching_gate_for_handoff(self, handoff: HandoffEnvelope) -> Optional[str]:
+        """Handle gate for handoff."""
+        # Keep the main step clear.
         matches = []
         source_ids = set(self.workflow.sources_for_agent(handoff.from_agent))
         for gate_id, gate in self.workflow.gates.items():
@@ -241,6 +255,8 @@ class AgentNodeExecutor:
         state: MASState,
         pending_agent_payload: Dict[str, Any],
     ) -> TrackedAgentExecution | None:
+        """Handle tracking."""
+        # Keep the main step clear.
         if self.execution_tracker is None:
             return None
         return self.execution_tracker.begin_agent_execution(
@@ -255,6 +271,8 @@ class AgentNodeExecutor:
         tracked: TrackedAgentExecution | None,
         result: AgentExecutionResult,
     ) -> TrackedExecutionPersistenceOutcome | None:
+        """Handle tracking."""
+        # Keep the main step clear.
         if self.execution_tracker is None:
             return None
         return self.execution_tracker.complete_agent_execution(
@@ -268,6 +286,8 @@ class AgentNodeExecutor:
         handoff: HandoffEnvelope,
         tracking_outcome: TrackedExecutionPersistenceOutcome | None,
     ) -> Dict[str, Any]:
+        """Handle handoff dict."""
+        # Keep the main step clear.
         handoff_dict = handoff.model_dump()
         if self.execution_tracker is None:
             return handoff_dict
@@ -282,6 +302,8 @@ class AgentNodeExecutor:
         state: MASState,
         tracked_execution: TrackedAgentExecution | None,
     ) -> Dict[str, Any]:
+        """Handle snapshot for request."""
+        # Keep the main step clear.
         snapshot = dict(state)
         if tracked_execution is None:
             return snapshot

@@ -1,3 +1,5 @@
+"""Mas Runs Service service helpers."""
+
 from __future__ import annotations
 
 from datetime import datetime
@@ -19,20 +21,28 @@ from app.schemas.mas_runs import (
 
 
 def _utcnow() -> datetime:
+    """Handle the value."""
+    # Keep the main step clear.
     return datetime.utcnow()
 
 
 def _duration_ms(started_at: Optional[datetime], finished_at: Optional[datetime]) -> Optional[int]:
+    """Handle ms."""
+    # Keep the main step clear.
     if started_at is None or finished_at is None:
         return None
     return max(0, int((finished_at - started_at).total_seconds() * 1000))
 
 
 def _build_mas_run_read(row: MASRun) -> MASRunRead:
+    """Build mas run read."""
+    # Build the next value.
     return MASRunRead.model_validate(row, from_attributes=True)
 
 
 def create_mas_run(payload: MASRunCreateRequest, db: Session) -> MASRunCreateResponse:
+    """Create mas run."""
+    # Build the new value.
     mas_run_id = str(uuid4())
     now = _utcnow()
     row = MASRun(
@@ -58,6 +68,8 @@ def create_mas_run(payload: MASRunCreateRequest, db: Session) -> MASRunCreateRes
 
 
 def start_mas_run(mas_run_id: str, db: Session) -> MASRunRead:
+    """Start mas run."""
+    # Kick off the main step.
     row = mas_runs_repository.get_mas_run(db, mas_run_id)
     if row is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="MAS run not found")
@@ -82,6 +94,8 @@ def update_mas_run(
     started_at: Optional[datetime] = None,
     finished_at: Optional[datetime] = None,
 ) -> MASRunRead:
+    """Update mas run."""
+    # Keep stored state current.
     row = mas_runs_repository.get_mas_run(db, mas_run_id)
     if row is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="MAS run not found")
@@ -119,6 +133,8 @@ def finalize_mas_run(
     current_agent_run_id: Optional[str] = None,
     current_gate_id: Optional[str] = None,
 ) -> MASRunRead:
+    """Handle mas run."""
+    # Keep the main step clear.
     finished_at = _utcnow()
     row = update_mas_run(
         mas_run_id,
@@ -139,6 +155,8 @@ def finalize_mas_run(
 
 
 def get_mas_run(mas_run_id: str, db: Session) -> MASRunRead:
+    """Return mas run."""
+    # Read the current value.
     row = mas_runs_repository.get_mas_run(db, mas_run_id)
     if row is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="MAS run not found")
@@ -154,6 +172,8 @@ def list_mas_runs(
     offset: int = 0,
     order: str = "desc",
 ) -> list[MASRunRead]:
+    """List mas runs."""
+    # Read the current list.
     rows = mas_runs_repository.list_mas_runs(
         db,
         workflow_id=workflow_id,

@@ -1,3 +1,5 @@
+"""Mas Execution Tracker module helpers."""
+
 from __future__ import annotations
 
 import json
@@ -59,6 +61,8 @@ class MASExecutionTracker:
         workflow_version: str | None = None,
         event_emitter: MASEventEmitter | None = None,
     ) -> None:
+        """Handle the value."""
+        # Keep the main step clear.
         self.db = db
         self.session_factory = session_factory
         self.workflow_id = workflow_id
@@ -73,6 +77,8 @@ class MASExecutionTracker:
         state: MASState,
         pending_agent_payload: Dict[str, Any],
     ) -> TrackedAgentExecution | None:
+        """Handle agent execution."""
+        # Keep the main step clear.
         ctx = self._execution_context(state)
         mas_run_id = self._string_or_none(ctx.get("mas_run_id"))
         if mas_run_id is None:
@@ -145,6 +151,8 @@ class MASExecutionTracker:
         tracked: TrackedAgentExecution | None,
         result: AgentExecutionResult,
     ) -> TrackedExecutionPersistenceOutcome | None:
+        """Handle agent execution."""
+        # Keep the main step clear.
         if tracked is None:
             return None
         now = self._utcnow()
@@ -237,6 +245,8 @@ class MASExecutionTracker:
         tracked: TrackedAgentExecution | None,
         persisted: TrackedExecutionPersistenceOutcome | None,
     ) -> Dict[str, Any]:
+        """Handle updates for completion."""
+        # Keep the main step clear.
         if tracked is None or persisted is None:
             return {}
 
@@ -256,6 +266,8 @@ class MASExecutionTracker:
         handoff_dict: Dict[str, Any],
         persisted: TrackedExecutionPersistenceOutcome | None,
     ) -> Dict[str, Any]:
+        """Handle handoff dict."""
+        # Keep the main step clear.
         if persisted is None or persisted.handoff_id is None:
             return dict(handoff_dict)
         decorated = dict(handoff_dict)
@@ -269,6 +281,8 @@ class MASExecutionTracker:
         state: MASState,
         outcome: GateEvaluationOutcome,
     ) -> str | None:
+        """Handle gate evaluation."""
+        # Keep the main step clear.
         ctx = self._execution_context(state)
         mas_run_id = self._string_or_none(ctx.get("mas_run_id"))
         if mas_run_id is None:
@@ -321,6 +335,8 @@ class MASExecutionTracker:
         handoff: HandoffEnvelope,
         created_at: datetime,
     ) -> str:
+        """Handle handoff created."""
+        # Keep the main step clear.
         handoff_id = str(uuid4())
         row = MASHandoff(
             id=handoff_id,
@@ -368,6 +384,8 @@ class MASExecutionTracker:
         to_agent_run_id: str,
         accepted_at: datetime,
     ) -> None:
+        """Handle handoff if present."""
+        # Keep the main step clear.
         if incoming_handoff_id is None:
             return
 
@@ -392,6 +410,8 @@ class MASExecutionTracker:
         to_agent_run_id: str,
         accepted_at: datetime,
     ) -> None:
+        """Handle pending handoffs for target."""
+        # Keep the main step clear.
         rows = mas_handoffs_repository.list_pending_handoffs_for_target(
             db,
             mas_run_id=mas_run_id,
@@ -409,6 +429,8 @@ class MASExecutionTracker:
             mas_handoffs_repository.save_mas_handoff(db, row)
 
     def _update_mas_run_on_agent_start(self, *, db: Session, mas_run_id: str, agent_run_id: str) -> None:
+        """Update mas run on agent start."""
+        # Keep stored state current.
         row = mas_runs_repository.get_mas_run(db, mas_run_id)
         if row is None:
             return
@@ -429,6 +451,8 @@ class MASExecutionTracker:
         gate_id: str,
         now: datetime,
     ) -> None:
+        """Update mas run on gate evaluation."""
+        # Keep stored state current.
         row = mas_runs_repository.get_mas_run(db, mas_run_id)
         if row is None:
             return
@@ -445,6 +469,8 @@ class MASExecutionTracker:
         final_output: Dict[str, Any],
         created_at: datetime,
     ) -> str:
+        """Persist mas final output."""
+        # Keep stored state current.
         final_output_id = str(uuid4())
         row = MASFinalOutput(
             id=final_output_id,
@@ -474,6 +500,8 @@ class MASExecutionTracker:
         payload_json: Optional[dict[str, Any]] = None,
         payload_text: Optional[str] = None,
     ) -> None:
+        """Emit event."""
+        # Keep events flowing.
         if self.event_emitter is None:
             return
         self.event_emitter.emit(
@@ -490,6 +518,8 @@ class MASExecutionTracker:
         )
 
     def _persist_agent_metrics(self, run_id: str) -> None:
+        """Persist agent metrics."""
+        # Keep stored state current.
         if self.session_factory is None:
             return
         persist_agent_run_metrics(
@@ -500,6 +530,8 @@ class MASExecutionTracker:
 
     @contextmanager
     def _session_scope(self) -> Iterator[Session]:
+        """Handle scope."""
+        # Keep the main step clear.
         if self.session_factory is not None:
             db = self.session_factory()
             try:
@@ -513,10 +545,14 @@ class MASExecutionTracker:
 
     @staticmethod
     def _utcnow() -> datetime:
+        """Handle the value."""
+        # Keep the main step clear.
         return datetime.utcnow()
 
     @staticmethod
     def _string_or_none(value: Any) -> str | None:
+        """Handle or none."""
+        # Keep the main step clear.
         if value is None:
             return None
         text = str(value).strip()
@@ -524,6 +560,8 @@ class MASExecutionTracker:
 
     @staticmethod
     def _next_sequence_index(ctx: Mapping[str, Any]) -> int:
+        """Handle sequence index."""
+        # Keep the main step clear.
         value = ctx.get("next_sequence_index")
         if value is None:
             return 1
@@ -534,6 +572,8 @@ class MASExecutionTracker:
 
     @staticmethod
     def _execution_context(state: MASState) -> Dict[str, Any]:
+        """Handle context."""
+        # Keep the main step clear.
         raw = state.get("execution_context")
         if isinstance(raw, dict):
             return dict(raw)
@@ -541,6 +581,8 @@ class MASExecutionTracker:
 
     @staticmethod
     def _incoming_handoff_id(*, agent_name: AgentName, state: MASState) -> str | None:
+        """Handle handoff id."""
+        # Keep the main step clear.
         pending_handoff = state.get("pending_handoff")
         if isinstance(pending_handoff, dict) and pending_handoff.get("target_agent") == agent_name:
             handoff_id = pending_handoff.get("handoff_id")
@@ -556,12 +598,16 @@ class MASExecutionTracker:
 
     @staticmethod
     def _result_output_json(result: AgentExecutionResult) -> Dict[str, Any]:
+        """Handle output json."""
+        # Keep the main step clear.
         if result.status == "final":
             return dict(result.final_output or {})
         return dict(result.output or {})
 
     @staticmethod
     def _error_text(output: Mapping[str, Any]) -> str | None:
+        """Handle text."""
+        # Keep the main step clear.
         if not output:
             return None
         if "error" in output and output["error"] is not None:

@@ -1,4 +1,6 @@
 #!/usr/bin/env python
+"""Init Medrecon script helpers."""
+
 import argparse
 import csv
 import sys
@@ -14,10 +16,14 @@ from sqlalchemy.exc import SQLAlchemyError
 
 
 def _repo_root() -> Path:
+    """Handle root."""
+    # Keep the main step clear.
     return Path(__file__).resolve().parents[1]
 
 
 def _parse_args(argv: List[str]) -> argparse.Namespace:
+    """Parse args."""
+    # Keep the output consistent.
     parser = argparse.ArgumentParser(
         description="Initialize the medrecon table from datasets/medrecon.csv"
     )
@@ -70,6 +76,8 @@ def _parse_args(argv: List[str]) -> argparse.Namespace:
 
 
 def _make_engine(database_url: str) -> Engine:
+    """Handle engine."""
+    # Keep the main step clear.
     connect_args = {}
     if database_url.startswith("sqlite"):
         connect_args = {"check_same_thread": False}
@@ -83,6 +91,7 @@ def _resolve_database_url(database_url: str) -> str:
     Without this, running the script from `scripts/` would create/use `scripts/app.db`
     for a URL like `sqlite:///app.db`.
     """
+    # Pick the needed value.
     try:
         url = make_url(database_url)
     except Exception:  # noqa: BLE001
@@ -102,6 +111,8 @@ def _resolve_database_url(database_url: str) -> str:
 
 
 def _apply_sqlite_pragmas(engine: Engine, fast: bool) -> None:
+    """Handle sqlite pragmas."""
+    # Keep the main step clear.
     if not str(engine.url).startswith("sqlite"):
         return
     pragmas = [
@@ -123,12 +134,16 @@ def _apply_sqlite_pragmas(engine: Engine, fast: bool) -> None:
 
 
 def _ensure_imports() -> None:
+    """Handle imports."""
+    # Keep the main step clear.
     repo_root = _repo_root()
     if str(repo_root) not in sys.path:
         sys.path.insert(0, str(repo_root))
 
 
 def _maybe_empty(value: str) -> Optional[str]:
+    """Handle empty."""
+    # Keep the main step clear.
     v = value.strip()
     return v if v else None
 
@@ -136,6 +151,8 @@ def _maybe_empty(value: str) -> Optional[str]:
 def _iter_batches(
     csv_path: Path, batch_size: int, limit: Optional[int]
 ) -> Iterable[List[dict]]:
+    """Handle batches."""
+    # Keep the main step clear.
     with csv_path.open(newline="") as f:
         reader = csv.reader(f)
         header = next(reader, None)
@@ -198,12 +215,16 @@ def _iter_batches(
 
 
 def _table_row_count(engine: Engine) -> int:
+    """Handle row count."""
+    # Keep the main step clear.
     with engine.connect() as conn:
         result = conn.execute(text("SELECT COUNT(*) FROM medrecon"))
         return int(result.scalar_one())
 
 
 def main(argv: List[str]) -> int:
+    """Handle the value."""
+    # Keep the main step clear.
     _ensure_imports()
     args = _parse_args(argv)
 

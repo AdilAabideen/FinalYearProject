@@ -1,3 +1,5 @@
+"""Es1Agenttests script helpers."""
+
 from __future__ import annotations
 
 import argparse
@@ -20,10 +22,14 @@ from app.models.agent_test_case import AgentTestCase
 
 
 def _repo_root() -> Path:
+    """Handle root."""
+    # Keep the main step clear.
     return Path(__file__).resolve().parents[1]
 
 
 def _parse_args() -> argparse.Namespace:
+    """Parse args."""
+    # Keep the output consistent.
     parser = argparse.ArgumentParser(
         description="Initialize ES1 agent test cases from CSV into agent_test_cases."
     )
@@ -58,10 +64,14 @@ def _parse_args() -> argparse.Namespace:
 
 
 def _normalize_row(raw: dict[str, Any]) -> dict[str, str]:
+    """Normalize row."""
+    # Keep the output consistent.
     return {str(k).strip().lower(): ("" if v is None else str(v).strip()) for k, v in raw.items()}
 
 
 def _parse_age(value: str) -> Optional[float]:
+    """Parse age."""
+    # Keep the output consistent.
     if value is None:
         return None
     s = str(value).strip()
@@ -74,6 +84,8 @@ def _parse_age(value: str) -> Optional[float]:
 
 
 def _parse_acuity(value: str) -> Optional[int]:
+    """Parse acuity."""
+    # Keep the output consistent.
     if value is None:
         return None
     s = str(value).strip()
@@ -92,6 +104,8 @@ def _parse_acuity(value: str) -> Optional[int]:
 
 
 def _build_input_json(row: dict[str, str]) -> Optional[dict[str, Any]]:
+    """Build input json."""
+    # Build the next value.
     age = _parse_age(row.get("age", ""))
     if age is None:
         return None
@@ -116,6 +130,8 @@ def _build_input_json(row: dict[str, str]) -> Optional[dict[str, Any]]:
 
 
 def _load_csv_rows(csv_path: Path, limit: Optional[int]) -> tuple[list[dict[str, Any]], list[str]]:
+    """Load csv rows."""
+    # Read the current value.
     prepared: list[dict[str, Any]] = []
     skipped: list[str] = []
 
@@ -157,6 +173,8 @@ def _load_csv_rows(csv_path: Path, limit: Optional[int]) -> tuple[list[dict[str,
 
 
 def main() -> int:
+    """Handle the value."""
+    # Keep the main step clear.
     args = _parse_args()
 
     csv_path = Path(args.csv_path)

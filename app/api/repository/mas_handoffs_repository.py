@@ -1,3 +1,5 @@
+"""Mas Handoffs Repository repository helpers."""
+
 from __future__ import annotations
 
 from typing import Optional
@@ -9,10 +11,14 @@ from app.models.mas_handoff import MASHandoff
 
 
 def get_mas_handoff(db: Session, handoff_id: str) -> Optional[MASHandoff]:
+    """Return mas handoff."""
+    # Read the current value.
     return db.get(MASHandoff, handoff_id)
 
 
 def save_mas_handoff(db: Session, handoff: MASHandoff, *, refresh: bool = False) -> None:
+    """Save mas handoff."""
+    # Keep stored state current.
     db.add(handoff)
     db.commit()
     if refresh:
@@ -26,6 +32,8 @@ def list_mas_handoffs_for_run(
     limit: int = 200,
     offset: int = 0,
 ) -> list[MASHandoff]:
+    """List mas handoffs for run."""
+    # Read the current list.
     stmt = (
         select(MASHandoff)
         .where(MASHandoff.mas_run_id == mas_run_id)
@@ -42,6 +50,8 @@ def list_pending_handoffs_for_target(
     mas_run_id: str,
     to_agent_name: str,
 ) -> list[MASHandoff]:
+    """List pending handoffs for target."""
+    # Read the current list.
     stmt = (
         select(MASHandoff)
         .where(
@@ -55,5 +65,7 @@ def list_pending_handoffs_for_target(
 
 
 def count_mas_handoffs_for_run(db: Session, *, mas_run_id: str) -> int:
+    """Count mas handoffs for run."""
+    # Derive the needed value.
     stmt = select(func.count()).select_from(MASHandoff).where(MASHandoff.mas_run_id == mas_run_id)
     return int(db.execute(stmt).scalar_one())
