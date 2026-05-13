@@ -2,19 +2,19 @@ from __future__ import annotations
 
 from fastapi import APIRouter, BackgroundTasks
 
-from app.api.services import swarm_execution_service
-from app.schemas.swarm_execution import SwarmExecutionStartRequest, SwarmExecutionStartResponse
+from app.api.services import mas_execution_service
+from app.schemas.mas_execution import MASExecutionStartRequest, MASExecutionStartResponse
 
 router = APIRouter()
 
 
-@router.post("/{workflow_id}/runs", response_model=SwarmExecutionStartResponse)
+@router.post("/{workflow_id}/runs", response_model=MASExecutionStartResponse)
 def start_mas_run(
     workflow_id: str,
-    payload: SwarmExecutionStartRequest,
+    payload: MASExecutionStartRequest,
     background_tasks: BackgroundTasks,
 ):
-    return swarm_execution_service.start_swarm_execution(
+    return mas_execution_service.start_mas_execution(
         workflow_id=workflow_id,
         payload=payload,
         background_tasks=background_tasks,

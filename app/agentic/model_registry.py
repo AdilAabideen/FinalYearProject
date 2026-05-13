@@ -49,11 +49,20 @@ FINETUNED_MULTI_AGENT_MODEL_ID_OVERRIDES: dict[str, str] = {
 
 _MODEL_REGISTRY: dict[str, ModelSpec] = {
     # OpenAI (known defaults)
-    "gpt-4o-mini": ModelSpec(
-        id="gpt-4o-mini",
+    "gpt-4o": ModelSpec(
+        id="gpt-4o",
         provider="openai",
         model_category="default",
-        description="OpenAI GPT-4o mini",
+        description="OpenAI GPT-4o",
+        supports_tools=True,
+        default_temperature=0.7,
+        pricing=ModelPricing(input_per_1k=0.001, output_per_1k=0.002),
+    ),
+     "gpt-5": ModelSpec(
+        id="gpt-5",
+        provider="openai",
+        model_category="default",
+        description="OpenAI GPT-5",
         supports_tools=True,
         default_temperature=0.7,
         pricing=ModelPricing(input_per_1k=0.001, output_per_1k=0.002),

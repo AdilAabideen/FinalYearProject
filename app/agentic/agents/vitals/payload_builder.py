@@ -2,14 +2,14 @@ from __future__ import annotations
 
 from typing import Any, Dict
 
-from app.agentic.swarm_contract import SwarmState
-from app.agentic.workflows.definitions.esi_swarm_v1.payload_builders import (
+from app.agentic.mas_contract import MASState
+from app.agentic.workflows.definitions.esi_mas.payload_builders import (
     unified_payload_builder,
 )
 
 
-def build_payload(state: SwarmState) -> Dict[str, Any]:
-    """Build a compact vitals swarm payload."""
+def build_payload(state: MASState) -> Dict[str, Any]:
+    """Build a compact vitals mas payload."""
     case_info = unified_payload_builder("vitals_agent", dict(state.get("case_info") or {}))
     llm_payload = {
         "task": "Evaluate this patient for vitals-only up-triage concerns.",

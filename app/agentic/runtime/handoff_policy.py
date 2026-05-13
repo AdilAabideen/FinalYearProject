@@ -7,7 +7,7 @@ from typing import Any, Mapping, Optional, Sequence
 from langchain_core.messages import ToolMessage
 
 from app.agentic.handoff import HandoffResult
-from app.agentic.swarm_contract import HandoffEnvelope
+from app.agentic.mas_contract import HandoffEnvelope
 
 
 @dataclass(frozen=True)

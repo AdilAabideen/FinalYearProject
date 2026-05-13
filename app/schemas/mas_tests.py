@@ -65,7 +65,7 @@ class MasTestCaseRunRead(BaseModel):
     id: str
     test_run_id: str
     test_case_id: str
-    swarm_run_id: Optional[str] = None
+    mas_run_id: Optional[str] = None
     status: MasTestCaseRunStatus
     passed: Optional[bool] = None
     score: Optional[float] = None
@@ -86,18 +86,18 @@ class MasTestRunDetailRead(BaseModel):
 class MasTestCaseRunMetricRead(BaseModel):
     test_case_id: str
     test_case_name: Optional[str] = None
-    swarm_run_id: Optional[str] = None
+    mas_run_id: Optional[str] = None
     status: MasTestCaseRunStatus
     passed: Optional[bool] = None
     score: Optional[float] = None
     failure_reason: Optional[str] = None
-    swarm_status: Optional[str] = None
+    mas_status: Optional[str] = None
     duration_ms: Optional[int] = None
 
 
 class MasTestRunMetricsSummaryRead(BaseModel):
     total_runs: int
-    runs_with_swarm_run: int
+    runs_with_mas_run: int
     successful_runs: int
     failed_runs: int
     success_rate: float
@@ -116,8 +116,8 @@ class MasTestRunBatchMetricsRead(BaseModel):
 class MasTestCaseAnalyticsRead(BaseModel):
     test_case_id: str
     test_case_name: Optional[str] = None
-    swarm_run_id: Optional[str] = None
-    swarm_status: Optional[str] = None
+    mas_run_id: Optional[str] = None
+    mas_status: Optional[str] = None
     duration_ms: Optional[int] = None
     agent_run_count: Optional[int] = None
     handoff_count: Optional[int] = None
@@ -137,7 +137,7 @@ class MasTestCaseAnalyticsRead(BaseModel):
 
 class MasTestRunAnalyticsSummaryRead(BaseModel):
     total_cases: int
-    cases_with_swarm_run: int
+    cases_with_mas_run: int
     cases_with_metrics: int
     duration_ms_total: int
     duration_ms_avg: Optional[float] = None

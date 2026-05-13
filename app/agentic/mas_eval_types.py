@@ -14,7 +14,7 @@ class WorkflowEvaluator(Protocol):
         expected_json: Dict[str, Any],
         actual_json: Optional[Dict[str, Any]],
         *,
-        swarm_status: str,
+        mas_status: str,
     ) -> EvalResult:
         ...
 

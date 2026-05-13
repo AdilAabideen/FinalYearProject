@@ -53,7 +53,7 @@ def _print_text_topology(workflow) -> None:
 
 
 def main() -> None:
-    workflow = get_workflow_definition("esi_swarm_v1")
+    workflow = get_workflow_definition("esi_mas")
 
     print("=== Workflow Definition ===")
     print("id:", workflow.metadata.workflow_id)

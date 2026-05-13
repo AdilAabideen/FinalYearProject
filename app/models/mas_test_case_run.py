@@ -21,7 +21,7 @@ from app.models.base import Base, TimestampMixin
 if TYPE_CHECKING:
     from app.models.mas_test_case import MasTestCase
     from app.models.mas_test_run import MasTestRun
-    from app.models.swarm_run import SwarmRun
+    from app.models.mas_run import MASRun
 
 
 class MasTestCaseRun(Base, TimestampMixin):
@@ -40,9 +40,9 @@ class MasTestCaseRun(Base, TimestampMixin):
         nullable=False,
         index=True,
     )
-    swarm_run_id: Mapped[Optional[str]] = mapped_column(
+    mas_run_id: Mapped[Optional[str]] = mapped_column(
         String,
-        ForeignKey("swarm_runs.id", ondelete="RESTRICT"),
+        ForeignKey("mas_runs.id", ondelete="RESTRICT"),
         nullable=True,
         index=True,
     )
@@ -59,7 +59,7 @@ class MasTestCaseRun(Base, TimestampMixin):
 
     test_run: Mapped["MasTestRun"] = relationship("MasTestRun")
     test_case: Mapped["MasTestCase"] = relationship("MasTestCase")
-    swarm_run: Mapped[Optional["SwarmRun"]] = relationship("SwarmRun")
+    mas_run: Mapped[Optional["MASRun"]] = relationship("MASRun")
 
     __table_args__ = (
         UniqueConstraint("test_run_id", "test_case_id", name="uq_mas_test_case_runs_run_case"),

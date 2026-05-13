@@ -16,12 +16,12 @@ from app.agentic.model_registry import validate_model_for_agent
 from app.agentic.workflows.registry import get_workflow_definition, get_workflow_spec, list_workflow_specs
 from app.api.repository import (
     mas_tests_repository,
-    swarm_final_outputs_repository,
-    swarm_run_metrics_repository,
-    swarm_runs_repository,
+    mas_final_outputs_repository,
+    mas_run_metrics_repository,
+    mas_runs_repository,
 )
-from app.api.services import swarm_execution_service
-from app.api.services.swarm_run_metrics_service import TERMINAL_SWARM_STATUSES, persist_swarm_run_metrics
+from app.api.services import mas_execution_service
+from app.api.services.mas_run_metrics_service import TERMINAL_MAS_STATUSES, persist_mas_run_metrics
 from app.config import settings
 from app.database import SessionLocal
 from app.models.mas_test_case import MasTestCase
@@ -90,7 +90,7 @@ def _normalize_runtime_input_or_400(
         candidate["heartrate"] = candidate["heartte"]
     if "arrival_transport" not in candidate and "rival_transport" in candidate:
         candidate["arrival_transport"] = candidate["rival_transport"]
-    normalized_input, _, _ = swarm_execution_service.normalize_workflow_input(workflow_id, candidate)
+    normalized_input, _, _ = mas_execution_service.normalize_workflow_input(workflow_id, candidate)
     return normalized_input
 
 
@@ -102,7 +102,7 @@ def _build_case_diff_payload(
     *,
     expected_answer: dict[str, Any],
     actual_answer: Optional[dict[str, Any]],
-    swarm_status: str,
+    mas_status: str,
     passed: bool,
     evaluator_diff: Optional[dict[str, Any]],
     error_text: Optional[str],
@@ -110,14 +110,23 @@ def _build_case_diff_payload(
     payload: dict[str, Any] = {
         "expected_answer": expected_answer,
         "actual_answer": actual_answer,
-        "swarm_status": swarm_status,
+        "mas_status": mas_status,
         "passed": passed,
     }
     if error_text:
-        payload["swarm_error_text"] = error_text
+        payload["mas_error_text"] = error_text
     if isinstance(evaluator_diff, dict):
         payload.update(evaluator_diff)
     return payload
+
+
+def _stream_legacy_swarm_diff_payload(payload: dict[str, Any]) -> dict[str, Any]:
+    legacy = dict(payload)
+    if "mas_status" in legacy:
+        legacy["swarm_status"] = legacy.pop("mas_status")
+    if "mas_error_text" in legacy:
+        legacy["swarm_error_text"] = legacy.pop("mas_error_text")
+    return legacy
 
 
 def _avg_or_none(total: float, count: int, ndigits: int = 4) -> Optional[float]:
@@ -271,7 +280,7 @@ def start_run(payload: MasTestRunStartRequest, db: Session) -> MasTestRunRead:
             id=str(uuid.uuid4()),
             test_run_id=run_id,
             test_case_id=case_id,
-            swarm_run_id=None,
+            mas_run_id=None,
             status="created",
             passed=None,
             score=None,
@@ -361,23 +370,23 @@ def get_run_metrics(run_id: str, db: Session) -> MasTestRunBatchMetricsRead:
             MasTestCaseRunMetricRead(
                 test_case_id=case_run.test_case_id,
                 test_case_name=case_name_by_id.get(case_run.test_case_id),
-                swarm_run_id=case_run.swarm_run_id,
+                mas_run_id=case_run.mas_run_id,
                 status=case_run.status,
                 passed=case_run.passed,
                 score=case_run.score,
                 failure_reason=metrics.get("failure_reason"),
-                swarm_status=metrics.get("swarm_status"),
+                mas_status=metrics.get("mas_status"),
                 duration_ms=duration_ms if isinstance(duration_ms, int) else None,
             )
         )
 
     total_runs = len(ordered)
-    runs_with_swarm_run = len([case_run for case_run in ordered if case_run.swarm_run_id])
+    runs_with_mas_run = len([case_run for case_run in ordered if case_run.mas_run_id])
     success_rate = round((successful_runs / total_runs), 4) if total_runs else 0.0
 
     summary = MasTestRunMetricsSummaryRead(
         total_runs=total_runs,
-        runs_with_swarm_run=runs_with_swarm_run,
+        runs_with_mas_run=runs_with_mas_run,
         successful_runs=successful_runs,
         failed_runs=failed_runs,
         success_rate=success_rate,
@@ -425,17 +434,17 @@ def get_run_analytics(run_id: str, db: Session) -> MasTestRunAnalyticsRead:
     finalization_failure_count_total = 0
 
     for case_run in ordered:
-        swarm_status = None
+        mas_status = None
         duration_ms = None
         metrics_row = None
 
-        if case_run.swarm_run_id:
-            swarm_run = swarm_runs_repository.get_swarm_run(db, case_run.swarm_run_id)
-            if swarm_run is not None:
-                swarm_status = swarm_run.status
-                if swarm_run.status in TERMINAL_SWARM_STATUSES:
-                    persist_swarm_run_metrics(case_run.swarm_run_id)
-            metrics_row = swarm_run_metrics_repository.get_swarm_run_metrics(db, case_run.swarm_run_id)
+        if case_run.mas_run_id:
+            mas_run = mas_runs_repository.get_mas_run(db, case_run.mas_run_id)
+            if mas_run is not None:
+                mas_status = mas_run.status
+                if mas_run.status in TERMINAL_MAS_STATUSES:
+                    persist_mas_run_metrics(case_run.mas_run_id)
+            metrics_row = mas_run_metrics_repository.get_mas_run_metrics(db, case_run.mas_run_id)
 
         if metrics_row is not None:
             metric_count += 1
@@ -460,8 +469,8 @@ def get_run_analytics(run_id: str, db: Session) -> MasTestRunAnalyticsRead:
             MasTestCaseAnalyticsRead(
                 test_case_id=case_run.test_case_id,
                 test_case_name=case_name_by_id.get(case_run.test_case_id),
-                swarm_run_id=case_run.swarm_run_id,
-                swarm_status=swarm_status,
+                mas_run_id=case_run.mas_run_id,
+                mas_status=mas_status,
                 duration_ms=(metrics_row.duration_ms if metrics_row is not None else None),
                 agent_run_count=(metrics_row.agent_run_count if metrics_row is not None else None),
                 handoff_count=(metrics_row.handoff_count if metrics_row is not None else None),
@@ -486,7 +495,7 @@ def get_run_analytics(run_id: str, db: Session) -> MasTestRunAnalyticsRead:
     case_count = len(ordered)
     summary = MasTestRunAnalyticsSummaryRead(
         total_cases=case_count,
-        cases_with_swarm_run=len([case_run for case_run in ordered if case_run.swarm_run_id]),
+        cases_with_mas_run=len([case_run for case_run in ordered if case_run.mas_run_id]),
         cases_with_metrics=metric_count,
         duration_ms_total=duration_ms_total,
         duration_ms_avg=_avg_or_none(duration_ms_total, metric_count),
@@ -559,27 +568,27 @@ def stream_run(run_id: str, db: Session) -> StreamingResponse:
         lines.append(f"data: {payload}")
         return "\n".join(lines) + "\n\n"
 
-    def _load_swarm_result(swarm_run_id: str) -> tuple[str, Optional[dict[str, Any]], Optional[int], Optional[str]]:
+    def _load_mas_result(mas_run_id: str) -> tuple[str, Optional[dict[str, Any]], Optional[int], Optional[str]]:
         result_db = SessionLocal()
         try:
-            swarm_run = swarm_runs_repository.get_swarm_run(result_db, swarm_run_id)
-            if swarm_run is None:
-                return "failed", None, None, "swarm_run_missing"
+            mas_run = mas_runs_repository.get_mas_run(result_db, mas_run_id)
+            if mas_run is None:
+                return "failed", None, None, "mas_run_missing"
 
-            final_output_row = swarm_final_outputs_repository.get_latest_swarm_final_output_for_run(
+            final_output_row = mas_final_outputs_repository.get_latest_mas_final_output_for_run(
                 result_db,
-                swarm_run_id=swarm_run_id,
+                mas_run_id=mas_run_id,
             )
             final_output = (
                 dict(final_output_row.output_json or {})
                 if final_output_row is not None and final_output_row.output_json is not None
                 else (
-                    dict(swarm_run.final_output_json or {})
-                    if swarm_run.final_output_json is not None
+                    dict(mas_run.final_output_json or {})
+                    if mas_run.final_output_json is not None
                     else None
                 )
             )
-            return swarm_run.status, final_output, swarm_run.duration_ms, swarm_run.error_text
+            return mas_run.status, final_output, mas_run.duration_ms, mas_run.error_text
         finally:
             result_db.close()
 
@@ -620,7 +629,7 @@ def stream_run(run_id: str, db: Session) -> StreamingResponse:
                     id=str(uuid.uuid4()),
                     test_run_id=run.id,
                     test_case_id=case_id,
-                    swarm_run_id=None,
+                    mas_run_id=None,
                     status="created",
                     passed=None,
                     score=None,
@@ -641,18 +650,18 @@ def stream_run(run_id: str, db: Session) -> StreamingResponse:
             case_run.updated_at = start_ts
             mas_tests_repository.save_test_case_run(db, case_run)
 
-            swarm_run_id: Optional[str] = None
+            mas_run_id: Optional[str] = None
             actual_output: Optional[dict[str, Any]] = None
             duration_ms: Optional[int] = None
             error_text: Optional[str] = None
-            swarm_status = "failed"
+            mas_status = "failed"
 
             try:
                 normalized_input = _normalize_runtime_input_or_400(
                     workflow_id=run.workflow_id,
                     input_json=test_case.input_json,
                 )
-                swarm_run_id, normalized_input, _, workflow_version = swarm_execution_service.create_and_start_swarm_run(
+                mas_run_id, normalized_input, _, workflow_version = mas_execution_service.create_and_start_mas_run(
                     workflow_id=run.workflow_id,
                     input_payload=normalized_input,
                     model_id=model_id,
@@ -662,7 +671,7 @@ def stream_run(run_id: str, db: Session) -> StreamingResponse:
                         "mas_test_case_id": test_case.id,
                     },
                 )
-                case_run.swarm_run_id = swarm_run_id
+                case_run.mas_run_id = mas_run_id
                 case_run.updated_at = datetime.utcnow()
                 mas_tests_repository.save_test_case_run(db, case_run)
 
@@ -673,17 +682,17 @@ def stream_run(run_id: str, db: Session) -> StreamingResponse:
                         "index": index,
                         "test_case_id": case_id,
                         "test_case_name": test_case.name,
-                        "swarm_run_id": swarm_run_id,
+                        "swarm_run_id": mas_run_id,
                     },
                     event_id=event_id,
                 )
 
                 try:
                     asyncio.run(
-                        swarm_execution_service.execute_swarm_run(
+                        mas_execution_service.execute_mas_run(
                             workflow_id=run.workflow_id,
                             workflow_version=workflow_version,
-                            swarm_run_id=swarm_run_id,
+                            mas_run_id=mas_run_id,
                             case_info=normalized_input,
                             model_id=model_id,
                         )
@@ -691,14 +700,14 @@ def stream_run(run_id: str, db: Session) -> StreamingResponse:
                 except Exception:
                     pass
 
-                swarm_status, actual_output, duration_ms, error_text = _load_swarm_result(swarm_run_id)
+                mas_status, actual_output, duration_ms, error_text = _load_mas_result(mas_run_id)
             except Exception as exc:
                 error_text = str(exc)
 
             eval_result = evaluator.evaluate(
                 test_case.expected_json,
                 actual_output,
-                swarm_status=swarm_status,
+                mas_status=mas_status,
             )
             eval_results.append(eval_result)
             if eval_result.passed:
@@ -714,14 +723,15 @@ def stream_run(run_id: str, db: Session) -> StreamingResponse:
             diff_payload = _build_case_diff_payload(
                 expected_answer=test_case.expected_json,
                 actual_answer=actual_output,
-                swarm_status=swarm_status,
+                mas_status=mas_status,
                 passed=eval_result.passed,
                 evaluator_diff=eval_result.diff_json,
                 error_text=error_text,
             )
+            stream_diff_payload = _stream_legacy_swarm_diff_payload(diff_payload)
             failure_reason = None
             if eval_metrics.get("exec_failed") is True:
-                failure_reason = "swarm_failed"
+                failure_reason = "mas_failed"
             elif eval_metrics.get("missing_final_output") is True:
                 failure_reason = "missing_final_output"
             elif not eval_result.passed:
@@ -729,13 +739,13 @@ def stream_run(run_id: str, db: Session) -> StreamingResponse:
 
             case_run.finished_at = end_ts
             case_run.updated_at = end_ts
-            case_run.status = "failed" if (swarm_status != "completed" or not eval_result.passed) else "succeeded"
+            case_run.status = "failed" if (mas_status != "completed" or not eval_result.passed) else "succeeded"
             case_run.passed = eval_result.passed
             case_run.score = eval_result.score
             case_run.diff_json = diff_payload
             case_run.error_text = error_text
             case_run.metrics_json = {
-                "swarm_status": swarm_status,
+                "mas_status": mas_status,
                 "duration_ms": duration_ms,
                 "final_output_present": actual_output is not None,
                 "failure_reason": failure_reason,
@@ -750,11 +760,11 @@ def stream_run(run_id: str, db: Session) -> StreamingResponse:
                     "index": index,
                     "test_case_id": case_id,
                     "test_case_name": test_case.name,
-                    "swarm_run_id": swarm_run_id,
-                    "swarm_status": swarm_status,
+                    "swarm_run_id": mas_run_id,
+                    "swarm_status": mas_status,
                     "passed": eval_result.passed,
                     "score": eval_result.score,
-                    "diff_json": diff_payload,
+                    "diff_json": stream_diff_payload,
                 },
                 event_id=event_id,
             )

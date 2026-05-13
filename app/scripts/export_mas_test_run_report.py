@@ -24,11 +24,11 @@ from app.models.agent_run import AgentRun
 from app.models.mas_test_case import MasTestCase
 from app.models.mas_test_case_run import MasTestCaseRun
 from app.models.mas_test_run import MasTestRun
-from app.models.swarm_event import SwarmEvent
-from app.models.swarm_final_output import SwarmFinalOutput
-from app.models.swarm_handoff import SwarmHandoff
-from app.models.swarm_run import SwarmRun
-from app.models.swarm_run_metrics import SwarmRunMetrics
+from app.models.mas_event import MASEvent
+from app.models.mas_final_output import MASFinalOutput
+from app.models.mas_handoff import MASHandoff
+from app.models.mas_run import MASRun
+from app.models.mas_run_metrics import MASRunMetrics
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -43,11 +43,11 @@ class ExportBundle:
     mas_test_run: MasTestRun | None
     case_runs: list[MasTestCaseRun]
     test_cases: dict[str, MasTestCase]
-    swarm_runs: dict[str, SwarmRun]
-    swarm_metrics: dict[str, SwarmRunMetrics]
-    swarm_events: list[SwarmEvent]
-    swarm_handoffs: list[SwarmHandoff]
-    swarm_final_outputs: list[SwarmFinalOutput]
+    mas_runs: dict[str, MASRun]
+    mas_metrics: dict[str, MASRunMetrics]
+    mas_events: list[MASEvent]
+    mas_handoffs: list[MASHandoff]
+    mas_final_outputs: list[MASFinalOutput]
     agent_runs: list[AgentRun]
     agent_events: list[AgentEvent]
     agent_llm_calls: list[AgentLLMCall]
@@ -168,44 +168,44 @@ def _collect_bundle(mas_test_run_id: str) -> ExportBundle:
             for row in db.scalars(select(MasTestCase).where(MasTestCase.id.in_(test_case_ids)))
         } if test_case_ids else {}
 
-        swarm_run_ids = [row.swarm_run_id for row in case_runs if row.swarm_run_id]
-        swarm_runs = {
+        mas_run_ids = [row.mas_run_id for row in case_runs if row.mas_run_id]
+        mas_runs = {
             row.id: row
-            for row in db.scalars(select(SwarmRun).where(SwarmRun.id.in_(swarm_run_ids)))
-        } if swarm_run_ids else {}
-        swarm_metrics = {
-            row.swarm_run_id: row
-            for row in db.scalars(select(SwarmRunMetrics).where(SwarmRunMetrics.swarm_run_id.in_(swarm_run_ids)))
-        } if swarm_run_ids else {}
-        swarm_events = list(
+            for row in db.scalars(select(MASRun).where(MASRun.id.in_(mas_run_ids)))
+        } if mas_run_ids else {}
+        mas_metrics = {
+            row.mas_run_id: row
+            for row in db.scalars(select(MASRunMetrics).where(MASRunMetrics.mas_run_id.in_(mas_run_ids)))
+        } if mas_run_ids else {}
+        mas_events = list(
             db.scalars(
-                select(SwarmEvent)
-                .where(SwarmEvent.swarm_run_id.in_(swarm_run_ids))
-                .order_by(SwarmEvent.swarm_run_id, SwarmEvent.seq)
+                select(MASEvent)
+                .where(MASEvent.mas_run_id.in_(mas_run_ids))
+                .order_by(MASEvent.mas_run_id, MASEvent.seq)
             )
-        ) if swarm_run_ids else []
-        swarm_handoffs = list(
+        ) if mas_run_ids else []
+        mas_handoffs = list(
             db.scalars(
-                select(SwarmHandoff)
-                .where(SwarmHandoff.swarm_run_id.in_(swarm_run_ids))
-                .order_by(SwarmHandoff.swarm_run_id, SwarmHandoff.created_at, SwarmHandoff.id)
+                select(MASHandoff)
+                .where(MASHandoff.mas_run_id.in_(mas_run_ids))
+                .order_by(MASHandoff.mas_run_id, MASHandoff.created_at, MASHandoff.id)
             )
-        ) if swarm_run_ids else []
-        swarm_final_outputs = list(
+        ) if mas_run_ids else []
+        mas_final_outputs = list(
             db.scalars(
-                select(SwarmFinalOutput)
-                .where(SwarmFinalOutput.swarm_run_id.in_(swarm_run_ids))
-                .order_by(SwarmFinalOutput.swarm_run_id, SwarmFinalOutput.created_at, SwarmFinalOutput.id)
+                select(MASFinalOutput)
+                .where(MASFinalOutput.mas_run_id.in_(mas_run_ids))
+                .order_by(MASFinalOutput.mas_run_id, MASFinalOutput.created_at, MASFinalOutput.id)
             )
-        ) if swarm_run_ids else []
+        ) if mas_run_ids else []
 
         agent_runs = list(
             db.scalars(
                 select(AgentRun)
-                .where(AgentRun.swarm_run_id.in_(swarm_run_ids))
-                .order_by(AgentRun.swarm_run_id, AgentRun.sequence_index, AgentRun.started_at, AgentRun.created_at)
+                .where(AgentRun.mas_run_id.in_(mas_run_ids))
+                .order_by(AgentRun.mas_run_id, AgentRun.sequence_index, AgentRun.started_at, AgentRun.created_at)
             )
-        ) if swarm_run_ids else []
+        ) if mas_run_ids else []
         agent_run_ids = [row.id for row in agent_runs]
 
         agent_events = list(
@@ -229,11 +229,11 @@ def _collect_bundle(mas_test_run_id: str) -> ExportBundle:
             mas_test_run=mas_test_run,
             case_runs=case_runs,
             test_cases=test_cases,
-            swarm_runs=swarm_runs,
-            swarm_metrics=swarm_metrics,
-            swarm_events=swarm_events,
-            swarm_handoffs=swarm_handoffs,
-            swarm_final_outputs=swarm_final_outputs,
+            mas_runs=mas_runs,
+            mas_metrics=mas_metrics,
+            mas_events=mas_events,
+            mas_handoffs=mas_handoffs,
+            mas_final_outputs=mas_final_outputs,
             agent_runs=agent_runs,
             agent_events=agent_events,
             agent_llm_calls=agent_llm_calls,
@@ -242,34 +242,34 @@ def _collect_bundle(mas_test_run_id: str) -> ExportBundle:
         db.close()
 
 
-def _collect_bundle_for_swarm_runs(
-    swarm_run_ids: list[str],
+def _collect_bundle_for_mas_runs(
+    mas_run_ids: list[str],
     *,
     label: str | None = None,
 ) -> ExportBundle:
     ensure_runtime_schema_upgrades()
-    normalized_ids = [str(run_id).strip() for run_id in swarm_run_ids if str(run_id).strip()]
+    normalized_ids = [str(run_id).strip() for run_id in mas_run_ids if str(run_id).strip()]
     if not normalized_ids:
-        raise ValueError("At least one swarm run id is required.")
+        raise ValueError("At least one mas run id is required.")
 
     db = SessionLocal()
     try:
-        swarm_runs_list = list(
+        mas_runs_list = list(
             db.scalars(
-                select(SwarmRun)
-                .where(SwarmRun.id.in_(normalized_ids))
-                .order_by(SwarmRun.created_at, SwarmRun.id)
+                select(MASRun)
+                .where(MASRun.id.in_(normalized_ids))
+                .order_by(MASRun.created_at, MASRun.id)
             )
         )
-        found_ids = {row.id for row in swarm_runs_list}
+        found_ids = {row.id for row in mas_runs_list}
         missing = [run_id for run_id in normalized_ids if run_id not in found_ids]
         if missing:
-            raise ValueError(f"Swarm run(s) not found: {', '.join(missing)}")
+            raise ValueError(f"MAS run(s) not found: {', '.join(missing)}")
 
         case_runs = list(
             db.scalars(
                 select(MasTestCaseRun)
-                .where(MasTestCaseRun.swarm_run_id.in_(normalized_ids))
+                .where(MasTestCaseRun.mas_run_id.in_(normalized_ids))
                 .order_by(MasTestCaseRun.started_at, MasTestCaseRun.created_at, MasTestCaseRun.id)
             )
         )
@@ -279,38 +279,38 @@ def _collect_bundle_for_swarm_runs(
             for row in db.scalars(select(MasTestCase).where(MasTestCase.id.in_(test_case_ids)))
         } if test_case_ids else {}
 
-        swarm_runs = {row.id: row for row in swarm_runs_list}
-        swarm_metrics = {
-            row.swarm_run_id: row
-            for row in db.scalars(select(SwarmRunMetrics).where(SwarmRunMetrics.swarm_run_id.in_(normalized_ids)))
+        mas_runs = {row.id: row for row in mas_runs_list}
+        mas_metrics = {
+            row.mas_run_id: row
+            for row in db.scalars(select(MASRunMetrics).where(MASRunMetrics.mas_run_id.in_(normalized_ids)))
         }
-        swarm_events = list(
+        mas_events = list(
             db.scalars(
-                select(SwarmEvent)
-                .where(SwarmEvent.swarm_run_id.in_(normalized_ids))
-                .order_by(SwarmEvent.swarm_run_id, SwarmEvent.seq)
+                select(MASEvent)
+                .where(MASEvent.mas_run_id.in_(normalized_ids))
+                .order_by(MASEvent.mas_run_id, MASEvent.seq)
             )
         )
-        swarm_handoffs = list(
+        mas_handoffs = list(
             db.scalars(
-                select(SwarmHandoff)
-                .where(SwarmHandoff.swarm_run_id.in_(normalized_ids))
-                .order_by(SwarmHandoff.swarm_run_id, SwarmHandoff.created_at, SwarmHandoff.id)
+                select(MASHandoff)
+                .where(MASHandoff.mas_run_id.in_(normalized_ids))
+                .order_by(MASHandoff.mas_run_id, MASHandoff.created_at, MASHandoff.id)
             )
         )
-        swarm_final_outputs = list(
+        mas_final_outputs = list(
             db.scalars(
-                select(SwarmFinalOutput)
-                .where(SwarmFinalOutput.swarm_run_id.in_(normalized_ids))
-                .order_by(SwarmFinalOutput.swarm_run_id, SwarmFinalOutput.created_at, SwarmFinalOutput.id)
+                select(MASFinalOutput)
+                .where(MASFinalOutput.mas_run_id.in_(normalized_ids))
+                .order_by(MASFinalOutput.mas_run_id, MASFinalOutput.created_at, MASFinalOutput.id)
             )
         )
 
         agent_runs = list(
             db.scalars(
                 select(AgentRun)
-                .where(AgentRun.swarm_run_id.in_(normalized_ids))
-                .order_by(AgentRun.swarm_run_id, AgentRun.sequence_index, AgentRun.started_at, AgentRun.created_at)
+                .where(AgentRun.mas_run_id.in_(normalized_ids))
+                .order_by(AgentRun.mas_run_id, AgentRun.sequence_index, AgentRun.started_at, AgentRun.created_at)
             )
         )
         agent_run_ids = [row.id for row in agent_runs]
@@ -329,18 +329,18 @@ def _collect_bundle_for_swarm_runs(
             )
         ) if agent_run_ids else []
 
-        report_id = label.strip() if isinstance(label, str) and label.strip() else f"swarm_group_{uuid4().hex[:8]}"
+        report_id = label.strip() if isinstance(label, str) and label.strip() else f"mas_group_{uuid4().hex[:8]}"
         return ExportBundle(
-            report_kind="swarm_run_group",
+            report_kind="mas_run_group",
             report_id=report_id,
             mas_test_run=None,
             case_runs=case_runs,
             test_cases=test_cases,
-            swarm_runs=swarm_runs,
-            swarm_metrics=swarm_metrics,
-            swarm_events=swarm_events,
-            swarm_handoffs=swarm_handoffs,
-            swarm_final_outputs=swarm_final_outputs,
+            mas_runs=mas_runs,
+            mas_metrics=mas_metrics,
+            mas_events=mas_events,
+            mas_handoffs=mas_handoffs,
+            mas_final_outputs=mas_final_outputs,
             agent_runs=agent_runs,
             agent_events=agent_events,
             agent_llm_calls=agent_llm_calls,
@@ -364,7 +364,7 @@ def _build_mas_test_run_rows(bundle: ExportBundle) -> list[dict[str, Any]]:
             "model_name": _model_name_for_bundle(bundle),
             "name": (run.name or "") if run else "",
             "status": run.status if run else "",
-            "selected_case_count": len(run.selected_case_ids_json or []) if run else len(bundle.swarm_runs),
+            "selected_case_count": len(run.selected_case_ids_json or []) if run else len(bundle.mas_runs),
             "case_run_count": total,
             "succeeded_case_runs": succeeded,
             "failed_case_runs": failed,
@@ -388,7 +388,7 @@ def _build_case_run_rows(bundle: ExportBundle) -> list[dict[str, Any]]:
                 "report_id": bundle.report_id,
                 "test_case_id": row.test_case_id,
                 "test_case_name": test_case.name if test_case else "",
-                "swarm_run_id": row.swarm_run_id or "",
+                "mas_run_id": row.mas_run_id or "",
                 "status": row.status,
                 "passed": row.passed,
                 "score": row.score,
@@ -405,44 +405,44 @@ def _build_case_run_rows(bundle: ExportBundle) -> list[dict[str, Any]]:
     return rows
 
 
-def _build_swarm_run_rows(bundle: ExportBundle) -> list[dict[str, Any]]:
-    agent_runs_by_swarm: dict[str, list[AgentRun]] = defaultdict(list)
+def _build_mas_run_rows(bundle: ExportBundle) -> list[dict[str, Any]]:
+    agent_runs_by_mas: dict[str, list[AgentRun]] = defaultdict(list)
     for row in bundle.agent_runs:
-        if row.swarm_run_id:
-            agent_runs_by_swarm[row.swarm_run_id].append(row)
-    handoff_count_by_swarm = Counter(row.swarm_run_id for row in bundle.swarm_handoffs)
-    event_count_by_swarm = Counter(row.swarm_run_id for row in bundle.swarm_events)
-    final_output_ids = {row.swarm_run_id for row in bundle.swarm_final_outputs}
-    case_run_by_swarm = {row.swarm_run_id: row for row in bundle.case_runs if row.swarm_run_id}
+        if row.mas_run_id:
+            agent_runs_by_mas[row.mas_run_id].append(row)
+    handoff_count_by_mas = Counter(row.mas_run_id for row in bundle.mas_handoffs)
+    event_count_by_mas = Counter(row.mas_run_id for row in bundle.mas_events)
+    final_output_ids = {row.mas_run_id for row in bundle.mas_final_outputs}
+    case_run_by_mas = {row.mas_run_id: row for row in bundle.case_runs if row.mas_run_id}
 
     rows: list[dict[str, Any]] = []
-    for swarm_run_id, swarm_run in bundle.swarm_runs.items():
-        metric = bundle.swarm_metrics.get(swarm_run_id)
-        agent_runs = agent_runs_by_swarm.get(swarm_run_id, [])
-        case_run = case_run_by_swarm.get(swarm_run_id)
+    for mas_run_id, mas_run in bundle.mas_runs.items():
+        metric = bundle.mas_metrics.get(mas_run_id)
+        agent_runs = agent_runs_by_mas.get(mas_run_id, [])
+        case_run = case_run_by_mas.get(mas_run_id)
         rows.append(
             {
-                "swarm_run_id": swarm_run.id,
+                "mas_run_id": mas_run.id,
                 "mas_test_run_id": bundle.mas_test_run.id if bundle.mas_test_run else "",
                 "report_id": bundle.report_id,
                 "mas_test_case_run_id": case_run.id if case_run else "",
                 "test_case_id": case_run.test_case_id if case_run else "",
-                "workflow_id": swarm_run.workflow_id,
-                "workflow_version": swarm_run.workflow_version or "",
-                "status": swarm_run.status,
-                "error_text": swarm_run.error_text or "",
-                "started_at": _dt(swarm_run.started_at),
-                "finished_at": _dt(swarm_run.finished_at),
-                "duration_ms": swarm_run.duration_ms if swarm_run.duration_ms is not None else "",
-                "duration_s": _duration_s(swarm_run.started_at, swarm_run.finished_at),
+                "workflow_id": mas_run.workflow_id,
+                "workflow_version": mas_run.workflow_version or "",
+                "status": mas_run.status,
+                "error_text": mas_run.error_text or "",
+                "started_at": _dt(mas_run.started_at),
+                "finished_at": _dt(mas_run.finished_at),
+                "duration_ms": mas_run.duration_ms if mas_run.duration_ms is not None else "",
+                "duration_s": _duration_s(mas_run.started_at, mas_run.finished_at),
                 "num_agent_runs": len(agent_runs),
                 "num_failed_agent_runs": sum(1 for row in agent_runs if row.status == "failed"),
-                "num_handoffs": handoff_count_by_swarm.get(swarm_run_id, 0),
-                "num_swarm_events": event_count_by_swarm.get(swarm_run_id, 0),
-                "has_final_output": swarm_run_id in final_output_ids,
-                "input_json": _json_dumps(_safe_json(swarm_run.input_json)),
-                "metadata_json": _json_dumps(_safe_json(swarm_run.metadata_json)) if swarm_run.metadata_json is not None else "",
-                "final_output_json": _json_dumps(_safe_json(swarm_run.final_output_json)) if swarm_run.final_output_json is not None else "",
+                "num_handoffs": handoff_count_by_mas.get(mas_run_id, 0),
+                "num_mas_events": event_count_by_mas.get(mas_run_id, 0),
+                "has_final_output": mas_run_id in final_output_ids,
+                "input_json": _json_dumps(_safe_json(mas_run.input_json)),
+                "metadata_json": _json_dumps(_safe_json(mas_run.metadata_json)) if mas_run.metadata_json is not None else "",
+                "final_output_json": _json_dumps(_safe_json(mas_run.final_output_json)) if mas_run.final_output_json is not None else "",
                 "metrics_status": metric.status if metric else "",
                 "metrics_tokens_total": metric.tokens_total if metric else "",
                 "metrics_llm_call_count_total": metric.llm_call_count_total if metric else "",
@@ -451,12 +451,12 @@ def _build_swarm_run_rows(bundle: ExportBundle) -> list[dict[str, Any]]:
     return rows
 
 
-def _build_swarm_metric_rows(bundle: ExportBundle) -> list[dict[str, Any]]:
+def _build_mas_metric_rows(bundle: ExportBundle) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
-    for metric in bundle.swarm_metrics.values():
+    for metric in bundle.mas_metrics.values():
         rows.append(
             {
-                "swarm_run_id": metric.swarm_run_id,
+                "mas_run_id": metric.mas_run_id,
                 "status": metric.status,
                 "duration_ms": metric.duration_ms if metric.duration_ms is not None else "",
                 "agent_run_count": metric.agent_run_count,
@@ -483,10 +483,10 @@ def _build_swarm_metric_rows(bundle: ExportBundle) -> list[dict[str, Any]]:
     return rows
 
 
-def _build_swarm_event_rows(bundle: ExportBundle) -> list[dict[str, Any]]:
+def _build_mas_event_rows(bundle: ExportBundle) -> list[dict[str, Any]]:
     return [
         {
-            "swarm_run_id": row.swarm_run_id,
+            "mas_run_id": row.mas_run_id,
             "seq": row.seq,
             "event_type": row.event_type,
             "workflow_id": row.workflow_id or "",
@@ -501,7 +501,7 @@ def _build_swarm_event_rows(bundle: ExportBundle) -> list[dict[str, Any]]:
             "payload_text": row.payload_text or "",
             "created_at": _dt(row.created_at),
         }
-        for row in bundle.swarm_events
+        for row in bundle.mas_events
     ]
 
 
@@ -509,7 +509,7 @@ def _build_handoff_rows(bundle: ExportBundle) -> list[dict[str, Any]]:
     return [
         {
             "handoff_id": row.id,
-            "swarm_run_id": row.swarm_run_id,
+            "mas_run_id": row.mas_run_id,
             "from_agent_run_id": row.from_agent_run_id,
             "from_agent_name": row.from_agent_name,
             "to_agent_name": row.to_agent_name,
@@ -525,7 +525,7 @@ def _build_handoff_rows(bundle: ExportBundle) -> list[dict[str, Any]]:
             "created_at": _dt(row.created_at),
             "updated_at": _dt(row.updated_at),
         }
-        for row in bundle.swarm_handoffs
+        for row in bundle.mas_handoffs
     ]
 
 
@@ -533,7 +533,7 @@ def _build_final_output_rows(bundle: ExportBundle) -> list[dict[str, Any]]:
     return [
         {
             "final_output_id": row.id,
-            "swarm_run_id": row.swarm_run_id,
+            "mas_run_id": row.mas_run_id,
             "final_agent_run_id": row.final_agent_run_id,
             "workflow_id": row.workflow_id or "",
             "workflow_version": row.workflow_version or "",
@@ -543,7 +543,7 @@ def _build_final_output_rows(bundle: ExportBundle) -> list[dict[str, Any]]:
             "created_at": _dt(row.created_at),
             "updated_at": _dt(row.updated_at),
         }
-        for row in bundle.swarm_final_outputs
+        for row in bundle.mas_final_outputs
     ]
 
 
@@ -562,7 +562,7 @@ def _build_agent_run_rows(bundle: ExportBundle) -> list[dict[str, Any]]:
         rows.append(
             {
                 "agent_run_id": row.id,
-                "swarm_run_id": row.swarm_run_id or "",
+                "mas_run_id": row.mas_run_id or "",
                 "mas_test_run_id": bundle.mas_test_run.id if bundle.mas_test_run else "",
                 "report_id": bundle.report_id,
                 "workflow_id": row.workflow_id or "",
@@ -775,7 +775,7 @@ def _build_summary_markdown(bundle: ExportBundle) -> str:
     if bundle.mas_test_run:
         lines.append(f"# MAS Test Run Report: `{bundle.mas_test_run.id}`")
     else:
-        lines.append(f"# Swarm Run Group Report: `{bundle.report_id}`")
+        lines.append(f"# MAS Run Group Report: `{bundle.report_id}`")
     lines.append("")
     lines.append("## Overview")
     lines.append(f"- Report kind: `{bundle.report_kind}`")
@@ -783,9 +783,9 @@ def _build_summary_markdown(bundle: ExportBundle) -> str:
     lines.append(f"- Model: `{_model_name_for_bundle(bundle)}`")
     lines.append(f"- Status: `{bundle.mas_test_run.status if bundle.mas_test_run else ''}`")
     lines.append(
-        f"- Selected cases: `{len(bundle.mas_test_run.selected_case_ids_json or []) if bundle.mas_test_run else len(bundle.swarm_runs)}`"
+        f"- Selected cases: `{len(bundle.mas_test_run.selected_case_ids_json or []) if bundle.mas_test_run else len(bundle.mas_runs)}`"
     )
-    lines.append(f"- Swarm runs: `{len(bundle.swarm_runs)}`")
+    lines.append(f"- MAS runs: `{len(bundle.mas_runs)}`")
     lines.append(f"- Case runs: `{total_case_runs}`")
     lines.append(f"- Succeeded case runs: `{succeeded_case_runs}`")
     lines.append(f"- Failed case runs: `{failed_case_runs}`")
@@ -826,11 +826,11 @@ def _build_summary_markdown(bundle: ExportBundle) -> str:
     lines.append("## Files")
     lines.append("- `mas_test_run.csv`")
     lines.append("- `mas_test_case_runs.csv`")
-    lines.append("- `swarm_runs.csv`")
-    lines.append("- `swarm_run_metrics.csv`")
-    lines.append("- `swarm_events.csv`")
-    lines.append("- `swarm_handoffs.csv`")
-    lines.append("- `swarm_final_outputs.csv`")
+    lines.append("- `mas_runs.csv`")
+    lines.append("- `mas_run_metrics.csv`")
+    lines.append("- `mas_events.csv`")
+    lines.append("- `mas_handoffs.csv`")
+    lines.append("- `mas_final_outputs.csv`")
     lines.append("- `agent_runs.csv`")
     lines.append("- `agent_events.csv`")
     lines.append("- `agent_llm_calls.csv`")
@@ -847,11 +847,11 @@ def export_mas_test_run_report(mas_test_run_id: str, output_root: Path) -> Path:
 
     _write_csv(out_dir / "mas_test_run.csv", _build_mas_test_run_rows(bundle))
     _write_csv(out_dir / "mas_test_case_runs.csv", _build_case_run_rows(bundle))
-    _write_csv(out_dir / "swarm_runs.csv", _build_swarm_run_rows(bundle))
-    _write_csv(out_dir / "swarm_run_metrics.csv", _build_swarm_metric_rows(bundle))
-    _write_csv(out_dir / "swarm_events.csv", _build_swarm_event_rows(bundle))
-    _write_csv(out_dir / "swarm_handoffs.csv", _build_handoff_rows(bundle))
-    _write_csv(out_dir / "swarm_final_outputs.csv", _build_final_output_rows(bundle))
+    _write_csv(out_dir / "mas_runs.csv", _build_mas_run_rows(bundle))
+    _write_csv(out_dir / "mas_run_metrics.csv", _build_mas_metric_rows(bundle))
+    _write_csv(out_dir / "mas_events.csv", _build_mas_event_rows(bundle))
+    _write_csv(out_dir / "mas_handoffs.csv", _build_handoff_rows(bundle))
+    _write_csv(out_dir / "mas_final_outputs.csv", _build_final_output_rows(bundle))
     _write_csv(out_dir / "agent_runs.csv", _build_agent_run_rows(bundle))
     _write_csv(out_dir / "agent_events.csv", _build_agent_event_rows(bundle))
     _write_csv(out_dir / "agent_llm_calls.csv", _build_agent_llm_call_rows(bundle))
@@ -861,23 +861,23 @@ def export_mas_test_run_report(mas_test_run_id: str, output_root: Path) -> Path:
     return out_dir
 
 
-def export_swarm_run_group_report(
-    swarm_run_ids: list[str],
+def export_mas_run_group_report(
+    mas_run_ids: list[str],
     output_root: Path,
     *,
     label: str | None = None,
 ) -> Path:
-    bundle = _collect_bundle_for_swarm_runs(swarm_run_ids, label=label)
+    bundle = _collect_bundle_for_mas_runs(mas_run_ids, label=label)
     out_dir = output_root / bundle.report_id
     out_dir.mkdir(parents=True, exist_ok=True)
 
     _write_csv(out_dir / "mas_test_run.csv", _build_mas_test_run_rows(bundle))
     _write_csv(out_dir / "mas_test_case_runs.csv", _build_case_run_rows(bundle))
-    _write_csv(out_dir / "swarm_runs.csv", _build_swarm_run_rows(bundle))
-    _write_csv(out_dir / "swarm_run_metrics.csv", _build_swarm_metric_rows(bundle))
-    _write_csv(out_dir / "swarm_events.csv", _build_swarm_event_rows(bundle))
-    _write_csv(out_dir / "swarm_handoffs.csv", _build_handoff_rows(bundle))
-    _write_csv(out_dir / "swarm_final_outputs.csv", _build_final_output_rows(bundle))
+    _write_csv(out_dir / "mas_runs.csv", _build_mas_run_rows(bundle))
+    _write_csv(out_dir / "mas_run_metrics.csv", _build_mas_metric_rows(bundle))
+    _write_csv(out_dir / "mas_events.csv", _build_mas_event_rows(bundle))
+    _write_csv(out_dir / "mas_handoffs.csv", _build_handoff_rows(bundle))
+    _write_csv(out_dir / "mas_final_outputs.csv", _build_final_output_rows(bundle))
     _write_csv(out_dir / "agent_runs.csv", _build_agent_run_rows(bundle))
     _write_csv(out_dir / "agent_events.csv", _build_agent_event_rows(bundle))
     _write_csv(out_dir / "agent_llm_calls.csv", _build_agent_llm_call_rows(bundle))
@@ -888,22 +888,22 @@ def export_swarm_run_group_report(
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Export a MAS test run report or a swarm-run-group report.")
+    parser = argparse.ArgumentParser(description="Export a MAS test run report or a mas-run-group report.")
     parser.add_argument("mas_test_run_id", nargs="?", help="MAS test run id to export")
     parser.add_argument(
-        "--swarm-run-id",
+        "--mas-run-id",
         action="append",
-        dest="swarm_run_ids",
+        dest="mas_run_ids",
         default=[],
-        help="Swarm run id to include. Repeat for multiple swarm runs.",
+        help="MAS run id to include. Repeat for multiple mas runs.",
     )
     parser.add_argument(
-        "--swarm-run-ids-file",
-        help="Path to a text file containing one swarm run id per line.",
+        "--mas-run-ids-file",
+        help="Path to a text file containing one mas run id per line.",
     )
     parser.add_argument(
         "--label",
-        help="Folder/report label for swarm-run-group exports.",
+        help="Folder/report label for mas-run-group exports.",
     )
     parser.add_argument(
         "--output-root",
@@ -912,23 +912,23 @@ def main() -> int:
     )
     args = parser.parse_args()
 
-    swarm_run_ids = [str(run_id).strip() for run_id in args.swarm_run_ids if str(run_id).strip()]
-    if args.swarm_run_ids_file:
-        file_path = Path(args.swarm_run_ids_file).resolve()
+    mas_run_ids = [str(run_id).strip() for run_id in args.mas_run_ids if str(run_id).strip()]
+    if args.mas_run_ids_file:
+        file_path = Path(args.mas_run_ids_file).resolve()
         for line in file_path.read_text(encoding="utf-8").splitlines():
             line = line.strip()
             if line:
-                swarm_run_ids.append(line)
+                mas_run_ids.append(line)
 
-    if swarm_run_ids:
-        output_dir = export_swarm_run_group_report(
-            swarm_run_ids=swarm_run_ids,
+    if mas_run_ids:
+        output_dir = export_mas_run_group_report(
+            mas_run_ids=mas_run_ids,
             output_root=Path(args.output_root).resolve(),
             label=args.label,
         )
     else:
         if not args.mas_test_run_id:
-            raise ValueError("Provide a mas_test_run_id or at least one --swarm-run-id.")
+            raise ValueError("Provide a mas_test_run_id or at least one --mas-run-id.")
         output_dir = export_mas_test_run_report(
             mas_test_run_id=str(args.mas_test_run_id).strip(),
             output_root=Path(args.output_root).resolve(),

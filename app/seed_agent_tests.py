@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 from app.models.agent_test_case import AgentTestCase
 
 SINGLE_AGENT_NAME = "single_agent"
-SINGLE_AGENT_RAW_CASES_PATH = Path(__file__).with_name("seed_mas_tests_esi_swarm_v1.jsonish")
+SINGLE_AGENT_RAW_CASES_PATH = Path(__file__).with_name("seed_mas_tests_esi_mas.jsonish")
 
 
 def ensure_seed_vitals_agent_test_cases(db: Session) -> None:

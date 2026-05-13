@@ -33,13 +33,13 @@ def _seed_test_data() -> None:
         ensure_seed_single_agent_test_cases,
         ensure_seed_vitals_agent_test_cases,
     )
-    from app.seed_mas_tests import ensure_seed_esi_swarm_v1_mas_test_cases
+    from app.seed_mas_tests import ensure_seed_esi_mas_test_cases
 
     db = SessionLocal()
     try:
         ensure_seed_vitals_agent_test_cases(db)
         ensure_seed_single_agent_test_cases(db)
-        ensure_seed_esi_swarm_v1_mas_test_cases(db)
+        ensure_seed_esi_mas_test_cases(db)
     finally:
         db.close()
 

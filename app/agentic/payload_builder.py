@@ -7,10 +7,10 @@ from app.agentic.agents.esi1.payload_builder import build_payload as build_esi1_
 from app.agentic.agents.esi2.payload_builder import build_payload as build_esi2_payload
 from app.agentic.agents.esi345.payload_builder import build_payload as build_esi345_payload
 from app.agentic.agents.vitals.payload_builder import build_payload as build_vitals_payload
-from app.agentic.swarm_contract import AgentName, SwarmState
+from app.agentic.mas_contract import AgentName, MASState
 
 
-PayloadBuilder = Callable[[SwarmState], Dict[str, Any]]
+PayloadBuilder = Callable[[MASState], Dict[str, Any]]
 
 
 payload_builders: Dict[AgentName, PayloadBuilder] = {
@@ -22,7 +22,7 @@ payload_builders: Dict[AgentName, PayloadBuilder] = {
 }
 
 
-def _latest_handoff_for_agent(agent_name: AgentName, state: SwarmState) -> Optional[Dict[str, Any]]:
+def _latest_handoff_for_agent(agent_name: AgentName, state: MASState) -> Optional[Dict[str, Any]]:
     pending_handoff = state.get("pending_handoff")
     if isinstance(pending_handoff, dict) and pending_handoff.get("target_agent") == agent_name:
         return dict(pending_handoff)
@@ -34,13 +34,13 @@ def _latest_handoff_for_agent(agent_name: AgentName, state: SwarmState) -> Optio
     return None
 
 
-def _state_for_agent(agent_name: AgentName, state: SwarmState) -> SwarmState:
+def _state_for_agent(agent_name: AgentName, state: MASState) -> MASState:
     scoped_state = dict(state)
     scoped_state["pending_handoff"] = _latest_handoff_for_agent(agent_name, state)
     return scoped_state  # type: ignore[return-value]
 
 
-def build_pending_agent_payload(agent_name: AgentName, state: SwarmState) -> Dict[str, Any]:
+def build_pending_agent_payload(agent_name: AgentName, state: MASState) -> Dict[str, Any]:
     """Build the runtime payload wrapper for the next agent execution.
 
     The returned dict keeps the model-visible `llm_payload` separate from

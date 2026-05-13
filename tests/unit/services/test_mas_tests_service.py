@@ -16,10 +16,10 @@ class _FakeEvaluator:
     def validate_expected(self, expected_json):
         return None
 
-    def evaluate(self, expected_json, actual_json, *, swarm_status):
+    def evaluate(self, expected_json, actual_json, *, mas_status):
         return EvalResult(
-            passed=swarm_status == "completed",
-            score=1.0 if swarm_status == "completed" else 0.0,
+            passed=mas_status == "completed",
+            score=1.0 if mas_status == "completed" else 0.0,
             diff_json={},
             metrics_json={},
         )
@@ -32,7 +32,7 @@ def _seed_case(db_session, *, case_id: str = "case_1") -> MasTestCase:
     now = datetime.utcnow()
     case = MasTestCase(
         id=case_id,
-        workflow_id="esi_swarm_v1",
+        workflow_id="esi_mas",
         name="Case 1",
         enabled=True,
         input_json={"chiefcomplaint": "pain"},
@@ -60,7 +60,7 @@ def test_ut_srv_003_mas_test_start_run_persists_selected_model(monkeypatch, db_s
 
     result = mas_tests_service.start_run(
         MasTestRunStartRequest(
-            workflow_id="esi_swarm_v1",
+            workflow_id="esi_mas",
             name="medgemma test",
             model_id="medgemma-4b-it",
             case_ids=[case.id],
@@ -77,7 +77,7 @@ def test_ut_srv_003_mas_test_start_run_persists_selected_model(monkeypatch, db_s
 def test_ut_srv_004_mas_test_resolve_model_prefers_persisted_value():
     run = MasTestRun(
         id="run_1",
-        workflow_id="esi_swarm_v1",
+        workflow_id="esi_mas",
         model_name="medgemma-4b-it",
         name="x",
         status="created",
@@ -95,7 +95,7 @@ def test_ut_srv_004_mas_test_resolve_model_prefers_persisted_value():
 def test_ut_srv_005_mas_test_resolve_model_falls_back_to_default(monkeypatch):
     run = MasTestRun(
         id="run_2",
-        workflow_id="esi_swarm_v1",
+        workflow_id="esi_mas",
         model_name=None,
         name="x",
         status="created",
@@ -118,7 +118,7 @@ def test_ut_srv_006_mas_test_stream_run_emits_case_backoff_and_sleeps(monkeypatc
 
     started = mas_tests_service.start_run(
         MasTestRunStartRequest(
-            workflow_id="esi_swarm_v1",
+            workflow_id="esi_mas",
             name="backoff test",
             model_id="medgemma-4b-it",
             case_ids=[case_1.id, case_2.id],
@@ -126,24 +126,24 @@ def test_ut_srv_006_mas_test_stream_run_emits_case_backoff_and_sleeps(monkeypatc
         db_session,
     )
 
-    created_swarm_ids: list[str] = []
+    created_mas_ids: list[str] = []
     sleep_calls: list[float] = []
 
-    def _fake_create_and_start_swarm_run(*, workflow_id, input_payload, model_id, metadata):
-        swarm_run_id = f"swarm_{len(created_swarm_ids) + 1}"
-        created_swarm_ids.append(swarm_run_id)
-        return swarm_run_id, input_payload, None, "1.0.0"
+    def _fake_create_and_start_mas_run(*, workflow_id, input_payload, model_id, metadata):
+        mas_run_id = f"mas_{len(created_mas_ids) + 1}"
+        created_mas_ids.append(mas_run_id)
+        return mas_run_id, input_payload, None, "1.0.0"
 
-    async def _fake_execute_swarm_run(*, workflow_id, workflow_version, swarm_run_id, case_info, model_id):
+    async def _fake_execute_mas_run(*, workflow_id, workflow_version, mas_run_id, case_info, model_id):
         return None
 
-    monkeypatch.setattr(mas_tests_service.swarm_execution_service, "create_and_start_swarm_run", _fake_create_and_start_swarm_run)
-    monkeypatch.setattr(mas_tests_service.swarm_execution_service, "execute_swarm_run", _fake_execute_swarm_run)
+    monkeypatch.setattr(mas_tests_service.mas_execution_service, "create_and_start_mas_run", _fake_create_and_start_mas_run)
+    monkeypatch.setattr(mas_tests_service.mas_execution_service, "execute_mas_run", _fake_execute_mas_run)
     monkeypatch.setattr(mas_tests_service, "SessionLocal", lambda: SimpleNamespace(close=lambda: None))
     monkeypatch.setattr(
-        mas_tests_service.swarm_runs_repository,
-        "get_swarm_run",
-        lambda db, swarm_run_id: SimpleNamespace(
+        mas_tests_service.mas_runs_repository,
+        "get_mas_run",
+        lambda db, mas_run_id: SimpleNamespace(
             status="completed",
             duration_ms=1234,
             error_text=None,
@@ -151,9 +151,9 @@ def test_ut_srv_006_mas_test_stream_run_emits_case_backoff_and_sleeps(monkeypatc
         ),
     )
     monkeypatch.setattr(
-        mas_tests_service.swarm_final_outputs_repository,
-        "get_latest_swarm_final_output_for_run",
-        lambda db, swarm_run_id: None,
+        mas_tests_service.mas_final_outputs_repository,
+        "get_latest_mas_final_output_for_run",
+        lambda db, mas_run_id: None,
     )
     monkeypatch.setattr(settings, "MAS_TEST_CASE_BACKOFF_S", 7.0)
     monkeypatch.setattr("app.api.services.mas_tests_service.time.sleep", lambda seconds: sleep_calls.append(seconds))

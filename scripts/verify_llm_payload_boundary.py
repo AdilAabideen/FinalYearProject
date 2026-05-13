@@ -13,11 +13,11 @@ if str(ROOT) not in sys.path:
 from app.agentic.HandRolledAgent import SSEHandrolledAgent
 from app.agentic.agents.doctor.payload_builder import build_payload as build_doctor_payload
 from app.agentic.agents.esi2.payload_builder import build_payload as build_esi2_payload
-from app.agentic.swarm_contract import SwarmState, make_initial_swarm_state
+from app.agentic.mas_contract import MASState, make_initial_mas_state
 
 
-def _state_with_handoffs() -> SwarmState:
-    state = make_initial_swarm_state(
+def _state_with_handoffs() -> MASState:
+    state = make_initial_mas_state(
         {
             "chief_complaint": "Chest pain and dizziness",
             "age": 72,
@@ -101,7 +101,7 @@ def main() -> None:
     for name, payload in checks.items():
         _assert_only_llm_payload_is_visible(name, payload)
 
-    print("Verified: _payload_to_human_content serializes only llm_payload from wrapped swarm payloads.")
+    print("Verified: _payload_to_human_content serializes only llm_payload from wrapped mas payloads.")
 
 
 if __name__ == "__main__":

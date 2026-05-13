@@ -174,6 +174,27 @@ class AgentKernel:
                 raise TypeError(f"Unsupported tool type: {type(item)!r}")
         return normalized
 
+    def _supports_runtime_tool_binding_hints(self) -> bool:
+        """
+        Return whether this model wrapper explicitly supports extra bind-time runtime hints.
+
+        These hints are consumed by the custom Dr7 and llama wrappers, but should not be
+        forwarded to generic LangChain providers such as ChatOpenAI.
+        """
+        if bool(getattr(self.model, "supports_runtime_tool_binding_hints", False)):
+            return True
+
+        llm_type_getter = getattr(self.model, "_llm_type", None)
+        if not callable(llm_type_getter):
+            return False
+
+        try:
+            llm_type = str(llm_type_getter() or "").strip().lower()
+        except Exception:
+            return False
+
+        return llm_type in {"dr7-medical-chat", "llama-server-chat"}
+
     def _bind_model_tools(self) -> Any:
         """
         Bind tools to the underlying model.
@@ -182,6 +203,12 @@ class AgentKernel:
         the production wrappers accept extra runtime hints such as `agent_name`,
         `multi_agent`, and `handoff_names`.
         """
+        if not self._supports_runtime_tool_binding_hints():
+            return self.model.bind_tools(
+                self.tools,
+                tool_choice="any",
+            )
+
         try:
             return self.model.bind_tools(
                 self.tools,

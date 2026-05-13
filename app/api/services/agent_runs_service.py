@@ -699,7 +699,7 @@ def create_agent_run(payload: AgentRunCreateRequest, db: Session) -> AgentRunCre
     now = datetime.utcnow()
     run = AgentRun(
         id=run_id,
-        swarm_run_id=payload.swarm_run_id,
+        mas_run_id=payload.mas_run_id,
         workflow_id=payload.workflow_id,
         workflow_version=payload.workflow_version,
         sequence_index=payload.sequence_index,
@@ -747,7 +747,7 @@ def start_agent_run(
     now = datetime.utcnow()
     run = AgentRun(
         id=run_id,
-        swarm_run_id=payload.swarm_run_id,
+        mas_run_id=payload.mas_run_id,
         workflow_id=payload.workflow_id,
         workflow_version=payload.workflow_version,
         sequence_index=payload.sequence_index,

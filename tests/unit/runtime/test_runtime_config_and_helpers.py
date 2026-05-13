@@ -1,10 +1,33 @@
 from __future__ import annotations
 
 import pytest
+from langchain_core.messages import AIMessage
 
 from app.agentic.HandRolledAgent import AgentKernel
 from app.agentic.runtime.failure_taxonomy import FailureCategory
 from app.agentic.runtime.runtime_config import RuntimeConfig
+
+
+def _noop_tool() -> dict:
+    """Return an empty payload."""
+    return {}
+
+
+class _PermissiveGenericModel:
+    def __init__(self) -> None:
+        self.bound_kwargs = None
+
+    def bind_tools(self, tools, tool_choice="any", **kwargs):
+        self.bound_kwargs = dict(kwargs)
+        return self
+
+    async def ainvoke(self, _messages):
+        return AIMessage(content='{"value":"ok"}')
+
+
+class _RuntimeHintAwareModel(_PermissiveGenericModel):
+    def _llm_type(self) -> str:
+        return "llama-server-chat"
 
 
 @pytest.mark.unit
@@ -55,3 +78,27 @@ def test_ut_run_034_limit_tool_calls_splits_kept_and_dropped_calls_correctly():
 @pytest.mark.unit
 def test_ut_run_035_parsed_to_payload_json_wraps_scalar_values_under_value():
     assert AgentKernel._parsed_to_payload_json("x") == {"value": "x"}
+
+
+@pytest.mark.unit
+def test_ut_run_036_bind_model_tools_omits_runtime_hints_for_generic_models():
+    model = _PermissiveGenericModel()
+    AgentKernel(model=model, tools=[_noop_tool])
+    assert model.bound_kwargs == {}
+
+
+@pytest.mark.unit
+def test_ut_run_037_bind_model_tools_includes_runtime_hints_for_supported_wrappers():
+    model = _RuntimeHintAwareModel()
+    agent = AgentKernel(
+        model=model,
+        tools=[_noop_tool],
+        agent_node_name="demo_agent",
+        handoff_tool_names=["handoff_to_other"],
+        runtime_config=RuntimeConfig(multi_agent=True),
+    )
+    assert model.bound_kwargs == {
+        "agent_name": agent.agent_node_name,
+        "multi_agent": True,
+        "handoff_names": ["handoff_to_other"],
+    }
