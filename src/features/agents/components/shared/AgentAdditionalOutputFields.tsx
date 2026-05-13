@@ -6,6 +6,7 @@ type AgentAdditionalOutputFieldsProps = {
   summaryLabel?: string;
 };
 
+// Renders the agent additional output fields.
 export function AgentAdditionalOutputFields({
   entries,
   summaryLabel = 'Additional Output Fields',

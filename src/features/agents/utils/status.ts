@@ -1,5 +1,7 @@
+// Provides status helpers.
 export type ToolStatus = 'succeeded' | 'error' | 'unknown';
 
+// Handles run status badge class.
 export function runStatusBadgeClass(status: string) {
   const normalized = status.toLowerCase();
   if (
@@ -18,11 +20,13 @@ export function runStatusBadgeClass(status: string) {
   return 'bg-slate-100 text-slate-700 ring-slate-200';
 }
 
+// Formats status label.
 export function formatStatusLabel(status: string) {
   if (!status.length) return status;
   return status.charAt(0).toUpperCase() + status.slice(1);
 }
 
+// Handles classify tool status.
 export function classifyToolStatus(status: string | null | undefined): ToolStatus {
   if (!status) return 'unknown';
   const normalized = status.toLowerCase();
@@ -38,6 +42,7 @@ export function classifyToolStatus(status: string | null | undefined): ToolStatu
   return 'unknown';
 }
 
+// Handles tool status badge class.
 export function toolStatusBadgeClass(status: ToolStatus) {
   if (status === 'succeeded') return 'bg-emerald-50 text-emerald-700 ring-emerald-200';
   if (status === 'error') return 'bg-rose-50 text-rose-700 ring-rose-200';

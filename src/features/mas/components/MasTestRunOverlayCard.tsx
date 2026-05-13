@@ -9,6 +9,7 @@ type MasTestRunOverlayCardProps = {
   onStartTests: () => void;
 };
 
+// Renders the MAS test run overlay.
 export function MasTestRunOverlayCard({
   selectedCount,
   ranCount,

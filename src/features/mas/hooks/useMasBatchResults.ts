@@ -1,3 +1,4 @@
+// Manages use MAS batch results behavior.
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { MasTestRunResults } from '../../../types/masTests';
 import { masTestService } from '../../../services/masTestService';
@@ -8,10 +9,12 @@ export type MasRunResultsState =
   | { status: 'error'; error: string }
   | { status: 'ready'; data: MasTestRunResults };
 
+// Manages MAS batch results.
 export function useMasBatchResults() {
   const [masRunResultsState, setMasRunResultsState] = useState<MasRunResultsState>({ status: 'idle' });
   const resultsAbortRef = useRef<AbortController | null>(null);
 
+// Manages callback.
   const fetchMasRunResults = useCallback(async (runId: string) => {
     resultsAbortRef.current?.abort();
     const ac = new AbortController();
@@ -35,13 +38,16 @@ export function useMasBatchResults() {
     }
   }, []);
 
+// Manages callback.
   const resetMasRunResults = useCallback(() => {
     resultsAbortRef.current?.abort();
     resultsAbortRef.current = null;
     setMasRunResultsState({ status: 'idle' });
   }, []);
 
+// Manages effect.
   useEffect(() => {
+// Manages effect.
     return () => {
       resultsAbortRef.current?.abort();
       resultsAbortRef.current = null;

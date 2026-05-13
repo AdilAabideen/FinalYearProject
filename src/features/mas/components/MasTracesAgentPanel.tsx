@@ -24,6 +24,7 @@ type MasTracesAgentPanelProps = {
   normalizeOutputValue: (value: unknown) => unknown;
 };
 
+// Renders the MAS traces agent panel.
 export function MasTracesAgentPanel({
   activeAgentName,
   activeAgentRunId,
@@ -36,10 +37,12 @@ export function MasTracesAgentPanel({
 }: MasTracesAgentPanelProps) {
   const normalizedOutput = normalizeOutputValue(activeAgentOutput);
 
+// Handles viewer tab ID.
   function viewerTabId(key: TraceTabKey) {
     return `${activeAgentName}-${key}-tab`;
   }
 
+// Handles viewer panel ID.
   function viewerPanelId(key: TraceTabKey) {
     return `${activeAgentName}-${key}-panel`;
   }

@@ -57,6 +57,7 @@ const masTestCaseTabs: MasTestCaseTab[] = [
   { key: 'metrics', label: 'Mas Metrics' },
 ];
 
+// Renders the MAS test cases.
 export default function MasTestCases({ workflow }: MasTestCasesProps) {
   const { testCases, loading } = useMasTestCaseCatalog(workflow?.metadata.workflow_id);
   const {
@@ -104,6 +105,7 @@ export default function MasTestCases({ workflow }: MasTestCasesProps) {
     resetVisualizationState,
   } = useMasCaseVisualizationState(workflow.participating_agents, selectedTestCaseId);
 
+// Manages callback.
   const handleStartReset = useCallback(() => {
     resetCaseCompletionData();
     resetVisualizationState();
@@ -150,11 +152,13 @@ export default function MasTestCases({ workflow }: MasTestCasesProps) {
     selectedTestCaseIds.length,
   );
 
+// Manages callback.
   const handleSelectedMasDone = useCallback(async () => {
     if (!selectedTestCaseId || !selectedTraceRun) return;
     await handleMasDone(selectedTestCaseId, selectedTraceRun.swarmRunId);
   }, [handleMasDone, selectedTestCaseId, selectedTraceRun]);
 
+// Manages callback.
   const handleStartTests = useCallback(() => {
     setActiveTab('traces');
     void startSelectedTests();

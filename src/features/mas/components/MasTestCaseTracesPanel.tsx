@@ -18,6 +18,7 @@ type MasTestCaseTracesPanelProps = {
   onMasDone: () => Promise<void>;
 };
 
+// Renders the MAS test case traces.
 export function MasTestCaseTracesPanel({
   testCase,
   traceRun,
@@ -43,7 +44,7 @@ export function MasTestCaseTracesPanel({
         <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 px-6 py-8 text-center">
           <p className="text-sm font-semibold text-slate-900">No trace stream yet</p>
           <p className="mt-2 text-sm text-slate-500">
-            Start tests and bind the selected case to a swarm run stream to view traces here.
+            Start tests and bind the selected case to a MAS run stream to view traces here.
           </p>
         </div>
       </div>

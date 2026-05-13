@@ -1,3 +1,4 @@
+// Calls the model service API.
 import { API_BASE_URL } from '../config/env';
 import type { ModelSpec, ModelSpecDto } from '../types/models';
 
@@ -5,6 +6,7 @@ export type ModelService = {
   listModels: (signal?: AbortSignal) => Promise<ModelSpec[]>;
 };
 
+// Fetches models.
 async function fetchModels(path: string, signal?: AbortSignal) {
   const response = await fetch(`${API_BASE_URL}${path}`, {
     method: 'GET',
@@ -15,6 +17,7 @@ async function fetchModels(path: string, signal?: AbortSignal) {
 }
 
 export const modelService: ModelService = {
+// Lists models.
   async listModels(signal) {
     let response = await fetchModels('/api/models', signal);
 
@@ -30,6 +33,7 @@ export const modelService: ModelService = {
 
     const data = (await response.json()) as ModelSpecDto[];
 
+// Maps logic.
     return data.map((model) => ({
       id: model.id,
       provider: model.provider,

@@ -7,6 +7,7 @@ type MasTracesGeneralPanelProps = {
   agentCount: number;
 };
 
+// Renders the MAS traces general panel.
 export function MasTracesGeneralPanel({
   swarmRunId,
   streamState,
@@ -44,7 +45,7 @@ export function MasTracesGeneralPanel({
             generalEvents.map((event, index) => (
               <div key={`${event.created_at}-${event.event_type}-${index}`} className="space-y-1">
                 <div className="flex flex-wrap items-center gap-3">
-                  <p className="text-xs font-semibold tracking-wide text-PrimaryBlue">SWARM EVENT</p>
+                  <p className="text-xs font-semibold tracking-wide text-PrimaryBlue">MAS EVENT</p>
                   <p className="text-[11px] font-mono text-slate-400">
                     {formatTraceTimestamp(event.created_at)}
                   </p>
@@ -61,7 +62,7 @@ export function MasTracesGeneralPanel({
             ))
           ) : (
             <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-6 py-10 text-center">
-              <p className="text-sm font-semibold text-slate-900">Waiting for swarm events</p>
+              <p className="text-sm font-semibold text-slate-900">Waiting for MAS events</p>
             </div>
           )}
         </div>

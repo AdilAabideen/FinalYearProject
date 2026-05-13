@@ -16,6 +16,7 @@ type RunsLoadState =
   | { status: 'error'; message: string }
   | { status: 'success'; runs: AgentRunRead[] };
 
+// Formats timestamp.
 function formatTimestamp(value: string) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
@@ -24,6 +25,7 @@ function formatTimestamp(value: string) {
   );
 }
 
+// Renders the previous runs.
 export default function PreviousRuns({ agentName }: PreviousRunsProps) {
   const [state, setState] = useState<RunsLoadState>({ status: 'loading' });
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
@@ -69,6 +71,7 @@ export default function PreviousRuns({ agentName }: PreviousRunsProps) {
     return `${state.runs.length} run${state.runs.length === 1 ? '' : 's'}`;
   }, [state]);
 
+// Handles refresh.
   function handleRefresh() {
     abortRef.current?.abort();
     const ac = new AbortController();

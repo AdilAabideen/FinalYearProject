@@ -2,7 +2,7 @@ import { useState } from 'react';
 import type { NavKey } from './navigation/Sidebar';
 import { AppShell } from './layout/AppShell';
 import { AgentsPage } from '../features/agents/pages/AgentsPage';
-import { HomePage } from '../features/home/pages/HomePage';
+import { SingleAgentsPage } from '../features/agents/pages/SingleAgentPage';
 import { MasPage } from '../features/mas/pages/MasPage';
 
 type BackAction = { label?: string; onClick: () => void };
@@ -14,15 +14,16 @@ type HeaderOverride = {
   contentOverflow?: 'auto' | 'hidden';
 };
 
+// Renders the app.
 function App() {
   const [active, setActive] = useState<NavKey>('agents');
   const [agentsHeaderOverride, setAgentsHeaderOverride] = useState<HeaderOverride | null>(null);
   const [masHeaderOverride, setMasHeaderOverride] = useState<HeaderOverride | null>(null);
 
   const copy: Record<NavKey, { title: string; subtitle: string }> = {
-    home: {
-      title: 'Home',
-      subtitle: 'Overview and quick links',
+    single_agent: {
+      title: 'Single Agent',
+      subtitle: 'Select the Single Agent',
     },
     agents: {
       title: 'Available Agents',
@@ -66,6 +67,7 @@ function App() {
         ? (masHeaderOverride?.contentOverflow ?? 'auto')
         : 'auto';
 
+// Handles navigate.
   function handleNavigate(key: NavKey) {
     setActive(key);
     if (key !== 'agents') setAgentsHeaderOverride(null);
@@ -74,22 +76,22 @@ function App() {
 
   return (
     <AppShell
-      activeNav={active}
-      onNavigate={handleNavigate}
-      title={title}
-      subtitle={subtitle}
-      showSearch={showSearch}
-      backAction={backAction}
-      contentOverflow={contentOverflow}
-    >
-      {active === 'agents' ? (
-        <AgentsPage onHeaderChange={setAgentsHeaderOverride} />
-      ) : active === 'mas' ? (
-        <MasPage onHeaderChange={setMasHeaderOverride} />
-      ) : (
-        <HomePage />
-      )}
-    </AppShell>
+    activeNav={active}
+    onNavigate={handleNavigate}
+    title={title}
+    subtitle={subtitle}
+    showSearch={showSearch}
+    backAction={backAction}
+    contentOverflow={contentOverflow}
+  >
+    {active === 'agents' ? (
+      <AgentsPage onHeaderChange={setAgentsHeaderOverride} />
+    ) : active === 'single_agent' ? (
+      <SingleAgentsPage />
+    ) : (
+      <MasPage onHeaderChange={setMasHeaderOverride} />
+    )}
+  </AppShell>
   );
 }
 

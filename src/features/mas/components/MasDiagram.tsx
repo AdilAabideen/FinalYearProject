@@ -33,27 +33,32 @@ type EndNode = BoundaryNode & {
 const LINK_STROKE_WIDTH = 3;
 const INPUT_OUTPUT_STROKE_WIDTH = 3;
 
+// Handles connector path.
 function connectorPath(from: Point, to: Point) {
   return `M ${from.x} ${from.y} L ${to.x} ${to.y}`;
 }
 
+// Gets boundary node key.
 function getBoundaryNodeKey(type: 'start' | 'end', index: number, total: number) {
   if (total <= 1) return type;
   return `${type}_v${index + 1}`;
 }
 
+// Gets boundary stroke class.
 function getBoundaryStrokeClass(state: BoundaryEdgeState) {
   if (state === 'active') return 'stroke-green-500';
   if (state === 'visited') return 'stroke-slate-400';
   return 'stroke-slate-200';
 }
 
+// Gets handoff stroke class.
 function getHandoffStrokeClass(state: HandoffEdgeState) {
   if (state === 'active') return 'stroke-green-500';
   if (state === 'visited') return 'stroke-slate-400';
   return 'stroke-slate-200';
 }
 
+// Renders the boundary arrow marker.
 function BoundaryArrowMarker() {
   return (
     <marker
@@ -70,6 +75,7 @@ function BoundaryArrowMarker() {
   );
 }
 
+// Renders the handoff links.
 function HandoffLinks({
   links,
   agentPositions,
@@ -105,6 +111,7 @@ function HandoffLinks({
   );
 }
 
+// Renders the boundary links.
 function BoundaryLinks({
   nodes,
   type,
@@ -136,6 +143,7 @@ function BoundaryLinks({
   );
 }
 
+// Renders the boundary node badge.
 function BoundaryNodeBadge({ node }: { node: BoundaryNode }) {
   return (
     <div
@@ -149,6 +157,7 @@ function BoundaryNodeBadge({ node }: { node: BoundaryNode }) {
   );
 }
 
+// Renders the agent node.
 function AgentNode({
   agent,
   status,
@@ -175,6 +184,7 @@ function AgentNode({
   );
 }
 
+// Renders the MAS diagram.
 export function MasDiagram({
   workflow,
   agentStatus = {},

@@ -1,3 +1,4 @@
+// Provides MAS traces helpers.
 import type { Dispatch, SetStateAction } from 'react';
 import type { EventStreamPayload, SwarmEventType } from '../../../types/masRuns';
 import type { AgentRunMetrics } from '../../../types/agentRuns';
@@ -27,14 +28,17 @@ export type MetricsState =
   | { status: 'error'; error: string }
   | { status: 'ready'; metrics: AgentRunMetrics };
 
+// Checks record.
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
+// Casts nullable string.
 function asNullableString(value: unknown): string | null {
   return typeof value === 'string' ? value : value === null ? null : null;
 }
 
+// Casts event type.
 function asEventType(value: unknown): SwarmEventType | null {
   if (
     value === 'swarm_started' ||
@@ -51,6 +55,7 @@ function asEventType(value: unknown): SwarmEventType | null {
   return null;
 }
 
+// Parses event stream payload.
 export function parseEventStreamPayload(value: unknown): EventStreamPayload | null {
   if (!isRecord(value)) return null;
 
@@ -80,19 +85,23 @@ export function parseEventStreamPayload(value: unknown): EventStreamPayload | nu
   };
 }
 
+// Builds initial agent run IDS.
 export function buildInitialAgentRunIds(agentNames: string[]) {
   const next: Record<string, string | null> = {};
   for (const agentName of agentNames) next[agentName] = null;
   return next;
 }
 
+// Appends general event.
 export function appendGeneralEvent(
   setGeneralEvents: Dispatch<SetStateAction<MasGeneralEvent[]>>,
   event: MasGeneralEvent,
 ) {
+// Sets general events.
   setGeneralEvents((prev) => [...prev, event]);
 }
 
+// Formats trace timestamp.
 export function formatTraceTimestamp(value: string) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
@@ -104,6 +113,7 @@ export function formatTraceTimestamp(value: string) {
   }).format(date);
 }
 
+// Normalizes output value.
 export function normalizeOutputValue(value: unknown) {
   if (value == null) return null;
   if (typeof value === 'string') {

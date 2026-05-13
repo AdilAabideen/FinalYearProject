@@ -20,6 +20,7 @@ type MasTestCaseDiffPanelProps = {
   actualFinalEsiLevel: string;
 };
 
+// Renders the MAS test case diff.
 export function MasTestCaseDiffPanel({
   hasSelectedCase,
   diffState,

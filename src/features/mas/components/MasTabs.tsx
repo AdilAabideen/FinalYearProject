@@ -22,6 +22,7 @@ type MasTabsProps<Key extends string> = {
   inactiveLabelClassName?: string;
 };
 
+// Renders the MAS tabs.
 export function MasTabs<Key extends string>({
   tabs,
   activeKey,

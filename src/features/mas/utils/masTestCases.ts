@@ -1,3 +1,4 @@
+// Provides MAS test cases helpers.
 import { isRecord } from '../../agents/utils/runResult';
 
 export type TestCaseTabKey = 'test_case' | 'traces' | 'output' | 'metrics' | 'diff';
@@ -19,10 +20,12 @@ export type TestCaseDiffState = {
   error?: string;
 };
 
+// Builds swarm events stream url.
 export function buildSwarmEventsStreamUrl(apiBaseUrl: string, swarmRunId: string) {
-  return `${apiBaseUrl}/api/swarm-runs/${encodeURIComponent(swarmRunId)}/events/stream`;
+  return `${apiBaseUrl}/api/mas-runs/${encodeURIComponent(swarmRunId)}/events/stream`;
 }
 
+// Gets expected acuity from diff.
 export function getExpectedAcuityFromDiff(diffState?: TestCaseDiffState) {
   const selectedDiffRecord =
     diffState?.status === 'ready' && isRecord(diffState.diff)
@@ -39,6 +42,7 @@ export function getExpectedAcuityFromDiff(diffState?: TestCaseDiffState) {
     : '—';
 }
 
+// Gets actual final esi level.
 export function getActualFinalEsiLevelFromDiff(diffState?: TestCaseDiffState) {
   const selectedDiffRecord =
     diffState?.status === 'ready' && isRecord(diffState.diff)
@@ -56,14 +60,18 @@ export function getActualFinalEsiLevelFromDiff(diffState?: TestCaseDiffState) {
     : '—';
 }
 
+// Summarizes run statuses.
 export function summarizeRunStatuses(
   testCaseRunStatuses: Record<string, TestCaseRunStatus>,
   selectedCount: number,
 ) {
   const ranCount = Object.values(testCaseRunStatuses).filter(
+// Handles filter.
     (status) => status === 'passed' || status === 'failed',
   ).length;
+// Handles filter.
   const passedCount = Object.values(testCaseRunStatuses).filter((status) => status === 'passed').length;
+// Handles filter.
   const failedCount = Object.values(testCaseRunStatuses).filter((status) => status === 'failed').length;
 
   return {

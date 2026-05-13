@@ -1,3 +1,4 @@
+// Defines agent runs types.
 export type RunStatus = string;
 
 export type AgentRunReliabilityCategoryCount = {

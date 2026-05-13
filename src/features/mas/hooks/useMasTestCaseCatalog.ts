@@ -1,17 +1,21 @@
+// Manages use MAS test case catalog behavior.
 import { useEffect, useRef, useState } from 'react';
 import type { MasTestCaseRead } from '../../../types/masTests';
 import { masTestService } from '../../../services/masTestService';
 
+// Manages MAS test case catalog.
 export function useMasTestCaseCatalog(workflowId: string | undefined) {
   const [testCases, setTestCases] = useState<MasTestCaseRead[]>([]);
   const [loading, setLoading] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
 
+// Manages effect.
   useEffect(() => {
     abortRef.current?.abort();
     const ac = new AbortController();
     abortRef.current = ac;
 
+// Loads test cases.
     async function loadTestCases(targetWorkflowId: string) {
       setLoading(true);
 
@@ -33,6 +37,7 @@ export function useMasTestCaseCatalog(workflowId: string | undefined) {
     if (!workflowId) {
       setTestCases([]);
       setLoading(false);
+// Manages effect.
       return () => {
         ac.abort();
       };
@@ -40,6 +45,7 @@ export function useMasTestCaseCatalog(workflowId: string | undefined) {
 
     void loadTestCases(workflowId);
 
+// Manages effect.
     return () => {
       ac.abort();
     };

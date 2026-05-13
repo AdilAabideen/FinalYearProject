@@ -1,3 +1,5 @@
+// Formats MAS date time.
+// Provides format helpers.
 export function formatMasDateTime(value: string) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
@@ -8,10 +10,12 @@ export function formatMasDateTime(value: string) {
   }).format(date);
 }
 
+// Handles split MAS test case.
 export function splitMasTestCaseName(name: string) {
   return name.split('-', 1)[0];
 }
 
+// Formats MAS agent name.
 export function formatMasAgentName(agentName: string) {
   return agentName
     .replace(/_agent$/, '')

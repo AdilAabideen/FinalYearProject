@@ -12,6 +12,7 @@ type MasMetricsTabProps = {
   metrics: SwarmRunMetricsRead | null;
 };
 
+// Renders the MAS metrics tab.
 export default function MasMetricsTab({ metrics }: MasMetricsTabProps) {
   const failureReasonEntries: Array<[string, number]> = metrics
     ? ([
@@ -41,7 +42,7 @@ export default function MasMetricsTab({ metrics }: MasMetricsTabProps) {
                   Aggregated Run Summary
                 </p>
                 <p className="mt-1 text-sm text-slate-700">
-                  Summary-level metrics for this MAS swarm run.
+                  Summary-level metrics for this MAS run.
                 </p>
               </div>
             </div>

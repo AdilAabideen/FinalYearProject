@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useId, useRef, useState } from 'react';
+import { useCallback, useId, useRef, useState } from 'react';
 import type { MasCatalogDetail } from '../../../types/mas';
 import { DEFAULT_MAS_WORKFLOW_INPUT } from '../config/defaultWorkflowInput';
 import { AgentInputForm } from '../../agents/components/AgentInputForm';
@@ -45,6 +45,7 @@ const resultTabs: Array<{ key: ResultTabKey; label: string }> = [
 
 ]
 
+// Renders the MAS detail split view.
 export function MasDetailSplitView({ workflow }: MasDetailSplitViewProps) {
   const [activeTab, setActiveTab] = useState<MasTabKey>('diagram');
   const [workflowInputValue, setWorkflowInputValue] = useState<Record<string, unknown>>(() => ({
@@ -93,6 +94,7 @@ export function MasDetailSplitView({ workflow }: MasDetailSplitViewProps) {
         ac.signal,
         selectedModelId
       )
+      console.log("Run Details  : \n ", mas_run_details)
       setRunInfo(mas_run_details)
       if (ac.signal.aborted) return;
     } catch (e: unknown) {
@@ -104,6 +106,7 @@ export function MasDetailSplitView({ workflow }: MasDetailSplitViewProps) {
 
   }
 
+// Manages callback.
   const handleMasDone = useCallback(async () => {
     if (!runInfo?.finalOutputUrl) return;
 

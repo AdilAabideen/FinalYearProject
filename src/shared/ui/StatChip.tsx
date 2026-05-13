@@ -7,6 +7,7 @@ type StatChipProps = {
   className?: string;
 };
 
+// Renders the stat chip.
 export function StatChip({ value, label, className }: StatChipProps) {
   return (
     <div

@@ -1,5 +1,7 @@
+// Provides stream parsers helpers.
 import { asString, isRecord } from '../../agents/utils/runResult';
 
+// Extracts MAS test run ID.
 export function extractMasTestRunId(value: unknown) {
   if (!isRecord(value)) return null;
 
@@ -11,6 +13,7 @@ export function extractMasTestRunId(value: unknown) {
   );
 }
 
+// Extracts swarm run ID.
 export function extractSwarmRunId(value: Record<string, unknown>) {
   return (
     asString(value.swarm_run_id) ??

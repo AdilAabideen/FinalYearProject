@@ -10,6 +10,7 @@ type SlidingModalProps = {
   widthClassName?: string;
 };
 
+// Renders the sliding modal.
 export function SlidingModal({
   open,
   title,
@@ -23,6 +24,7 @@ export function SlidingModal({
   useEffect(() => {
     if (!open) return;
 
+// Handles on key down.
     function onKeyDown(e: KeyboardEvent) {
       if (e.key === 'Escape') onClose();
     }

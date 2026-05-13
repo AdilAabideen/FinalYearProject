@@ -10,6 +10,7 @@ type MasTestCaseWorkspacePanelProps = {
   children: ReactNode;
 };
 
+// Renders the MAS test case workspace.
 export function MasTestCaseWorkspacePanel({
   tabs,
   activeTab,

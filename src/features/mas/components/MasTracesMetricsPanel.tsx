@@ -11,6 +11,7 @@ type MasTracesMetricsPanelProps = {
   activeMetricsState: MetricsState;
 };
 
+// Renders the MAS traces metrics panel.
 export function MasTracesMetricsPanel({ activeMetricsState }: MasTracesMetricsPanelProps) {
   const activeMetricsRecord = activeMetricsState.status === 'ready' ? activeMetricsState.metrics : null;
   const activeReliabilitySummaryView = getReliabilitySummaryView(activeMetricsRecord, {

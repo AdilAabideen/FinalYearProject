@@ -1,3 +1,4 @@
+// Defines MAS tests types.
 export type MasTestCaseReadDto = {
     id: string;
     workflow_id: string;

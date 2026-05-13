@@ -36,6 +36,7 @@ const tabs: TraceTab[] = [
   },
 ];
 
+// Renders the MAS traces tab.
 export default function MasTracesTab({
   agentNames,
   eventsStreamUrl,

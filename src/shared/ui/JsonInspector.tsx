@@ -7,10 +7,12 @@ type JsonInspectorProps = {
   maxDepth?: number;
 };
 
+// Checks plain object.
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
+// Formats primitive.
 function formatPrimitive(value: unknown) {
   if (value === null) return 'null';
   if (value === undefined) return 'undefined';
@@ -21,21 +23,25 @@ function formatPrimitive(value: unknown) {
   return String(value);
 }
 
+// Summarizes container.
 function summarizeContainer(value: Record<string, unknown> | unknown[]) {
   if (Array.isArray(value)) return `Array (${value.length})`;
   return `Object (${Object.keys(value).length})`;
 }
 
+// Handles indent class.
 function indentClass(depth: number) {
   if (depth <= 0) return '';
   if (depth === 1) return 'pl-3';
   return 'pl-6';
 }
 
+// Checks container.
 function isContainer(value: unknown): value is Record<string, unknown> | unknown[] {
   return isPlainObject(value) || Array.isArray(value);
 }
 
+// Formats label.
 function formatLabel(label: string) {
   if (!label) return label;
   if (label.startsWith('[')) return "-"
@@ -49,6 +55,7 @@ type RenderOptions = {
   ancestors: ReadonlyArray<object>;
 };
 
+// Renders the primitive row.
 function PrimitiveRow({ label, value }: { label: string; value: string }) {
   const formattedLabel = formatLabel(label);
   return (
@@ -68,6 +75,7 @@ function PrimitiveRow({ label, value }: { label: string; value: string }) {
   );
 }
 
+// Renders the container block.
 function ContainerBlock({
   label,
   value,
@@ -103,6 +111,7 @@ function ContainerBlock({
   );
 }
 
+// Renders value.
 function renderValue(value: unknown, opts: RenderOptions): ReactNode {
   if (Array.isArray(value)) {
     if (!value.length) {
@@ -149,6 +158,7 @@ function renderValue(value: unknown, opts: RenderOptions): ReactNode {
   return <PrimitiveRow label="Value" value={formatPrimitive(value)} />;
 }
 
+// Renders the JSON inspector.
 export function JsonInspector({ value, className, maxDepth = 6 }: JsonInspectorProps) {
 
   const ancestors = isContainer(value) ? [value as object] : [];

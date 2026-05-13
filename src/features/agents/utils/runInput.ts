@@ -1,3 +1,4 @@
+// Provides run input helpers.
 import type { AgentCatalogDetail } from '../../../types/agents';
 import { getPrimaryType, getStringFormat, isRecord } from './jsonSchema';
 
@@ -149,15 +150,18 @@ const DEFAULT_INPUTS_BY_AGENT: Record<string, Record<string, unknown>> = {
   doctor_agent: DOCTOR_AGENT_DEFAULT_INPUTS,
 };
 
+// Gets default inputs.
 export function getDefaultInputs(agent: AgentCatalogDetail): Record<string, unknown> {
   const defaults = DEFAULT_INPUTS_BY_AGENT[agent.name];
   return defaults ? { ...defaults } : {};
 }
 
+// Handles coerce input for run.
 export function coerceInputForRun(inputSchema: Record<string, unknown>, raw: Record<string, unknown>) {
   const properties = isRecord(inputSchema.properties) ? inputSchema.properties : {};
   const required = new Set(
     Array.isArray(inputSchema.required)
+// Handles filter.
       ? inputSchema.required.filter((k): k is string => typeof k === 'string' && k.length > 0)
       : [],
   );

@@ -6,6 +6,7 @@ type SidebarFooterButtonProps = Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'c
   collapsed?: boolean;
 };
 
+// Renders the sidebar footer button.
 export function SidebarFooterButton({
   className,
   children,

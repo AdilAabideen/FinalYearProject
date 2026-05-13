@@ -1,3 +1,4 @@
+// Defines MAS types.
 export type MasWorkflowSummaryDto = {
   workflow_id: string;
   name: string;

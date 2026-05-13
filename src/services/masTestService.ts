@@ -1,3 +1,4 @@
+// Calls the MAS test service API.
 import { API_BASE_URL } from "../config/env";
 import type {
     MasTestCaseRead,
@@ -33,6 +34,7 @@ export type MasTestService = {
 
 export const masTestService: MasTestService = {
 
+// Lists test cases.
     async listTestCases(params, signal) {
         const search = new URLSearchParams()
         if (!params.workflow_id) {
@@ -60,6 +62,7 @@ export const masTestService: MasTestService = {
 
         const data = (await response.json()) as MasTestCaseReadDto[];
 
+// Maps logic.
         return data.map((item) => ({
             id: item.id,
             workflowId: item.workflow_id,
@@ -73,6 +76,7 @@ export const masTestService: MasTestService = {
 
     },
 
+// Gets run results.
     async getRunResults(runId, signal) {
         const url = `${API_BASE_URL}/api/mas-tests/runs/${encodeURIComponent(runId)}/results`;
         const response = await fetch(url, {
@@ -114,6 +118,7 @@ export const masTestService: MasTestService = {
                 durationMsTotal: summary.duration_ms_total ?? 0,
                 durationMsAvg: summary.duration_ms_avg ?? null,
             },
+// Maps logic.
             cases: cases.map((item) => ({
                 testCaseId: item.test_case_id,
                 testCaseName: item.test_case_name,
@@ -128,6 +133,7 @@ export const masTestService: MasTestService = {
         };
     },
 
+// Gets run metrics.
     async getRunMetrics(runId, signal) {
         const url = `${API_BASE_URL}/api/mas-tests/runs/${encodeURIComponent(runId)}/metrics`;
         const response = await fetch(url, {
@@ -191,6 +197,7 @@ export const masTestService: MasTestService = {
                 finalizationFailureCountTotal: summary.finalization_failure_count_total ?? 0,
                 finalizationFailureCountAvg: summary.finalization_failure_count_avg ?? null,
             },
+// Maps logic.
             cases: cases.map((item) => ({
                 testCaseId: item.test_case_id,
                 testCaseName: item.test_case_name,

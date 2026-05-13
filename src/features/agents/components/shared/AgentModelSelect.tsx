@@ -11,6 +11,7 @@ type AgentModelSelectProps = {
   disabled?: boolean;
 };
 
+// Renders the agent model select.
 export function AgentModelSelect({
   id,
   labelClassName = 'text-xs font-semibold text-slate-700',

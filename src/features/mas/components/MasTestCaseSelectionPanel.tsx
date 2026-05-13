@@ -17,6 +17,7 @@ type MasTestCaseSelectionPanelProps = {
   onOpenSelectedCases: () => void;
 };
 
+// Renders the MAS test case selection.
 export function MasTestCaseSelectionPanel({
   testCases,
   selectedTestCaseIds,

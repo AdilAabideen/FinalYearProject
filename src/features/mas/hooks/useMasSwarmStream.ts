@@ -1,3 +1,4 @@
+// Manages use MAS swarm stream behavior.
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
 import type { ActiveHandoffEdges, AgentRunningStatus, BoundaryEdgeHighlights } from '../components/MasDetailSplitView';
@@ -20,6 +21,7 @@ type UseMasSwarmStreamArgs = {
   resetAgentMetricsStates: () => void;
 };
 
+// Manages MAS swarm stream.
 export function useMasSwarmStream({
   agentNames,
   eventsStreamUrl,
@@ -41,6 +43,7 @@ export function useMasSwarmStream({
   const setActiveHandoffEdgesRef = useLatestRef(setActiveHandoffEdges);
   const setBoundaryEdgeHighlightsRef = useLatestRef(setBoundaryEdgeHighlights);
 
+// Manages state.
   const [agentRunIds, setAgentRunIds] = useState<Record<string, string | null>>(() =>
     buildInitialAgentRunIds(agentNames),
   );
@@ -49,12 +52,14 @@ export function useMasSwarmStream({
   const [errorText, setErrorText] = useState<string | null>(null);
   const [generalEvents, setGeneralEvents] = useState<MasGeneralEvent[]>([]);
 
+// Manages callback.
   const clearBoundaryTimeouts = useCallback(() => {
     if (boundaryTimeoutsRef.current.start) window.clearTimeout(boundaryTimeoutsRef.current.start);
     if (boundaryTimeoutsRef.current.end) window.clearTimeout(boundaryTimeoutsRef.current.end);
     boundaryTimeoutsRef.current = { start: null, end: null };
   }, []);
 
+// Manages callback.
   const clearHandoffTimeouts = useCallback(() => {
     for (const timeoutId of Object.values(handoffTimeoutsRef.current)) {
       window.clearTimeout(timeoutId);
@@ -62,28 +67,35 @@ export function useMasSwarmStream({
     handoffTimeoutsRef.current = {};
   }, []);
 
+// Manages callback.
   const triggerBoundaryHighlight = useCallback((type: 'start' | 'end') => {
     const existingTimeout = boundaryTimeoutsRef.current[type];
     if (existingTimeout) window.clearTimeout(existingTimeout);
 
     const updateBoundaryEdgeHighlights = setBoundaryEdgeHighlightsRef.current;
+// Updates boundary edge highlights.
     updateBoundaryEdgeHighlights((prev) => ({ ...prev, [type]: 'active' }));
+// Sets timeout.
     boundaryTimeoutsRef.current[type] = window.setTimeout(() => {
+// Updates boundary edge highlights.
       updateBoundaryEdgeHighlights((prev) => ({ ...prev, [type]: 'visited' }));
       boundaryTimeoutsRef.current[type] = null;
     }, 10000);
   }, [setBoundaryEdgeHighlightsRef]);
 
+// Manages callback.
   const handleOpen = useCallback(() => {
     setStreamState('open');
     setErrorText(null);
   }, []);
 
+// Manages callback.
   const handleError = useCallback(() => {
     setErrorText('Error');
     setStreamState('waiting');
   }, []);
 
+// Manages callback.
   const handleSwarmEvent = useCallback((event: MessageEvent<string>) => {
     try {
       const raw = JSON.parse(event.data) as unknown;
@@ -141,11 +153,13 @@ export function useMasSwarmStream({
           });
 
           if (agentName) {
+// Sets agent run IDS.
             setAgentRunIds((prev) => ({
               ...prev,
               [agentName]: agentRunId,
             }));
 
+// Handles current.
             setAgentStatusRef.current((prev) => ({
               ...prev,
               [agentName]: 'running',
@@ -166,11 +180,13 @@ export function useMasSwarmStream({
           });
 
           if (agentName) {
+// Sets agent run IDS.
             setAgentRunIds((prev) => ({
               ...prev,
               [agentName]: agentRunId,
             }));
 
+// Handles current.
             setAgentStatusRef.current((prev) => ({
               ...prev,
               [agentName]: 'executed',
@@ -209,24 +225,29 @@ export function useMasSwarmStream({
             const updateActiveHandoffEdges = setActiveHandoffEdgesRef.current;
 
             if (parsed.payload_json && 'payload' in parsed.payload_json) {
+// Sets agent outputs.
               setAgentOutputs((prev) => ({
                 ...prev,
                 [fromAgent]: parsed.payload_json?.payload,
               }));
             }
 
+// Updates active handoff edges.
             updateActiveHandoffEdges((prev) => ({
               ...prev,
               [edgeKey]: 'active',
             }));
 
+// Handles current.
             setAgentStatusRef.current((prev) => ({
               ...prev,
               [fromAgent]: 'executed',
               [toAgent]: 'running',
             }));
 
+// Sets timeout.
             handoffTimeoutsRef.current[edgeKey] = window.setTimeout(() => {
+// Updates active handoff edges.
               updateActiveHandoffEdges((prev) => ({
                 ...prev,
                 [edgeKey]: 'visited',
@@ -240,6 +261,7 @@ export function useMasSwarmStream({
           const satisfiedSources =
             parsed.payload_json && Array.isArray(parsed.payload_json.satisfied_sources)
               ? parsed.payload_json.satisfied_sources.filter(
+// Handles filter.
                 (value): value is string => typeof value === 'string',
               )
               : ['Unknown Source'];
@@ -247,6 +269,7 @@ export function useMasSwarmStream({
           const missingSources =
             parsed.payload_json && Array.isArray(parsed.payload_json.missing_sources)
               ? parsed.payload_json.missing_sources.filter(
+// Handles filter.
                 (value): value is string => typeof value === 'string',
               )
               : ['Unknown Source'];
@@ -288,17 +311,22 @@ export function useMasSwarmStream({
     }
   }, [getAgentMetrics, setActiveHandoffEdgesRef, setAgentStatusRef, triggerBoundaryHighlight]);
 
+// Manages callback.
   const handleDone = useCallback((event: MessageEvent<string>) => {
+
     void event;
     setStreamState('done');
     triggerBoundaryHighlight('end');
     sourceRef.current?.close();
+// Handles catch.
     void onMasDoneRef.current().catch((error: unknown) => {
       console.error('Failed to fetch MAS final output', error);
     });
   }, [onMasDoneRef, triggerBoundaryHighlight]);
 
+// Manages effect.
   useEffect(() => {
+// Sets agent run IDS.
     setAgentRunIds((prev) => {
       const next = buildInitialAgentRunIds(agentNames);
       for (const agentName of agentNames) {
@@ -308,7 +336,9 @@ export function useMasSwarmStream({
     });
   }, [agentNames]);
 
+// Manages effect.
   useEffect(() => {
+// Manages effect.
     return () => {
       clearHandoffTimeouts();
       clearBoundaryTimeouts();
@@ -316,6 +346,7 @@ export function useMasSwarmStream({
     };
   }, [clearBoundaryTimeouts, clearHandoffTimeouts, resetAgentMetricsStates]);
 
+// Manages effect.
   useEffect(() => {
     sourceRef.current?.close();
     clearHandoffTimeouts();
@@ -345,6 +376,7 @@ export function useMasSwarmStream({
     source.addEventListener('swarm_event', handleSwarmEvent as EventListener);
     source.addEventListener('done', handleDone as EventListener);
 
+// Manages effect.
     return () => {
       source.close();
       if (sourceRef.current === source) sourceRef.current = null;

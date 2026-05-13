@@ -5,6 +5,7 @@ type MasTestCaseDetailsPanelProps = {
   testCase: MasTestCaseRead | null;
 };
 
+// Renders the MAS test case details.
 export function MasTestCaseDetailsPanel({ testCase }: MasTestCaseDetailsPanelProps) {
   if (!testCase) {
     return (

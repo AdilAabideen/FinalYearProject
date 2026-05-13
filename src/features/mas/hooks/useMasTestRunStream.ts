@@ -1,3 +1,4 @@
+// Manages use MAS test run stream behavior.
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { extractCaseId, extractDiff, extractPassed } from '../../agents/utils/testRunStream';
 import { asString, isRecord } from '../../agents/utils/runResult';
@@ -15,6 +16,7 @@ type UseMasTestRunStreamArgs = {
   onRunDone: (runId: string) => void;
 };
 
+// Manages MAS test run stream.
 export function useMasTestRunStream({
   workflowId,
   selectedTestCaseIds,
@@ -30,6 +32,7 @@ export function useMasTestRunStream({
   const [testCaseDiffs, setTestCaseDiffs] = useState<Record<string, TestCaseDiffState>>({});
   const runStreamRef = useRef<EventSource | null>(null);
 
+// Manages callback.
   const resetTestRunState = useCallback(() => {
     runStreamRef.current?.close();
     setMasTestRunId(null);
@@ -38,6 +41,7 @@ export function useMasTestRunStream({
     setTestCaseDiffs({});
   }, []);
 
+// Manages callback.
   const startSelectedTests = useCallback(async () => {
     if (selectedTestCaseIds.length === 0) return;
 
@@ -45,7 +49,6 @@ export function useMasTestRunStream({
     onStartReset();
     setStartingTests(true);
 
-    console.log(model_id)
 
     try {
       const response = await fetch(`${API_BASE_URL}/api/mas-tests/runs/start`, {
@@ -67,7 +70,6 @@ export function useMasTestRunStream({
       }
 
       const payload = (await response.json()) as unknown;
-      console.log(payload.model_name)
       const runId = extractMasTestRunId(payload);
       if (!runId) {
         throw new Error('MAS test run id was not returned');
@@ -78,6 +80,7 @@ export function useMasTestRunStream({
       const source = new EventSource(`${API_BASE_URL}/api/mas-tests/runs/${encodeURIComponent(runId)}/stream`);
       runStreamRef.current = source;
 
+// Parses event payload.
       const parseEventPayload = (event: MessageEvent<string>) => {
         try {
           const parsed = JSON.parse(event.data) as unknown;
@@ -87,14 +90,17 @@ export function useMasTestRunStream({
         }
       };
 
+// Handles case start payload.
       const handleCaseStartPayload = (payloadRecord: Record<string, unknown>) => {
         const testCaseId = extractCaseId(payloadRecord);
         const swarmRunId = extractSwarmRunId(payloadRecord);
         if (!testCaseId || !swarmRunId) return;
+// Sets test case run statuses.
         setTestCaseRunStatuses((prev) => ({
           ...prev,
           [testCaseId]: 'running',
         }));
+// Sets test case trace runs.
         setTestCaseTraceRuns((prev) => ({
           ...prev,
           [testCaseId]: {
@@ -105,6 +111,7 @@ export function useMasTestRunStream({
         onCaseBoundToSwarmRun(testCaseId, swarmRunId);
       };
 
+// Handles case done payload.
       const handleCaseDonePayload = (payloadRecord: Record<string, unknown>) => {
         const testCaseId = extractCaseId(payloadRecord);
         if (!testCaseId) return;
@@ -124,10 +131,12 @@ export function useMasTestRunStream({
           (isRecord(payloadRecord.payload_json) ? asString(payloadRecord.payload_json.swarm_status) : undefined) ??
           null;
 
+// Sets test case run statuses.
         setTestCaseRunStatuses((prev) => ({
           ...prev,
           [testCaseId]: passed ? 'passed' : 'failed',
         }));
+// Sets test case diffs.
         setTestCaseDiffs((prev) => ({
           ...prev,
           [testCaseId]:
@@ -148,18 +157,21 @@ export function useMasTestRunStream({
         }));
       };
 
+// Handles add event listener.
       source.addEventListener('case_start', (event) => {
         const payloadRecord = parseEventPayload(event as MessageEvent<string>);
         if (!payloadRecord) return;
         handleCaseStartPayload(payloadRecord);
       });
 
+// Handles add event listener.
       source.addEventListener('case_done', (event) => {
         const payloadRecord = parseEventPayload(event as MessageEvent<string>);
         if (!payloadRecord) return;
         handleCaseDonePayload(payloadRecord);
       });
 
+// Handles add event listener.
       source.addEventListener('message', (event) => {
         const payloadRecord = parseEventPayload(event as MessageEvent<string>);
         if (!payloadRecord) return;
@@ -177,12 +189,14 @@ export function useMasTestRunStream({
         }
       });
 
+// Handles add event listener.
       source.addEventListener('done', () => {
         source.close();
         if (runStreamRef.current === source) runStreamRef.current = null;
         onRunDone(runId);
       });
 
+// Manages callback.
       source.onerror = () => {
         console.warn('MAS test run stream disconnected; waiting for SSE reconnect');
       };
@@ -193,7 +207,9 @@ export function useMasTestRunStream({
     }
   }, [model_id, onCaseBoundToSwarmRun, onRunDone, onStartReset, resetTestRunState, selectedTestCaseIds, workflowId]);
 
+// Manages effect.
   useEffect(() => {
+// Manages effect.
     return () => {
       runStreamRef.current?.close();
     };

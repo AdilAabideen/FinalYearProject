@@ -1,3 +1,4 @@
+// Calls the agent run service API.
 import { API_BASE_URL } from '../config/env';
 import type {
   AgentRunMetrics,
@@ -28,6 +29,7 @@ export type AgentRunService = {
 };
 
 export const agentRunService: AgentRunService = {
+// Lists agent runs.
   async listAgentRuns(params, signal) {
     const search = new URLSearchParams();
     if (params?.agentName) search.set('agent_name', params.agentName);
@@ -52,6 +54,7 @@ export const agentRunService: AgentRunService = {
 
     const data = (await response.json()) as AgentRunReadDto[];
 
+// Maps logic.
     return data.map((run) => ({
       id: run.id,
       agentName: run.agent_name,
@@ -67,6 +70,7 @@ export const agentRunService: AgentRunService = {
     }));
   },
 
+// Gets agent run.
   async getAgentRun(runId, signal) {
     const response = await fetch(`${API_BASE_URL}/api/agent-runs/${encodeURIComponent(runId)}`, {
       method: 'GET',
@@ -96,6 +100,7 @@ export const agentRunService: AgentRunService = {
     };
   },
 
+// Gets agent run metrics.
   async getAgentRunMetrics(runId, signal) {
     const response = await fetch(`${API_BASE_URL}/api/agent-runs/${encodeURIComponent(runId)}/metrics`, {
       method: 'GET',
@@ -117,7 +122,9 @@ export const agentRunService: AgentRunService = {
     const reliabilitySummary =
       data.reliability_summary == null
         ? null
+// Handles reliability summary.
         : (() => {
+// Maps logic.
           const byCategory = data.reliability_summary.by_category.map((item) => ({
             issueCode: item.issue_code,
             severity: item.severity,
@@ -156,6 +163,7 @@ export const agentRunService: AgentRunService = {
     };
   },
 
+// Starts agent run.
   async startAgentRun(agentName, input, modelId, signal) {
     const response = await fetch(`${API_BASE_URL}/api/agent-runs/start`, {
       method: 'POST',

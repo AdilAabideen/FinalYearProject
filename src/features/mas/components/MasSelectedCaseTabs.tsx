@@ -11,6 +11,7 @@ type MasSelectedCaseTabsProps = {
   onSelectCase: (testCase: MasTestCaseRead) => void;
 };
 
+// Renders the MAS selected case tabs.
 export function MasSelectedCaseTabs({
   visibleTestCases,
   selectedTestCaseId,

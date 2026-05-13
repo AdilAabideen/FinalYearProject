@@ -17,6 +17,7 @@ const TableTitle: React.FC<TableTitleProps> = ({ title }) => {
   return <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">{title}</th>;
 };
 
+// Renders the MAS batch output panel.
 export function MasBatchOutputPanel({ status, error, results }: MasBatchOutputPanelProps) {
   if (status === 'idle') {
     return (
@@ -92,7 +93,7 @@ export function MasBatchOutputPanel({ status, error, results }: MasBatchOutputPa
               results.summary.durationMsAvg == null ? null : results.summary.durationMsAvg / 1000,
             )}
           />
-          <StatCard label="Runs With Swarm" value={formatInteger(results.summary.runsWithSwarmRun)} />
+          <StatCard label="Runs With MAS" value={formatInteger(results.summary.runsWithSwarmRun)} />
         </div>
       </section>
 
@@ -107,12 +108,12 @@ export function MasBatchOutputPanel({ status, error, results }: MasBatchOutputPa
               <tr>
                 <TableTitle title="Case Name" />
                 <TableTitle title="Case ID" />
-                <TableTitle title="Swarm Run ID" />
+                <TableTitle title="MAS Run ID" />
                 <TableTitle title="Status" />
                 <TableTitle title="Passed" />
                 <TableTitle title="Score" />
                 <TableTitle title="Failure Reason" />
-                <TableTitle title="Swarm Status" />
+                <TableTitle title="MAS Status" />
                 <TableTitle title="Duration" />
               </tr>
             </thead>

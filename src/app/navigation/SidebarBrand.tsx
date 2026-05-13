@@ -4,6 +4,7 @@ type SidebarBrandProps = {
   collapsed?: boolean;
 };
 
+// Renders the sidebar brand.
 export function SidebarBrand({ collapsed = false }: SidebarBrandProps) {
   return (
     <div className={collapsed ? 'flex justify-center px-1 py-2' : 'flex items-center gap-3 px-1 py-2'}>

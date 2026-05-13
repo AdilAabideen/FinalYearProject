@@ -12,6 +12,7 @@ type TopBarProps = {
   backAction?: BackAction;
 };
 
+// Renders the top bar.
 export function TopBar({ title, subtitle, showSearch, backAction }: TopBarProps) {
   return (
     <header className="flex min-h-16 items-center justify-between gap-6 border-b border-slate-200 bg-white px-6 py-4">

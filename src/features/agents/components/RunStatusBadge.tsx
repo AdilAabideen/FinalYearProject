@@ -6,6 +6,7 @@ type RunStatusBadgeProps = {
   className?: string;
 };
 
+// Renders the run status badge.
 export function RunStatusBadge({ status, className }: RunStatusBadgeProps) {
   return (
     <span

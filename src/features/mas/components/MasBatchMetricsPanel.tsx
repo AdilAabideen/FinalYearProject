@@ -9,6 +9,7 @@ type MasBatchMetricsPanelProps = {
   metrics: MasTestRunMetrics | null;
 };
 
+// Formats usd.
 function formatUsd(value: number | null) {
   return value == null
     ? '—'
@@ -19,6 +20,7 @@ function formatUsd(value: number | null) {
     }).format(value);
 }
 
+// Renders the MAS batch metrics panel.
 export function MasBatchMetricsPanel({ status, error, metrics }: MasBatchMetricsPanelProps) {
   if (status === 'idle') {
     return (
@@ -103,8 +105,8 @@ export function MasBatchMetricsPanel({ status, error, metrics }: MasBatchMetrics
             <thead className="bg-slate-50">
               <tr>
                 <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Case Name</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Swarm Run ID</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Swarm Status</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">MAS Run ID</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">MAS Status</th>
                 <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Duration</th>
                 <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Tokens</th>
                 <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Cost</th>

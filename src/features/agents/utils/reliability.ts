@@ -1,3 +1,4 @@
+// Provides reliability helpers.
 import { asNumber, isRecord } from './runResult';
 
 export type ReliabilityCardTone = 'default' | 'accent' | 'positive' | 'danger' | 'warning';
@@ -24,6 +25,7 @@ export type ReliabilitySummaryView = {
   gridColumnsClass: string;
 };
 
+// Parses severity.
 function parseSeverity(value: unknown): ReliabilitySeverity {
   if (typeof value !== 'string') return 'info';
   const normalized = value.toLowerCase();
@@ -31,15 +33,18 @@ function parseSeverity(value: unknown): ReliabilitySeverity {
   return 'info';
 }
 
+// Gets grid columns class.
 function getGridColumnsClass(length: number) {
   if (length <= 1) return 'grid-cols-1';
   if (length === 2 || length === 4) return 'grid-cols-1 sm:grid-cols-2';
   return 'grid-cols-1 sm:grid-cols-3';
 }
 
+// Handles coerce reliability categories.
 function coerceReliabilityCategories(value: unknown) {
   if (!Array.isArray(value)) return [];
   return value
+// Maps logic.
     .map((item) => {
       if (!isRecord(item)) return null;
       const issueCode =
@@ -55,9 +60,11 @@ function coerceReliabilityCategories(value: unknown) {
         count: asNumber(item.count) ?? 0,
       };
     })
+// Handles filter.
     .filter((item): item is ReliabilityCategory => item != null);
 }
 
+// Gets reliability summary view.
 export function getReliabilitySummaryView(
   source: unknown,
   options?: { fallbackCountsToZero?: boolean },
@@ -89,15 +96,22 @@ export function getReliabilitySummaryView(
   }
 
   const byCategory = coerceReliabilityCategories(summary.byCategory ?? summary.by_category);
+// Handles reduce.
   const inferredTotal = byCategory.reduce((sum, item) => sum + item.count, 0);
   const inferredErrors = byCategory
+// Handles filter.
     .filter((item) => item.severity === 'error')
+// Handles reduce.
     .reduce((sum, item) => sum + item.count, 0);
   const inferredWarnings = byCategory
+// Handles filter.
     .filter((item) => item.severity === 'warning')
+// Handles reduce.
     .reduce((sum, item) => sum + item.count, 0);
   const inferredInfo = byCategory
+// Handles filter.
     .filter((item) => item.severity === 'info')
+// Handles reduce.
     .reduce((sum, item) => sum + item.count, 0);
 
   const totalIssues = asNumber(summary.totalIssues ?? summary.total_issues);

@@ -1,3 +1,4 @@
+// Exposes default workflow input configuration.
 export const DEFAULT_MAS_WORKFLOW_INPUT: Record<string, unknown> = {
   gender: 'M',
   race: 'WHITE',

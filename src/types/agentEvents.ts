@@ -1,3 +1,4 @@
+// Defines agent events types.
 export type AgentEventReadDto = {
   id: number;
   run_id: string;

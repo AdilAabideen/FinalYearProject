@@ -5,20 +5,24 @@ type MasResultsTabProps = {
   output: Record<string, unknown> | null;
 };
 
+// Checks record.
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
+// Casts string array.
 function asStringArray(value: unknown) {
   return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : [];
 }
 
+// Formats snake case label.
 function formatSnakeCaseLabel(value: string) {
   return value
     .replace(/_/g, ' ')
     .replace(/\b\w/g, (char) => char.toUpperCase());
 }
 
+// Renders the field section.
 function FieldSection({
   label,
   value,
@@ -34,6 +38,7 @@ function FieldSection({
   );
 }
 
+// Renders the list section.
 function ListSection({
   label,
   items,
@@ -59,6 +64,7 @@ function ListSection({
   );
 }
 
+// Renders the MAS results tab.
 export default function MasResultsTab({ output }: MasResultsTabProps) {
   const outputJson = output && isRecord(output.output_json) ? output.output_json : null;
 

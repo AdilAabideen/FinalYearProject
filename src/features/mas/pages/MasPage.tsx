@@ -28,6 +28,7 @@ type MasDetailState =
   | { status: 'error'; workflowId: string; message: string }
   | { status: 'success'; workflow: MasCatalogDetail };
 
+// Renders the MAS page.
 export function MasPage({ onHeaderChange }: MasPageProps) {
   const [state, setState] = useState<MasLoadState>({ status: 'loading' });
   const [detail, setDetail] = useState<MasDetailState>({ status: 'closed' });
@@ -64,6 +65,7 @@ export function MasPage({ onHeaderChange }: MasPageProps) {
 
   const skeletons = useMemo(() => Array.from({ length: 6 }, (_, i) => i), []);
 
+// Closes detail.
   function closeDetail() {
     detailAbortRef.current?.abort();
     detailAbortRef.current = null;

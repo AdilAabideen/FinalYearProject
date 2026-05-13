@@ -1,3 +1,4 @@
+// Calls the MAS run service API.
 import { API_BASE_URL } from '../config/env';
 import type { SwarmExecutionStartResponse, SwarmExecutionStartResponseDto, SwarmRunMetricsReadDto } from '../types/masRuns';
 
@@ -17,6 +18,7 @@ export type MasRunService = {
 
 export const masRunService: MasRunService = {
 
+// Starts MAS run.
     async startMasRun(workflow_id, payload, signal, model_id) {
 
 
@@ -55,9 +57,10 @@ export const masRunService: MasRunService = {
         }
     },
 
+// Gets MAS run metrics.
     async getMasRunMetrics(swarmRunId, signal) {
 
-        const response = await fetch(`${API_BASE_URL}/api/swarm-runs/${encodeURIComponent(swarmRunId)}/metrics`, {
+        const response = await fetch(`${API_BASE_URL}/api/mas-runs/${encodeURIComponent(swarmRunId)}/metrics`, {
             method: 'GET',
             headers: {
                 Accept: 'application/json',
