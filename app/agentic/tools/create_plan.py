@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from langchain.tools import tool
+from langchain_core.tools import tool
 from pydantic import BaseModel, Field
 from typing import Any, List, Optional
 

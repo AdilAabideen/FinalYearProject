@@ -5,9 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, ClassVar, Dict, List, Optional, Sequence, Type
 
-from langchain.tools import tool
 from langchain_core.messages import ToolMessage
-from langchain_core.tools import BaseTool
+from langchain_core.tools import BaseTool, tool
 from langgraph.types import Command
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 

@@ -3,7 +3,7 @@
 from typing import Optional, Dict, Any
 
 from pydantic import BaseModel, Field, field_validator
-from langchain.tools import tool
+from langchain_core.tools import tool
 
 
 class ShockIndexInput(BaseModel):

@@ -2,7 +2,7 @@
 
 from typing import Optional, List, Dict, Any
 
-from langchain.tools import tool
+from langchain_core.tools import tool
 from pydantic import BaseModel, Field, field_validator
 
 
