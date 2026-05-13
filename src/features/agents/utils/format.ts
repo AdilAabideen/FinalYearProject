@@ -1,23 +1,29 @@
+// Handles title case key.
+// Provides format helpers.
 export function titleCaseKey(key: string) {
   return key
     .replace(/[_-]+/g, ' ')
     .split(' ')
     .filter(Boolean)
+// Maps logic.
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
     .join(' ');
 }
 
+// Formats integer.
 export function formatInteger(value: number | null) {
   if (value == null) return '—';
   return new Intl.NumberFormat(undefined, { maximumFractionDigits: 0 }).format(value);
 }
 
+// Formats duration.
 export function formatDuration(seconds: number | null) {
   if (seconds == null) return '—';
   if (seconds < 1) return `${Math.round(seconds * 1000)} ms`;
   return `${seconds.toFixed(seconds < 10 ? 2 : 1)} s`;
 }
 
+// Formats latency ms.
 export function formatLatencyMs(value: number | null) {
   if (value == null) return '—';
   if (value < 10) return `${value.toFixed(2)} ms`;
@@ -25,6 +31,7 @@ export function formatLatencyMs(value: number | null) {
   return `${Math.round(value)} ms`;
 }
 
+// Formats currency.
 export function formatCurrency(value: number | null) {
   if (value == null) return '—';
   return new Intl.NumberFormat(undefined, {
@@ -34,12 +41,14 @@ export function formatCurrency(value: number | null) {
   }).format(value);
 }
 
+// Formats confidence.
 export function formatConfidence(value: number | null) {
   if (value == null) return '—';
   const ratio = value > 1 ? value / 100 : value;
   return `${Math.round(Math.max(0, Math.min(1, ratio)) * 100)}%`;
 }
 
+// Formats percent.
 export function formatPercent(value: number | null, digits = 1) {
   if (value == null || !Number.isFinite(value)) return '—';
   const ratio = value > 1 ? value / 100 : value;

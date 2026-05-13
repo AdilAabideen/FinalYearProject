@@ -5,6 +5,7 @@ type IconButtonProps = Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'children'>
   children: ReactNode;
 };
 
+// Renders the icon button.
 export function IconButton({ className, children, type, ...props }: IconButtonProps) {
   return (
     <button

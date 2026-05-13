@@ -4,6 +4,7 @@ type TraceOutputHoverBadgeProps = {
   value: unknown;
 };
 
+// Renders the trace output hover badge.
 export function TraceOutputHoverBadge({ value }: TraceOutputHoverBadgeProps) {
   const hasValue = value != null && (typeof value !== 'string' || value.trim().length > 0);
 

@@ -1,3 +1,4 @@
+// Calls the MAS discovery service API.
 import { API_BASE_URL } from '../config/env';
 import type { MasCatalogDetail, MasWorkflowSummary, MasWorkflowSummaryDto } from '../types/mas';
 
@@ -7,6 +8,7 @@ export type MasDiscoveryService = {
 };
 
 export const masDiscoveryService: MasDiscoveryService = {
+// Lists MAS.
   async listMas(signal) {
     const response = await fetch(`${API_BASE_URL}/api/mas`, {
       method: 'GET',
@@ -23,6 +25,7 @@ export const masDiscoveryService: MasDiscoveryService = {
 
     const data = (await response.json()) as MasWorkflowSummaryDto[];
 
+// Maps logic.
     return data.map((workflow) => ({
       workflowId: workflow.workflow_id,
       name: workflow.name,
@@ -36,6 +39,7 @@ export const masDiscoveryService: MasDiscoveryService = {
     }));
   },
 
+// Gets workflow.
   async getWorkflow(workflowId, signal) {
     const response = await fetch(`${API_BASE_URL}/api/mas/${encodeURIComponent(workflowId)}`, {
       method: 'GET',

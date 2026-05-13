@@ -6,6 +6,7 @@ type AgentDetailSplitViewProps = {
   agent: AgentCatalogDetail;
 };
 
+// Renders the agent detail split view.
 export function AgentDetailSplitView({ agent }: AgentDetailSplitViewProps) {
   return (
     <div className="grid h-full min-h-0 p-0 lg:grid-cols-2">

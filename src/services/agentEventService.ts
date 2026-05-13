@@ -1,3 +1,4 @@
+// Calls the agent event service API.
 import { API_BASE_URL } from '../config/env';
 import type { AgentEventsPage, AgentEventsPageDto } from '../types/agentEvents';
 
@@ -15,6 +16,7 @@ export type AgentEventService = {
 };
 
 export const agentEventService: AgentEventService = {
+// Lists agent events.
   async listAgentEvents(runId, params, signal) {
     const search = new URLSearchParams();
     if (typeof params?.afterSeq === 'number') search.set('after_seq', String(params.afterSeq));
@@ -39,6 +41,7 @@ export const agentEventService: AgentEventService = {
     return {
       runId: data.run_id,
       nextAfterSeq: data.next_after_seq,
+// Maps logic.
       events: data.events.map((event) => ({
         id: event.id,
         runId: event.run_id,

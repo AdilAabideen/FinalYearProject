@@ -6,6 +6,7 @@ type BadgeProps = {
   className?: string;
 };
 
+// Renders the badge.
 export function Badge({ children, className }: BadgeProps) {
   return (
     <span

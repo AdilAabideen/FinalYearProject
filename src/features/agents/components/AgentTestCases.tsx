@@ -14,6 +14,7 @@ type CasesLoadState =
   | { status: 'error'; message: string }
   | { status: 'success'; cases: AgentTestCaseRead[] };
 
+// Formats cell value.
 function formatCellValue(value: unknown) {
   if (value == null) return '—';
   if (typeof value === 'string') return value;
@@ -27,6 +28,7 @@ function formatCellValue(value: unknown) {
   }
 }
 
+// Renders the agent test cases.
 export default function AgentTestCases({ agentName }: AgentTestCasesProps) {
   const [state, setState] = useState<CasesLoadState>({ status: 'loading' });
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
@@ -91,6 +93,7 @@ export default function AgentTestCases({ agentName }: AgentTestCasesProps) {
   const selectedCount = selectedIds.size;
   const runButtonLabel = selectedCount ? `Run ${selectedCount} selected` : 'Run All';
 
+// Toggles selected.
   function toggleSelected(id: string) {
     setSelectedIds((prev) => {
       const next = new Set(prev);
@@ -100,6 +103,7 @@ export default function AgentTestCases({ agentName }: AgentTestCasesProps) {
     });
   }
 
+// Opens drawer.
   function openDrawer() {
     if (state.status !== 'success') return;
     const idsToRun = selectedIds.size ? Array.from(selectedIds) : state.cases.map((c) => c.id);
@@ -138,6 +142,7 @@ export default function AgentTestCases({ agentName }: AgentTestCasesProps) {
   const stickyNameLeft = 'left-[3rem]';
   const stickyIdLeft = 'left-[19rem]';
 
+// Handles sticky body bg.
   function stickyBodyBg(rowSelected: boolean) {
     return rowSelected ? 'bg-[#E6EFF8]' : 'bg-white group-hover:bg-slate-50';
   }

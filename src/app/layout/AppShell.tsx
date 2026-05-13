@@ -19,6 +19,7 @@ type AppShellProps = {
   children: ReactNode;
 };
 
+// Renders the app shell.
 export function AppShell({
   activeNav,
   onNavigate,

@@ -1,3 +1,4 @@
+// Defines MAS runs types.
 
 type SwarmRunStatus = string;
 

@@ -1,11 +1,9 @@
 import { useLayoutEffect, useRef, useState } from 'react';
 import agentsIcon from '../../assets/figma/icon-agents.png';
-import homeIcon from '../../assets/figma/icon-home.png';
 import { SidebarBrand } from './SidebarBrand';
-import { SidebarFooterButton } from './SidebarFooterButton';
 import { SidebarNavItem } from './SidebarNavItem';
 
-export type NavKey = 'home' | 'agents' | 'mas';
+export type NavKey = 'agents' | 'mas' | 'single_agent';
 
 type SidebarProps = {
   active: NavKey;
@@ -14,9 +12,10 @@ type SidebarProps = {
   onToggleCollapsed: () => void;
 };
 
+// Renders the sidebar.
 export function Sidebar({ active, onNavigate, collapsed, onToggleCollapsed }: SidebarProps) {
   const listRef = useRef<HTMLDivElement | null>(null);
-  const homeRef = useRef<HTMLButtonElement | null>(null);
+  const singleAgentRef = useRef<HTMLButtonElement | null>(null);
   const agentsRef = useRef<HTMLButtonElement | null>(null);
   const masRef = useRef<HTMLButtonElement | null>(null);
 
@@ -25,12 +24,13 @@ export function Sidebar({ active, onNavigate, collapsed, onToggleCollapsed }: Si
   useLayoutEffect(() => {
     let frame: number | null = null;
 
+// Updates logic.
     const update = () => {
       const container = listRef.current;
       let target;
 
-      if (active === 'home') {
-        target = homeRef.current;
+      if (active === 'single_agent') {
+        target = singleAgentRef.current;
       } else if (active === 'mas') {
         target = masRef.current;
       } else {
@@ -49,6 +49,7 @@ export function Sidebar({ active, onNavigate, collapsed, onToggleCollapsed }: Si
       setIndicator({ y: nextY, height: nextHeight, visible: true });
     };
 
+// Schedules logic.
     const schedule = () => {
       if (frame) cancelAnimationFrame(frame);
       frame = requestAnimationFrame(update);
@@ -56,12 +57,13 @@ export function Sidebar({ active, onNavigate, collapsed, onToggleCollapsed }: Si
 
     schedule();
 
+// Handles on resize.
     const onResize = () => schedule();
     window.addEventListener('resize', onResize);
 
     const ro = new ResizeObserver(() => schedule());
     if (listRef.current) ro.observe(listRef.current);
-    if (homeRef.current) ro.observe(homeRef.current);
+    if (singleAgentRef.current) ro.observe(singleAgentRef.current);
     if (agentsRef.current) ro.observe(agentsRef.current);
     if (masRef.current) ro.observe(masRef.current);
 
@@ -114,11 +116,11 @@ export function Sidebar({ active, onNavigate, collapsed, onToggleCollapsed }: Si
             style={{ transform: `translateY(${y}px)`, height: `${height}px` }}
           />
           <SidebarNavItem
-            ref={homeRef}
-            onClick={() => onNavigate('home')}
-            iconSrc={homeIcon}
-            label="Home"
-            active={active === 'home'}
+            ref={singleAgentRef}
+            onClick={() => onNavigate('single_agent')}
+            iconSrc={agentsIcon}
+            label="Single Agent"
+            active={active === 'single_agent'}
             collapsed={collapsed}
           />
 
@@ -141,12 +143,6 @@ export function Sidebar({ active, onNavigate, collapsed, onToggleCollapsed }: Si
           />
         </div>
       </nav>
-
-      <div className={collapsed ? 'mt-auto px-2 pb-4' : 'mt-auto px-4 pb-6'}>
-        <SidebarFooterButton onClick={() => onNavigate('home')} collapsed={collapsed}>
-          Docs
-        </SidebarFooterButton>
-      </div>
     </aside>
   );
 }

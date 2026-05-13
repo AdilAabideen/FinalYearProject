@@ -7,6 +7,7 @@ type AgentReliabilitySummaryPanelProps = {
   statusSmall?: boolean;
 };
 
+// Renders the agent reliability summary panel.
 export function AgentReliabilitySummaryPanel({
   summaryView,
   statusSmall = false,

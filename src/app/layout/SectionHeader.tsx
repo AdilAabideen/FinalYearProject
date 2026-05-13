@@ -3,6 +3,7 @@ type SectionHeaderProps = {
   description?: string;
 };
 
+// Renders the section header.
 export function SectionHeader({ title, description }: SectionHeaderProps) {
   return (
     <div>

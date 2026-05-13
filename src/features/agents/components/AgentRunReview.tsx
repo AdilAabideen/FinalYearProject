@@ -40,6 +40,7 @@ type LoadState<T> =
   | { status: 'error'; message: string }
   | { status: 'success'; value: T };
 
+// Gets event payload.
 function getEventPayload(event: AgentEventRead): unknown {
   if (event.payloadJson != null) return event.payloadJson;
   if (event.payloadText != null) return tryParseJson(event.payloadText);
@@ -63,6 +64,7 @@ async function loadAllEvents(runId: string, signal: AbortSignal) {
   return items;
 }
 
+// Handles to trace entries.
 function toTraceEntries(events: AgentEventRead[]): TraceEntry[] {
   return events.map((event) => {
     const payload = getEventPayload(event);
@@ -100,6 +102,7 @@ function toTraceEntries(events: AgentEventRead[]): TraceEntry[] {
   });
 }
 
+// Renders the agent run review.
 export function AgentRunReview({ runId, onBack }: AgentRunReviewProps) {
   const outputTabsId = useId();
   const [view, setView] = useState<'input' | 'output'>('output');

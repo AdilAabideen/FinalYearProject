@@ -1,3 +1,4 @@
+// Calls the agent discovery service API.
 import { API_BASE_URL } from '../config/env';
 import type {
   AgentCatalogDetail,
@@ -12,6 +13,7 @@ export type AgentDiscoveryService = {
 };
 
 export const agentDiscoveryService: AgentDiscoveryService = {
+// Lists agents.
   async listAgents(signal) {
     const response = await fetch(`${API_BASE_URL}/api/agents`, {
       method: 'GET',
@@ -28,6 +30,7 @@ export const agentDiscoveryService: AgentDiscoveryService = {
 
     const data = (await response.json()) as AgentCatalogSummaryDto[];
 
+// Maps logic.
     return data.map((agent) => ({
       name: agent.name,
       title: agent.title,
@@ -36,6 +39,7 @@ export const agentDiscoveryService: AgentDiscoveryService = {
     }));
   },
 
+// Gets agent.
   async getAgent(agentName, signal) {
     const response = await fetch(
       `${API_BASE_URL}/api/agents/${encodeURIComponent(agentName)}`,
@@ -60,6 +64,7 @@ export const agentDiscoveryService: AgentDiscoveryService = {
       title: data.title,
       description: data.description,
       inputSchema: data.input_schema,
+// Maps logic.
       tools: data.tools.map((tool) => ({
         name: tool.name,
         description: tool.description,

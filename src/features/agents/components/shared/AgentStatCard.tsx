@@ -10,6 +10,7 @@ type AgentStatCardProps = {
   className?: string;
 };
 
+// Renders the agent stat card.
 export function AgentStatCard({
   label,
   value,

@@ -17,14 +17,17 @@ type AgentTabProps = {
   agent: AgentCatalogDetail;
 };
 
+// Renders the agent tab.
 export default function AgentTab({ agent }: AgentTabProps) {
   const baseId = useId();
   const [activeTab, setActiveTab] = useState<TabKey>('run');
 
+// Handles tab ID.
   function tabId(key: TabKey) {
     return `${baseId}-tab-${key}`;
   }
 
+// Handles panel ID.
   function panelId(key: TabKey) {
     return `${baseId}-panel-${key}`;
   }

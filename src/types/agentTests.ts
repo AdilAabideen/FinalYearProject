@@ -1,3 +1,4 @@
+// Defines agent tests types.
 export type AgentTestCaseReadDto = {
   id: string;
   agent_name: string;

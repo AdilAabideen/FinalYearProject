@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useId, useRef, useState } from 'react';
 import type { MasCatalogDetail } from '../../../types/mas';
 import { DEFAULT_MAS_WORKFLOW_INPUT } from '../config/defaultWorkflowInput';
 import { AgentInputForm } from '../../agents/components/AgentInputForm';
@@ -11,6 +11,9 @@ import type { SwarmExecutionStartResponse, SwarmRunMetricsRead } from '../../../
 import { API_BASE_URL } from '../../../config/env';
 import MasMetricsTab from './MasMetricsTab';
 import MasTestCases from './MasTestCases';
+import { MasTabs } from './MasTabs';
+import { useModels } from '../../agents/hooks/useModels';
+import { AgentModelSelect } from '../../agents/components/shared/AgentModelSelect';
 
 type MasDetailSplitViewProps = {
   workflow: MasCatalogDetail;
@@ -42,6 +45,7 @@ const resultTabs: Array<{ key: ResultTabKey; label: string }> = [
 
 ]
 
+// Renders the MAS detail split view.
 export function MasDetailSplitView({ workflow }: MasDetailSplitViewProps) {
   const [activeTab, setActiveTab] = useState<MasTabKey>('diagram');
   const [workflowInputValue, setWorkflowInputValue] = useState<Record<string, unknown>>(() => ({
@@ -69,6 +73,8 @@ export function MasDetailSplitView({ workflow }: MasDetailSplitViewProps) {
   });
 
   const [masMetrics, setMasMetrics] = useState<SwarmRunMetricsRead | null>(null);
+  const { models, status: modelsStatus, selectedModelId, setSelectedModelId } = useModels();
+  const modelSelectId = useId();
 
   async function handleSubmitInput() {
 
@@ -85,8 +91,10 @@ export function MasDetailSplitView({ workflow }: MasDetailSplitViewProps) {
       const mas_run_details: SwarmExecutionStartResponse = await masRunService.startMasRun(
         workflow.metadata.workflow_id,
         payload,
-        ac.signal
+        ac.signal,
+        selectedModelId
       )
+      console.log("Run Details  : \n ", mas_run_details)
       setRunInfo(mas_run_details)
       if (ac.signal.aborted) return;
     } catch (e: unknown) {
@@ -98,6 +106,7 @@ export function MasDetailSplitView({ workflow }: MasDetailSplitViewProps) {
 
   }
 
+// Manages callback.
   const handleMasDone = useCallback(async () => {
     if (!runInfo?.finalOutputUrl) return;
 
@@ -133,36 +142,17 @@ export function MasDetailSplitView({ workflow }: MasDetailSplitViewProps) {
   }, [runInfo?.finalOutputUrl]);
 
 
-
   return (
     <div className="grid h-full min-h-0 p-0 lg:grid-cols-1">
       <section className="flex min-h-0 flex-col border-r border-slate-200 p-0 h-full">
-        <div className="flex  items-stretch border-b border-slate-200 bg-white">
-          {tabs.map((tab) => {
-            const active = activeTab === tab.key;
-
-            return (
-              <button
-                key={tab.key}
-                type="button"
-                onClick={() => setActiveTab(tab.key)}
-                className={[
-                  'flex h-full min-w-36 py-2 items-center border-r border-slate-200 px-4 text-left transition-colors',
-                  active ? 'bg-slate-50' : 'bg-white hover:bg-slate-50',
-                ].join(' ')}
-              >
-                <p
-                  className={[
-                    'text-sm font-semibold',
-                    active ? 'text-slate-900' : 'text-slate-500',
-                  ].join(' ')}
-                >
-                  {tab.label}
-                </p>
-              </button>
-            );
-          })}
-        </div>
+        <MasTabs
+          tabs={tabs}
+          activeKey={activeTab}
+          onChange={setActiveTab}
+          wrapperClassName="border-b border-slate-200 bg-white"
+          buttonClassName="flex h-full items-center border-r border-slate-200 px-4 py-2 text-left transition-colors"
+          minTabWidthClassName="min-w-36"
+        />
 
         {activeTab === 'diagram' ? (
           <div className="grid h-full min-h-[560px] grid-cols-6 grid-rows-1">
@@ -183,8 +173,18 @@ export function MasDetailSplitView({ workflow }: MasDetailSplitViewProps) {
                     {
                       !submitted ? (
                         <>
-                          <div className="shrink-0 border-b border-slate-300 p-2 px-4 pt-3">
+                          <div className="shrink-0 border-b border-slate-300 p-2 px-4 pt-3 flex flex-row justify-between items-center">
                             <p className="text-md font-semibold text-slate-900">Workflow Input</p>
+                            <div className='space-x-2 '>
+                              <AgentModelSelect
+                                labelClassName='text-sm'
+                                id={modelSelectId}
+                                models={models}
+                                modelsStatus={modelsStatus}
+                                selectedModelId={selectedModelId}
+                                setSelectedModelId={setSelectedModelId}
+                              />
+                            </div>
                           </div>
                           <AgentInputForm
                             schema={workflow.input_schema.json_schema}
@@ -197,32 +197,14 @@ export function MasDetailSplitView({ workflow }: MasDetailSplitViewProps) {
                         </>
                       ) : (
                         <>
-                          <div className=" border-b border-slate-300 flex flex-row">
-                            {resultTabs.map((tab) => {
-                              const active = activeResultTab === tab.key;
-
-                              return (
-                                <button
-                                  key={tab.key}
-                                  type="button"
-                                  onClick={() => setActiveResultTab(tab.key)}
-                                  className={[
-                                    'flex h-full min-w-3 py-2 items-center border-r border-slate-200 px-4 text-left transition-colors',
-                                    active ? 'bg-slate-50' : 'bg-white hover:bg-slate-50',
-                                  ].join(' ')}
-                                >
-                                  <p
-                                    className={[
-                                      'text-sm font-semibold',
-                                      active ? 'text-slate-900' : 'text-slate-500',
-                                    ].join(' ')}
-                                  >
-                                    {tab.label}
-                                  </p>
-                                </button>
-                              );
-                            })}
-                          </div>
+                          <MasTabs
+                            tabs={resultTabs}
+                            activeKey={activeResultTab}
+                            onChange={setActiveResultTab}
+                            wrapperClassName="border-b border-slate-300"
+                            buttonClassName="flex h-full items-center border-r border-slate-200 px-4 py-2 text-left transition-colors"
+                            minTabWidthClassName="min-w-3"
+                          />
                           {
                             activeResultTab == 'traces' ? (
                               <div className="min-h-0 flex-1 overflow-hidden">
@@ -259,9 +241,9 @@ export function MasDetailSplitView({ workflow }: MasDetailSplitViewProps) {
             </div>
           </div>
         ) : (
-         <MasTestCases 
-          workflow={workflow}
-         />
+          <MasTestCases
+            workflow={workflow}
+          />
         )}
       </section>
     </div>

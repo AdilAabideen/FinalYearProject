@@ -5,6 +5,7 @@ type TextInputProps = InputHTMLAttributes<HTMLInputElement> & {
   srLabel: string;
 };
 
+// Renders the text input.
 export function TextInput({ srLabel, className, id, ...props }: TextInputProps) {
   const autoId = useId();
   const resolvedId = id ?? autoId;

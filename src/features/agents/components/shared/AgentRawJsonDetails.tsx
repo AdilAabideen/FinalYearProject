@@ -7,6 +7,7 @@ type AgentRawJsonDetailsProps = {
   contentClassName?: string;
 };
 
+// Renders the agent raw JSON details.
 export function AgentRawJsonDetails({
   summary,
   value,

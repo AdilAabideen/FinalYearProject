@@ -24,6 +24,7 @@ type AgentInputFormProps = {
   className?: string;
 };
 
+// Handles humanize key.
 function humanizeKey(key: string) {
   return key
     .replace(/_/g, ' ')
@@ -33,10 +34,12 @@ function humanizeKey(key: string) {
     .replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
+// Handles safe ID segment.
 function safeIdSegment(value: string) {
   return value.replace(/[^a-zA-Z0-9_-]+/g, '-');
 }
 
+// Renders the field wrapper.
 function FieldWrapper({
   label,
   required,
@@ -75,6 +78,7 @@ function FieldWrapper({
   );
 }
 
+// Renders the agent input form.
 export function AgentInputForm({
   schema,
   value,

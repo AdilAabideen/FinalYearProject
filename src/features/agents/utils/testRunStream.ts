@@ -1,3 +1,4 @@
+// Provides test run stream helpers.
 import { asString, isRecord } from './runResult';
 
 type RunMetrics = {
@@ -27,6 +28,7 @@ type RunMetrics = {
   };
 };
 
+// Extracts case ID.
 export function extractCaseId(payload: Record<string, unknown>) {
   return (
     asString(payload.test_case_id) ??
@@ -40,6 +42,7 @@ export function extractCaseId(payload: Record<string, unknown>) {
   );
 }
 
+// Extracts agent run ID.
 export function extractAgentRunId(payload: Record<string, unknown>) {
   return (
     asString(payload.agent_run_id) ??
@@ -53,6 +56,7 @@ export function extractAgentRunId(payload: Record<string, unknown>) {
   );
 }
 
+// Extracts passed.
 export function extractPassed(payload: Record<string, unknown>) {
   if (typeof payload.passed === 'boolean') return payload.passed;
   const status =
@@ -63,6 +67,7 @@ export function extractPassed(payload: Record<string, unknown>) {
   return status.toLowerCase().includes('pass');
 }
 
+// Extracts metrics.
 export function extractMetrics(payload: Record<string, unknown>) {
   if (isRecord(payload.metrics)) return payload.metrics as RunMetrics;
   if (isRecord(payload.metrics_json)) return payload.metrics_json as RunMetrics;
@@ -72,6 +77,7 @@ export function extractMetrics(payload: Record<string, unknown>) {
   return null;
 }
 
+// Extracts diff.
 export function extractDiff(payload: Record<string, unknown>) {
   if (isRecord(payload.diff_json)) return payload.diff_json;
   if (isRecord(payload.result) && isRecord(payload.result.diff_json)) return payload.result.diff_json;

@@ -6,6 +6,7 @@ type ToolStatusBadgeProps = {
   className?: string;
 };
 
+// Renders the tool status badge.
 export function ToolStatusBadge({ status, className }: ToolStatusBadgeProps) {
   const label = status === 'succeeded' ? 'succeeded' : status === 'error' ? 'error' : 'unknown';
   return (

@@ -11,6 +11,7 @@ type JsonRendererProps = {
   title?: string;
 };
 
+// Handles humanize key.
 function humanizeKey(key: string) {
   return key
     .replace(/_/g, ' ')
@@ -20,6 +21,7 @@ function humanizeKey(key: string) {
     .replace(/\b\w/g, (char) => char.toUpperCase());
 }
 
+// Formats special output.
 function formatSpecialOutput(value: string) {
   const match = value.match(/^(not_)?esi(\d+)$/i);
   if (!match) return value;
@@ -28,10 +30,12 @@ function formatSpecialOutput(value: string) {
   return `${negatedPrefix ? 'Not ' : ''}Esi ${esiNumber}`;
 }
 
+// Checks record.
 function isRecord(value: unknown): value is { [key: string]: JsonValue } {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
+// Normalizes value.
 function normalizeValue(value: unknown): JsonValue {
   if (
     value == null ||
@@ -57,6 +61,7 @@ function normalizeValue(value: unknown): JsonValue {
   return String(value);
 }
 
+// Renders the primitive value.
 function PrimitiveValue({ value }: { value: string | number | boolean | null }) {
   if (typeof value === 'boolean') {
     return (
@@ -88,6 +93,7 @@ function PrimitiveValue({ value }: { value: string | number | boolean | null }) 
   return <p className="text-sm leading-6 text-slate-700">{formatSpecialOutput(value)}</p>;
 }
 
+// Renders the JSON node.
 function JsonNode({ value, label }: { value: JsonValue; label?: string }) {
   if (Array.isArray(value)) {
     return (
@@ -111,16 +117,16 @@ function JsonNode({ value, label }: { value: JsonValue; label?: string }) {
 
     return (
       <div className="flex flex-col gap-3">
-        {label ? <p className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">{label}</p> : null}
+        {label ? <p className="text-xs font-semibold uppercase text-slate-500">{label}</p> : null}
         {entries.length === 0 ? (
-          <div className="rounded-2xl border border-slate-200 bg-slate-50 p-2 text-sm text-slate-500">
+          <div className=" border-slate-200 bg-slate-50 p-2 text-sm text-slate-500">
             Empty object
           </div>
         ) : (
           entries.map(([key, itemValue]) => (
-            <div key={key} className="rounded-xl border border-slate-300 bg-white p-3">
+            <div key={key} className="rounded-lg border border-slate-300 bg-white p-3">
               <div className="flex flex-col gap-2">
-                <p className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">
+                <p className="text-sm font-semibold uppercase  text-slate-500">
                   {humanizeKey(key)}
                 </p>
                 <JsonNode value={itemValue} />
@@ -135,6 +141,7 @@ function JsonNode({ value, label }: { value: JsonValue; label?: string }) {
   return <PrimitiveValue value={value} />;
 }
 
+// Renders the JSON renderer.
 export default function JsonRenderer({ value, title = 'JSON Data' }: JsonRendererProps) {
   const normalizedValue = normalizeValue(value);
 

@@ -1,6 +1,9 @@
+// Provides JSON schema helpers.
 import { getStringFormat, getTypeCandidates, isRecord } from '../../agents/utils/jsonSchema';
 
+// Gets coercion type.
 function getCoercionType(root: Record<string, unknown>, schema: unknown) {
+// Handles filter.
   const types = getTypeCandidates(root, schema).filter((t) => t !== 'null');
 
   if (types.length === 0) return undefined;
@@ -14,14 +17,17 @@ function getCoercionType(root: Record<string, unknown>, schema: unknown) {
   return 'unknown';
 }
 
+// Checks nullable schema.
 function isNullableSchema(root: Record<string, unknown>, schema: unknown) {
   return getTypeCandidates(root, schema).includes('null');
 }
 
+// Checks empty input value.
 function isEmptyInputValue(value: unknown) {
   return value == null || (typeof value === 'string' && value.trim() === '');
 }
 
+// Handles coerce input for run.
 export function coerceInputForRun(
   inputSchema: Record<string, unknown>,
   raw: Record<string, unknown>,

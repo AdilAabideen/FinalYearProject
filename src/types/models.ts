@@ -1,3 +1,4 @@
+// Defines models types.
 export type ModelSpecDto = {
   id: string;
   provider: string;

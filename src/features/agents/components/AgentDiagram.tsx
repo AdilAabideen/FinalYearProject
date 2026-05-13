@@ -1,15 +1,21 @@
 import { useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { cn } from '../../../shared/lib/cn';
-import { formatJson } from '../../../shared/lib/formatJson';
-import type { AgentCatalogDetail, ToolCatalogItem } from '../../../types/agents';
 import { Badge } from '../../../shared/ui/Badge';
-import { CodeBlock } from '../../../shared/ui/CodeBlock';
+import type { AgentCatalogDetail } from '../../../types/agents';
+import { ToolNode } from './agent-diagram/ToolNode';
+import { ToolSchemaPopover } from './agent-diagram/ToolSchemaPopover';
+import {
+  clamp,
+  curvedConnectorPath,
+  getSchemaLabel,
+  makeInitialPositions,
+  type DiagramPoint as Point,
+} from '../utils/diagram';
 
 type AgentDiagramProps = {
   agent: AgentCatalogDetail;
 };
 
-type Point = { x: number; y: number };
 type DragState = {
   index: number;
   pointerId: number;
@@ -19,222 +25,7 @@ type DragState = {
   halfHeight: number;
 };
 
-function getSchemaLabel(schema: Record<string, unknown>) {
-  const title = schema.title;
-  if (typeof title === 'string' && title.trim().length) return title;
-
-  const ref = schema.$ref;
-  if (typeof ref === 'string' && ref.trim().length) return ref.split('/').at(-1) ?? 'Input';
-
-  return 'Input';
-}
-
-function computeRadialPositions(count: number): Point[] {
-  if (count <= 0) return [];
-
-  const itemsPerRing = 8;
-  const ringCount = Math.max(1, Math.ceil(count / itemsPerRing));
-
-  const minRadius = 26;
-  const maxRadius = 46;
-  const radii = Array.from({ length: ringCount }, (_, ring) => {
-    if (ringCount === 1) return 38;
-    return minRadius + (ring * (maxRadius - minRadius)) / (ringCount - 1);
-  });
-
-  const points: Point[] = [];
-
-  for (let ring = 0; ring < ringCount; ring += 1) {
-    const start = ring * itemsPerRing;
-    const end = Math.min(count, start + itemsPerRing);
-    const ringItems = end - start;
-    const radius = radii[ring] ?? 38;
-
-    for (let i = 0; i < ringItems; i += 1) {
-      const angle = -Math.PI / 2 + (2 * Math.PI * i) / ringItems;
-      points.push({
-        x: 50 + radius * Math.cos(angle),
-        y: 50 + radius * Math.sin(angle),
-      });
-    }
-  }
-
-  return points;
-}
-
-function clamp(value: number, min: number, max: number) {
-  return Math.min(max, Math.max(min, value));
-}
-
-function curvedConnectorPath(from: Point, to: Point, curve: number) {
-  const dx = to.x - from.x;
-  const dy = to.y - from.y;
-  const dist = Math.hypot(dx, dy) || 1;
-
-  const px = -dy / dist;
-  const py = dx / dist;
-
-  const c1 = {
-    x: from.x + dx * 0.28 + px * curve,
-    y: from.y + dy * 0.28 + py * curve,
-  };
-
-  const c2 = {
-    x: from.x + dx * 0.72 + px * curve,
-    y: from.y + dy * 0.72 + py * curve,
-  };
-
-  return `M ${from.x} ${from.y} C ${c1.x} ${c1.y} ${c2.x} ${c2.y} ${to.x} ${to.y}`;
-}
-
-function makeInitialPositions(count: number) {
-  return computeRadialPositions(count).map((p) => {
-    const dx = p.x - 50;
-    const dy = p.y - 50;
-    const x = 50 + dx * 0.82;
-    const y = 50 + dy * 0.9;
-
-    return {
-      x: clamp(x, 14, 86),
-      y: clamp(y, 12, 88),
-    };
-  });
-}
-
-function ConvertToolName(toolName: string) {
-  return toolName
-    .replace(/_/g, ' ')
-    .replace(/\w\S*/g, (txt) => txt.charAt(0).toUpperCase() + txt.slice(1));
-
-}
-
-
-function ToolNode({
-  tool,
-  active,
-  onActiveChange,
-  dragging,
-  onPointerDown,
-  onPointerMove,
-  onPointerUp,
-  onPointerCancel,
-  buttonRef,
-}: {
-  tool: ToolCatalogItem;
-  active: boolean;
-  onActiveChange: (active: boolean) => void;
-  dragging: boolean;
-  onPointerDown: (e: React.PointerEvent<HTMLButtonElement>) => void;
-  onPointerMove: (e: React.PointerEvent<HTMLButtonElement>) => void;
-  onPointerUp: (e: React.PointerEvent<HTMLButtonElement>) => void;
-  onPointerCancel: (e: React.PointerEvent<HTMLButtonElement>) => void;
-  buttonRef: (node: HTMLButtonElement | null) => void;
-}) {
-  return (
-    <button
-      type="button"
-      ref={buttonRef}
-      className={cn(
-        'group relative z-10 w-52 select-none touch-none rounded-xl border border-PrimaryBlue bg-white px-3 py-2 text-center shadow-sm transition-all focus:outline-none focus:ring-4 focus:ring-PrimaryBlue/20 sm:w-56 hover:border-2',
-        active && 'border-2',
-        dragging ? 'cursor-grabbing' : 'cursor-grab',
-      )}
-      onMouseEnter={() => onActiveChange(true)}
-      onMouseLeave={() => onActiveChange(false)}
-      onFocus={() => onActiveChange(true)}
-      onBlur={() => onActiveChange(false)}
-      onPointerDown={onPointerDown}
-      onPointerMove={onPointerMove}
-      onPointerUp={onPointerUp}
-      onPointerCancel={onPointerCancel}
-    >
-      <p className="truncate text-xs font-semibold text-slate-900">{ConvertToolName(tool.name)}</p>
-      <p className="mt-1 max-h-9 overflow-hidden text-[11px] ml-0 leading-snug text-slate-600">
-        {(() => {
-          const sentences = tool.description.split(/[.!?]+/).filter(s => s.trim());
-          const firstOne = sentences.slice(0, 1).join('. ').trim();
-          const words = firstOne.split(/\s+/);
-          if (words.length > 15) {
-            return words.slice(0, 15).join(' ') + '...';
-          }
-          return firstOne + (sentences.length > 1 ? '...' : '');
-        })()}
-      </p>
-    </button>
-  );
-}
-
-function ToolSchemaPopover({
-  tool,
-  style,
-  popoverRef,
-  visible,
-  onMouseEnter,
-  onMouseLeave,
-}: {
-  tool: ToolCatalogItem;
-  style: { left: number; top: number; maxHeight: number; arrowOffset: number };
-  popoverRef: (node: HTMLDivElement | null) => void;
-  visible: boolean;
-  onMouseEnter: () => void;
-  onMouseLeave: () => void;
-}) {
-  return (
-    <div
-      ref={popoverRef}
-      className={cn(
-        'absolute z-30 flex w-[26rem] -translate-x-1/2 -translate-y-full flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white p-4 shadow-xl transition-opacity',
-        visible ? 'opacity-100' : 'pointer-events-none opacity-0',
-      )}
-      style={{
-        left: style.left,
-        top: style.top,
-        maxHeight: style.maxHeight,
-        height: style.maxHeight,
-      }}
-      onMouseEnter={onMouseEnter}
-      onMouseLeave={onMouseLeave}
-      role="dialog"
-      aria-label={`${tool.name} schema`}
-    >
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <p className="truncate text-sm font-semibold text-slate-900">
-            {ConvertToolName(tool.name)}
-          </p>
-          {tool.description ? (
-            <p className="mt-0.5 text-xs text-slate-600">
-              {(() => {
-                const sentences = tool.description.split(/[.!?]+/).filter((s) => s.trim());
-                const firstTwo = sentences.slice(0, 2).join('. ').trim();
-                const words = firstTwo.split(/\s+/);
-                if (words.length > 28) return `${words.slice(0, 28).join(' ')}...`;
-                return firstTwo + (sentences.length > 2 ? '...' : '');
-              })()}
-            </p>
-          ) : null}
-        </div>
-        <Badge className="shrink-0 bg-PrimaryBlue/10 text-PrimaryBlue ring-PrimaryBlue/20">
-          Schema
-        </Badge>
-      </div>
-
-      <div className="mt-3 min-h-0 flex-1 overflow-hidden">
-        <CodeBlock
-          code={formatJson(tool.argsSchema)}
-          className="min-h-0 h-full overflow-auto border-0 bg-slate-50 p-2 text-left"
-        />
-      </div>
-
-      <div
-        aria-hidden="true"
-        className="absolute top-full h-3 w-3 -translate-x-1/2 -translate-y-1/2 rotate-45 border border-slate-200 bg-white"
-        style={{ left: `calc(50% + ${style.arrowOffset}px)` }}
-      />
-    </div>
-  );
-}
-
+// Renders the agent diagram.
 export function AgentDiagram({ agent }: AgentDiagramProps) {
   const [activeToolIndex, setActiveToolIndex] = useState<number | null>(null);
   const [toolPositions, setToolPositions] = useState<Point[]>(() =>
@@ -259,11 +50,13 @@ export function AgentDiagram({ agent }: AgentDiagramProps) {
   const tooltipsDisabled = draggingIndex !== null;
   const popoverIndex = tooltipsDisabled ? null : activeToolIndex;
 
+// Cancels close.
   function cancelClose() {
     if (closeTimerRef.current) window.clearTimeout(closeTimerRef.current);
     closeTimerRef.current = null;
   }
 
+// Schedules close.
   function scheduleClose(delay = 120) {
     cancelClose();
     closeTimerRef.current = window.setTimeout(() => {
@@ -272,6 +65,7 @@ export function AgentDiagram({ agent }: AgentDiagramProps) {
     }, delay);
   }
 
+// Updates tool position.
   function updateToolPosition(index: number, next: Point) {
     setToolPositions((prev) => {
       if (prev[index]?.x === next.x && prev[index]?.y === next.y) return prev;
@@ -281,6 +75,7 @@ export function AgentDiagram({ agent }: AgentDiagramProps) {
     });
   }
 
+// Handles pointer down.
   function handlePointerDown(index: number) {
     return (e: React.PointerEvent<HTMLButtonElement>) => {
       if (e.button !== 0) return;
@@ -308,6 +103,7 @@ export function AgentDiagram({ agent }: AgentDiagramProps) {
     };
   }
 
+// Handles pointer move.
   function handlePointerMove(e: React.PointerEvent<HTMLButtonElement>) {
     const drag = dragRef.current;
     if (!drag || drag.pointerId !== e.pointerId) return;
@@ -335,6 +131,7 @@ export function AgentDiagram({ agent }: AgentDiagramProps) {
     updateToolPosition(drag.index, { x: clamp(x, 0, 100), y: clamp(y, 0, 100) });
   }
 
+// Handles pointer end.
   function handlePointerEnd(e: React.PointerEvent<HTMLButtonElement>) {
     const drag = dragRef.current;
     if (!drag || drag.pointerId !== e.pointerId) return;
@@ -344,7 +141,6 @@ export function AgentDiagram({ agent }: AgentDiagramProps) {
     try {
       e.currentTarget.releasePointerCapture(e.pointerId);
     } catch {
-      // ignore
     }
   }
 
@@ -355,6 +151,7 @@ export function AgentDiagram({ agent }: AgentDiagramProps) {
   useLayoutEffect(() => {
     let frame: number | null = null;
 
+// Schedules logic.
     const schedule = (fn: () => void) => {
       if (frame) cancelAnimationFrame(frame);
       frame = requestAnimationFrame(fn);
@@ -405,9 +202,6 @@ export function AgentDiagram({ agent }: AgentDiagramProps) {
           : next,
       );
     });
-
-    
-
     return () => {
       if (frame) cancelAnimationFrame(frame);
     };

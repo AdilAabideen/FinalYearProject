@@ -16,6 +16,7 @@ type MasCardProps = {
   onOpen?: (workflowId: string) => void;
 };
 
+// Renders the MAS card.
 export function MasCard({
   workflowId,
   name,
@@ -85,6 +86,7 @@ export function MasCard({
   );
 }
 
+// Renders the MAS card skeleton.
 export function MasCardSkeleton() {
   return (
     <div className="flex w-full min-h-[230px] flex-col rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">

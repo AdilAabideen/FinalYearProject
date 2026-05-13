@@ -12,6 +12,7 @@ type MasMetricsTabProps = {
   metrics: SwarmRunMetricsRead | null;
 };
 
+// Renders the MAS metrics tab.
 export default function MasMetricsTab({ metrics }: MasMetricsTabProps) {
   const failureReasonEntries: Array<[string, number]> = metrics
     ? ([
@@ -25,25 +26,28 @@ export default function MasMetricsTab({ metrics }: MasMetricsTabProps) {
   return (
     <div className="h-full min-h-0 overflow-auto">
       {!metrics ? (
-        <div className="rounded-2xl border border-slate-200 bg-white p-4 text-sm text-slate-700">
-          Run metrics not available yet.
+        <div>
+          <p className='text-xl font-semibold text-slate-900 mb-2 border-b border-slate-200 p-3 '>Mas Metrics</p>
+          <div className="  bg-white p-3 px-4 text-md text-slate-800">
+            Run metrics not available yet. Please Wait for a Test case to finish 
+          </div>
         </div>
       ) : (
         <div className="pb-3">
-          <section className="rounded border border-l-0 border-slate-200 bg-white p-4">
+          <section className="rounded  bg-white">
             <div className="flex flex-wrap items-center justify-between gap-3">
-              <div>
-                <p className='text-xl font-semibold text-slate-900 mb-2'>MAS Metrics</p>
+              <div className='w-full border-b border-slate-200 p-3'>
+                <p className='text-xl font-semibold text-slate-900 mb-[3px] '>Mas Metrics</p>
                 <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
                   Aggregated Run Summary
                 </p>
                 <p className="mt-1 text-sm text-slate-700">
-                  Summary-level metrics for this MAS swarm run.
+                  Summary-level metrics for this MAS run.
                 </p>
               </div>
             </div>
 
-            <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+            <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 p-3 pb-0">
               <StatCard
                 label="Cost Per Agent Run"
                 value={formatCurrency(metrics.costUsdPerAgentRun ?? null)}
@@ -82,7 +86,7 @@ export default function MasMetricsTab({ metrics }: MasMetricsTabProps) {
               />
             </div>
 
-            <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3">
+            <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3 p-3 pt-0">
               <StatCard
                 label="Input Tokens"
                 value={formatInteger(metrics.inputTokensTotal)}

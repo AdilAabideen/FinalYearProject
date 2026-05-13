@@ -11,6 +11,7 @@ type AgentCardProps = {
   onOpen?: (agentName: string) => void;
 };
 
+// Renders the agent card.
 export function AgentCard({ name, title, description, toolsCount, onOpen }: AgentCardProps) {
   const openDisabled = !onOpen;
 
@@ -63,6 +64,7 @@ export function AgentCard({ name, title, description, toolsCount, onOpen }: Agen
   );
 }
 
+// Renders the agent card skeleton.
 export function AgentCardSkeleton() {
   return (
     <div className="flex w-full max-w-sm flex-col rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">

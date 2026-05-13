@@ -13,6 +13,7 @@ import {
   type AgentDecisionConfig,
 } from './runResult';
 
+// Handles prefixed record.
 function prefixedRecord(record: Record<string, unknown>, prefix: string) {
   const out: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(record)) {
@@ -22,6 +23,7 @@ function prefixedRecord(record: Record<string, unknown>, prefix: string) {
   return out;
 }
 
+// Renders generic diff.
 function renderGenericDiff(diff: Record<string, unknown>) {
   return (
     <div className="rounded-2xl border border-slate-200 bg-white p-4">
@@ -39,6 +41,7 @@ function renderGenericDiff(diff: Record<string, unknown>) {
   );
 }
 
+// Renders decision diff.
 function renderDecisionDiff(diff: Record<string, unknown>, config: AgentDecisionConfig) {
   const expectedAnswer = isRecord(diff.expected_answer) ? diff.expected_answer : {};
   const agentAnswer = isRecord(diff.agent_answer) ? diff.agent_answer : {};
@@ -110,6 +113,7 @@ function renderDecisionDiff(diff: Record<string, unknown>, config: AgentDecision
   );
 }
 
+// Renders esi345 decision diff.
 function renderESI345DecisionDiff(diff: Record<string, unknown>, config: AgentDecisionConfig) {
   const expectedAnswer = isRecord(diff.expected_answer) ? diff.expected_answer : {};
   const agentAnswer = isRecord(diff.agent_answer) ? diff.agent_answer : {};
@@ -219,6 +223,7 @@ function renderESI345DecisionDiff(diff: Record<string, unknown>, config: AgentDe
   );
 }
 
+// Handles resolve diff renderer.
 export function resolveDiffRenderer(agentName: string) {
   const config = getAgentDecisionConfig(agentName);
   return (diff: Record<string, unknown>) => {

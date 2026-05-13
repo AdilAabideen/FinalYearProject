@@ -1,3 +1,4 @@
+// Provides run result helpers.
 import { formatConfidence, formatInteger } from './format';
 
 export type DecisionTone = 'positive' | 'danger' | 'neutral';
@@ -69,22 +70,27 @@ const ESI2_DECISION_CONFIG: AgentDecisionConfig = {
   falseKeywords: ['esi1', 'esi-1', 'esi3', 'esi-3', 'esi4', 'esi-4', 'esi5', 'esi-5'],
 };
 
+// Normalizes agent name.
 function normalizeAgentName(name: string) {
   return name.trim().toLowerCase().replace(/[\s_-]+/g, '');
 }
 
+// Normalizes key.
 export function normalizeKey(key: string) {
   return key.toLowerCase().replace(/[^a-z0-9]/g, '');
 }
 
+// Checks record.
 export function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
+// Casts string.
 export function asString(value: unknown): string | undefined {
   return typeof value === 'string' && value.length > 0 ? value : undefined;
 }
 
+// Casts number.
 export function asNumber(value: unknown) {
   if (typeof value === 'number' && Number.isFinite(value)) return value;
   if (typeof value === 'string') {
@@ -94,14 +100,18 @@ export function asNumber(value: unknown) {
   return null;
 }
 
+// Handles to string array.
 export function toStringArray(value: unknown) {
   if (Array.isArray(value)) {
+// Handles filter.
+// Maps logic.
     return value.map((item) => String(item)).filter((item) => item.trim().length > 0);
   }
   if (typeof value === 'string' && value.trim().length > 0) return [value];
   return [];
 }
 
+// Gets value by aliases.
 export function getValueByAliases(record: Record<string, unknown>, aliases: readonly string[]) {
   const aliasSet = new Set(aliases.map(normalizeKey));
   for (const [key, value] of Object.entries(record)) {
@@ -110,6 +120,7 @@ export function getValueByAliases(record: Record<string, unknown>, aliases: read
   return undefined;
 }
 
+// Parses decision.
 export function parseDecision(value: unknown) {
   if (typeof value === 'boolean') return value;
   if (typeof value === 'number') return value > 0;
@@ -125,6 +136,7 @@ export function parseDecision(value: unknown) {
   return null;
 }
 
+// Parses decision with config.
 export function parseDecisionWithConfig(value: unknown, config: AgentDecisionConfig) {
   if (typeof value === 'string') {
     const normalized = value.trim().toLowerCase();
@@ -134,14 +146,17 @@ export function parseDecisionWithConfig(value: unknown, config: AgentDecisionCon
   return parseDecision(value);
 }
 
+// Checks esi1 config.
 function isEsi1Config(config: AgentDecisionConfig) {
   return config.decisionAliases.map(normalizeKey).includes('isesi1');
 }
 
+// Checks esi2 config.
 function isEsi2Config(config: AgentDecisionConfig) {
   return config.decisionAliases.map(normalizeKey).includes('isesi2');
 }
 
+// Gets agent decision config.
 export function getAgentDecisionConfig(agentName: string): AgentDecisionConfig {
   const normalized = normalizeAgentName(agentName);
   if (normalized.includes('esi2')) return ESI2_DECISION_CONFIG;
@@ -149,11 +164,13 @@ export function getAgentDecisionConfig(agentName: string): AgentDecisionConfig {
   return DEFAULT_DECISION_CONFIG;
 }
 
+// Checks esi345 agent name.
 export function isEsi345AgentName(agentName: string) {
   const normalized = normalizeKey(agentName);
   return normalized.includes('esi345') || normalized.includes('es345');
 }
 
+// Handles resolve decision from record.
 export function resolveDecisionFromRecord(record: Record<string, unknown>, config: AgentDecisionConfig) {
   const primaryRaw = getValueByAliases(record, config.decisionAliases);
   const primaryDecision = parseDecisionWithConfig(primaryRaw, config);
@@ -178,12 +195,14 @@ export function resolveDecisionFromRecord(record: Record<string, unknown>, confi
   return { raw: inverseRaw, decision: !inverseDecision };
 }
 
+// Handles decision known aliases.
 export function decisionKnownAliases(config: AgentDecisionConfig) {
   if (isEsi2Config(config)) return [...config.decisionAliases, 'is_esi1', 'isesi1'];
   if (isEsi1Config(config)) return [...config.decisionAliases, 'is_esi2', 'isesi2'];
   return config.decisionAliases;
 }
 
+// Formats decision display value.
 export function formatDecisionDisplayValue(decision: boolean | null, raw: unknown) {
   if (decision != null) return decision ? 'True' : 'False';
   if (typeof raw === 'string') return raw;
@@ -192,6 +211,7 @@ export function formatDecisionDisplayValue(decision: boolean | null, raw: unknow
   return '—';
 }
 
+// Handles decision tone to label.
 function decisionToneToLabel(decision: boolean | null, raw: unknown, config: AgentDecisionConfig) {
   const decisionLabel =
     decision == null
@@ -205,6 +225,7 @@ function decisionToneToLabel(decision: boolean | null, raw: unknown, config: Age
   return { decisionLabel, decisionTone };
 }
 
+// Builds result view model.
 export function buildResultViewModel(
   output: Record<string, unknown>,
   config: AgentDecisionConfig,
@@ -235,6 +256,7 @@ export function buildResultViewModel(
   };
 }
 
+// Builds esi345 result view model.
 export function buildEsi345ResultViewModel(output: Record<string, unknown>): Esi345ResultViewModel {
   const esiLevelRaw = getValueByAliases(output, ESI345_ALIASES.esiLevel);
   const numResourcesRaw = getValueByAliases(output, ESI345_ALIASES.numResources);
@@ -262,6 +284,7 @@ export function buildEsi345ResultViewModel(output: Record<string, unknown>): Esi
   };
 }
 
+// Gets additional output entries.
 export function getAdditionalOutputEntries(
   output: Record<string, unknown>,
   options: { decisionConfig: AgentDecisionConfig; includeEsi345Aliases?: boolean },
@@ -279,5 +302,6 @@ export function getAdditionalOutputEntries(
       ...RESULT_ALIASES.justification,
     ].map(normalizeKey),
   );
+// Handles filter.
   return Object.entries(output).filter(([key]) => !knownKeys.has(normalizeKey(key)));
 }

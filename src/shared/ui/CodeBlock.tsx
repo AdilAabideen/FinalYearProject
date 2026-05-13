@@ -5,6 +5,7 @@ type CodeBlockProps = {
   className?: string;
 };
 
+// Renders the code block.
 export function CodeBlock({ code, className }: CodeBlockProps) {
   return (
     <pre

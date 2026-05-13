@@ -1,3 +1,4 @@
+// Calls the agent test service API.
 import { API_BASE_URL } from '../config/env';
 import type {
   AgentTestRunBatchCaseDto,
@@ -33,6 +34,7 @@ export type AgentTestService = {
 };
 
 export const agentTestService: AgentTestService = {
+// Lists test cases.
   async listTestCases(params, signal) {
     const search = new URLSearchParams();
     if (params?.agentName) search.set('agent_name', params.agentName);
@@ -57,6 +59,7 @@ export const agentTestService: AgentTestService = {
 
     const data = (await response.json()) as AgentTestCaseReadDto[];
 
+// Maps logic.
     return data.map((row) => ({
       id: row.id,
       agentName: row.agent_name,
@@ -70,6 +73,7 @@ export const agentTestService: AgentTestService = {
     }));
   },
 
+// Starts test run.
   async startTestRun(agentName, caseIds, name, modelId, signal) {
     const url = `${API_BASE_URL}/api/tests/runs/start`;
 
@@ -110,6 +114,7 @@ export const agentTestService: AgentTestService = {
     };
   },
 
+// Gets run batch metrics.
   async getRunBatchMetrics(runId, signal) {
     const url = `${API_BASE_URL}/api/tests/runs/${encodeURIComponent(runId)}/metrics`;
     const response = await fetch(url, {
@@ -168,6 +173,7 @@ export const agentTestService: AgentTestService = {
         costUsdAvgSuccessful: summary.cost_usd_avg_successful ?? null,
         failureReasonCounts: summary.failure_reason_counts ?? {},
       },
+// Maps logic.
       cases: cases.map((item) => {
         const row = item as AgentTestRunBatchCaseDto;
         return {

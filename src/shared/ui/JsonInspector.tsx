@@ -7,10 +7,12 @@ type JsonInspectorProps = {
   maxDepth?: number;
 };
 
+// Checks plain object.
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
+// Formats primitive.
 function formatPrimitive(value: unknown) {
   if (value === null) return 'null';
   if (value === undefined) return 'undefined';
@@ -21,24 +23,28 @@ function formatPrimitive(value: unknown) {
   return String(value);
 }
 
+// Summarizes container.
 function summarizeContainer(value: Record<string, unknown> | unknown[]) {
   if (Array.isArray(value)) return `Array (${value.length})`;
   return `Object (${Object.keys(value).length})`;
 }
 
+// Handles indent class.
 function indentClass(depth: number) {
   if (depth <= 0) return '';
   if (depth === 1) return 'pl-3';
   return 'pl-6';
 }
 
+// Checks container.
 function isContainer(value: unknown): value is Record<string, unknown> | unknown[] {
   return isPlainObject(value) || Array.isArray(value);
 }
 
+// Formats label.
 function formatLabel(label: string) {
   if (!label) return label;
-  if (label.startsWith('[')) return label;
+  if (label.startsWith('[')) return "-"
   return label.charAt(0).toUpperCase() + label.slice(1);
 }
 
@@ -49,16 +55,27 @@ type RenderOptions = {
   ancestors: ReadonlyArray<object>;
 };
 
+// Renders the primitive row.
 function PrimitiveRow({ label, value }: { label: string; value: string }) {
   const formattedLabel = formatLabel(label);
   return (
     <p className="whitespace-pre-wrap break-words leading-snug">
-      <span className="font-semibold text-slate-700">{formattedLabel}</span>{' '}
-      <span className="text-slate-500">{value}</span>
+      {
+        formattedLabel === "-" ? (
+          <li className="text-slate-500 text-md">{formatLabel(value)}</li>
+        ) : (
+          <>
+            <span className="font-semibold text-sm text-slate-700">{formattedLabel}{' : '}</span>
+            <span className="text-slate-500 text-md">{formatLabel(value)}</span>
+          </>
+        )
+      }
+
     </p>
   );
 }
 
+// Renders the container block.
 function ContainerBlock({
   label,
   value,
@@ -86,14 +103,15 @@ function ContainerBlock({
 
   return (
     <div className="space-y-1">
-      <p className="break-words font-semibold leading-snug text-slate-700">{formatLabel(label)}</p>
-      <div className={cn('border-l border-slate-200', indentClass(opts.depth + 1))}>
+      <p className="break-words font-semibold leading-snug text-slate-700 text-sm">{formatLabel(label)}{" : "}</p>
+      <div className={cn('border-l text-sm border-slate-200', indentClass(opts.depth + 1))}>
         <div className="mt-1 space-y-1">{children}</div>
       </div>
     </div>
   );
 }
 
+// Renders value.
 function renderValue(value: unknown, opts: RenderOptions): ReactNode {
   if (Array.isArray(value)) {
     if (!value.length) {
@@ -140,6 +158,7 @@ function renderValue(value: unknown, opts: RenderOptions): ReactNode {
   return <PrimitiveRow label="Value" value={formatPrimitive(value)} />;
 }
 
+// Renders the JSON inspector.
 export function JsonInspector({ value, className, maxDepth = 6 }: JsonInspectorProps) {
 
   const ancestors = isContainer(value) ? [value as object] : [];

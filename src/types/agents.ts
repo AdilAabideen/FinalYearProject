@@ -1,3 +1,4 @@
+// Defines agents types.
 export type AgentCatalogSummaryDto = {
   name: string;
   title: string;

@@ -4,13 +4,13 @@ import type { AgentCatalogDetail, AgentCatalogSummary } from '../../../types/age
 import { AgentCard, AgentCardSkeleton } from '../components/AgentCard';
 import { AgentDetailSplitView } from '../components/AgentDetailSplitView';
 
-type AgentsLoadState =
+export type AgentsLoadState =
   | { status: 'loading' }
   | { status: 'error'; message: string }
   | { status: 'success'; agents: AgentCatalogSummary[] };
 
-type BackAction = { label?: string; onClick: () => void };
-type HeaderOverride = {
+export type BackAction = { label?: string; onClick: () => void };
+export type HeaderOverride = {
   title: string;
   subtitle?: string;
   showSearch?: boolean;
@@ -22,12 +22,13 @@ type AgentsPageProps = {
   onHeaderChange?: (override: HeaderOverride | null) => void;
 };
 
-type AgentDetailState =
+export type AgentDetailState =
   | { status: 'closed' }
   | { status: 'loading'; agentName: string }
   | { status: 'error'; agentName: string; message: string }
   | { status: 'success'; agent: AgentCatalogDetail };
 
+// Renders the agents page.
 export function AgentsPage({ onHeaderChange }: AgentsPageProps) {
   const [state, setState] = useState<AgentsLoadState>({ status: 'loading' });
   const [detail, setDetail] = useState<AgentDetailState>({ status: 'closed' });
@@ -64,6 +65,7 @@ export function AgentsPage({ onHeaderChange }: AgentsPageProps) {
 
   const skeletons = useMemo(() => Array.from({ length: 6 }, (_, i) => i), []);
 
+// Closes detail.
   function closeDetail() {
     detailAbortRef.current?.abort();
     detailAbortRef.current = null;

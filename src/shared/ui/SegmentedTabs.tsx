@@ -15,6 +15,7 @@ type SegmentedTabsProps<T extends string> = {
   className?: string;
 };
 
+// Renders the segmented tabs.
 export function SegmentedTabs<T extends string>({
   idBase,
   tabs,
@@ -25,14 +26,17 @@ export function SegmentedTabs<T extends string>({
 }: SegmentedTabsProps<T>) {
   const tabRefs = useRef<Record<string, HTMLButtonElement | null>>({});
 
+// Handles tab ID.
   function tabId(key: T) {
     return `${idBase}-tab-${key}`;
   }
 
+// Handles panel ID.
   function panelId(key: T) {
     return `${idBase}-panel-${key}`;
   }
 
+// Handles key down.
   function handleKeyDown(key: T) {
     return (e: KeyboardEvent<HTMLButtonElement>) => {
       const currentIndex = tabs.findIndex((tab) => tab.key === key);
